@@ -1,0 +1,70 @@
+Name:            ASN1
+Version:         0.0.1
+License:         BSD-style
+Author:          Dominic Steinitz
+Maintainer:	 dominic.steinitz@blueyonder.co.uk
+Copyright:       Dominic Steinitz 2003 - 2006
+Stability:	 Alpha
+Synopsis:        X.509 Identity and Attribute Certificates, 
+                 General ASN.1 Support, PKCS8, PKCS1v15.
+Build-Depends:   base, mtl, QuickCheck, HUnit, NewBinary
+Ghc-options:     -fglasgow-exts
+Exposed-Modules: Codec.ASN1,
+                 Codec.ASN1.BER,
+                 Codec.ASN1.InformationFramework,
+                 Codec.ASN1.TLV,
+                 Codec.ASN1.X509,
+                 Codec.ASN1.X509.AttributeCertificateDefinitions,
+                 Codec.ASN1.PKCS1v15,
+                 Codec.ASN1.PKCS8
+
+Executable:      BERTest
+Main-Is:         BERTest.hs
+Ghc-options:     -fglasgow-exts
+Other-modules:	 Codec.ASN1,
+                 Codec.ASN1.BER
+
+Executable:      X509Example
+Main-Is:         X509Example.hs
+Ghc-options:     -fglasgow-exts
+Other-modules:   Codec.ASN1.BER,
+                 Codec.ASN1,
+                 Codec.ASN1.TLV,
+                 Codec.ASN1.X509,
+
+Executable:      PKCS8Example
+Main-Is:         PKCS8Example.hs
+Ghc-options:     -fglasgow-exts
+Other-modules:   Codec.ASN1.BER,
+                 Codec.ASN1,
+                 Codec.ASN1.TLV,
+                 Codec.ASN1.X509,
+
+Executable:      AttributeCertificate
+Main-Is:         AttributeCertificate.hs
+Ghc-options:     -fglasgow-exts
+Other-modules:   Codec.ASN1.BER,
+                 Codec.ASN1,
+                 Codec.ASN1.TLV,
+                 Codec.ASN1.X509,
+                 Codec.ASN1.InformationFramework
+                 Codec.ASN1.X509.AttributeCertificateDefinitions
+
+Executable:      RSAEncryptionExample
+Main-Is:         RSAEncryptionExample.hs
+Ghc-options:     -fglasgow-exts
+Other-modules:   Codec.ASN1
+                 Codec.ASN1.TLV
+                 Codec.ASN1.X509
+                 Codec.ASN1.BER
+
+Executable:      RSAVerifyExample
+Main-Is:         RSAVerifyExample.hs
+Ghc-options:     -fglasgow-exts
+Other-modules:   Codec.ASN1
+                 Codec.ASN1.TLV
+                 Codec.ASN1.X509
+                 Codec.ASN1.BER
+                 Codec.ASN1.PKCS1v15
+
+
