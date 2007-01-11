@@ -1,7 +1,7 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Codec.ASN1
--- Copyright   :  (c) Dominic Steinitz 2005
+-- Module      :  Language.ASN1
+-- Copyright   :  (c) Dominic Steinitz 2005 - 2007
 -- License     :  BSD-style (see the file ReadMe.tex)
 -- 
 -- Maintainer  :  dominic.steinitz@blueyonder.co.uk
@@ -13,7 +13,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Codec.ASN1 (
+module Language.ASN1 (
    -- * Types
    TagType(..),
    TagValue,
