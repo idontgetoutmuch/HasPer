@@ -6,15 +6,15 @@ import Data.List
 import System.Environment
 import System.Console.GetOpt
 import Data.Maybe
-import Codec.ASN1
+import Language.ASN1
 import Codec.Utils
 import Data.Digest.SHA1
 import Codec.Encryption.RSA
-import Codec.ASN1.TLV
-import Codec.ASN1.X509
-import Codec.ASN1.BER
+import Language.ASN1.TLV
+import Language.ASN1.X509
+import Language.ASN1.BER
 import NewBinary.Binary
-import qualified Codec.ASN1.PKCS1v15 as V15
+import qualified Language.ASN1.PKCS1v15 as V15
 
 verifyWith certFile plainTextFile signedFile = 
 {-

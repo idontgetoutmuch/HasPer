@@ -1,8 +1,8 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Codec.ASN1.TLV
--- Copyright   :  (c) Dominic Steinitz 2005
--- License     :  BSD-style (see the file ReadMe.tex)
+-- Module      :  Language.ASN1.TLV
+-- Copyright   :  (c) Dominic Steinitz 2005 - 2007
+-- License     :  BSD3
 -- 
 -- Maintainer  :  dominic.steinitz@blueyonder.co.uk
 -- Stability   :  experimental
@@ -13,7 +13,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Codec.ASN1.TLV (
+module Language.ASN1.TLV (
    -- * Types
 
    -- * Function types,
@@ -26,7 +26,7 @@ import Control.Monad.State
 import Control.Monad.Error
 import System.IO.Error
 import qualified NewBinary.Binary as B (BinHandle, getBits, getByte)
-import Codec.ASN1.BER
+import Language.ASN1.BER
 import Codec.Utils
 
 -- The bit decoder will (by design) never lie about lengths

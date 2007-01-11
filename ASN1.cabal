@@ -7,7 +7,7 @@ Copyright:       Dominic Steinitz 2003 - 2006
 Stability:	 Alpha
 Synopsis:        X.509 Identity and Attribute Certificates, 
                  General ASN.1 Support, PKCS8, PKCS1v15.
-Build-Depends:   base, mtl, QuickCheck, HUnit, NewBinary
+Build-Depends:   base, mtl, QuickCheck, HUnit, Crypto, NewBinary
 Ghc-options:     -fglasgow-exts
 Exposed-Modules: Language.ASN1
                  Language.ASN1.BER

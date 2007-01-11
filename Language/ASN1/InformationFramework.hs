@@ -1,8 +1,8 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Coded.ASN1.InformationFramework
+-- Module      :  Language.ASN1.InformationFramework
 -- Copyright   :  (c) Dominic Steinitz 2006
--- License     :  BSD-style (see the file ReadMe.tex)
+-- License     :  BSD3
 -- 
 -- Maintainer  :  dominic.steinitz@blueyonder.co.uk
 -- Stability   :  experimental
@@ -17,7 +17,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Codec.ASN1.InformationFramework (
+module Language.ASN1.InformationFramework (
 -- * Type declarations
    GeneralName(..),
    GeneralNames(..),
@@ -31,9 +31,9 @@ module Codec.ASN1.InformationFramework (
    unRDNSequence
    ) where
 
-import Codec.ASN1
-import Codec.ASN1.BER
-import Codec.ASN1.X509 (
+import Language.ASN1
+import Language.ASN1.BER
+import Language.ASN1.X509 (
    relativeDistinguishedName,
    RelativeDistinguishedName
    )

@@ -1,8 +1,8 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Coded.ASN1.InformationFramework
--- Copyright   :  (c) Dominic Steinitz 2006
--- License     :  BSD-style (see the file ReadMe.tex)
+-- Module      :  Language.ASN1.X509.InformationFramework
+-- Copyright   :  (c) Dominic Steinitz 2006 - 2007
+-- License     :  BSD3
 -- 
 -- Maintainer  :  dominic.steinitz@blueyonder.co.uk
 -- Stability   :  experimental
@@ -18,7 +18,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Codec.ASN1.X509.AttributeCertificateDefinitions (
+module Language.ASN1.X509.AttributeCertificateDefinitions (
 -- * Type declarations
    AttributeCertificate(..),
    AttributeCertificateInfo(..),
@@ -40,16 +40,16 @@ module Codec.ASN1.X509.AttributeCertificateDefinitions (
    attribute
    ) where
 
-import Codec.ASN1
-import Codec.ASN1.BER
+import Language.ASN1
+import Language.ASN1.BER
 import Data.Maybe(
    fromJust
    )
-import Codec.ASN1.X509 (
+import Language.ASN1.X509 (
    algorithmIdentifier,
    AlgorithmIdentifier
    )
-import Codec.ASN1.InformationFramework (
+import Language.ASN1.InformationFramework (
    generalNames,
    GeneralNames
    )

@@ -1,8 +1,8 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Codec.Encryption.RSA.PKCS1v15
--- Copyright   :  (c) Dominic Steinitz 2005
--- License     :  BSD-style (see the file ReadMe.tex)
+-- Module      :  Language.ASN1.PKCS1v15
+-- Copyright   :  (c) Dominic Steinitz 2005 - 2007
+-- License     :  BSD3
 --
 -- Maintainer  :  dominic.steinitz@blueyonder.co.uk
 -- Stability   :  experimental
@@ -16,7 +16,7 @@
 -- further information.
 -----------------------------------------------------------------------------
 
-module Codec.ASN1.PKCS1v15(
+module Language.ASN1.PKCS1v15(
    -- * Type Declarations
    DigestInfo(..),
    DigestAlgorithm,
@@ -29,9 +29,9 @@ module Codec.ASN1.PKCS1v15(
 
 import Data.Maybe
 import Codec.Utils (Octet)
-import Codec.ASN1
-import qualified Codec.ASN1.BER as BER
-import Codec.ASN1.X509 (algorithmIdentifier,AlgorithmIdentifier)
+import Language.ASN1
+import qualified Language.ASN1.BER as BER
+import Language.ASN1.X509 (algorithmIdentifier,AlgorithmIdentifier)
 
 -- | Not yet implemented.
 

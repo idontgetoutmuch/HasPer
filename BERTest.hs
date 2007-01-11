@@ -4,8 +4,8 @@ import Data.Char
 import Data.Maybe
 import Control.Monad.Error
 import Control.Monad.State
-import Codec.ASN1.BER
-import Codec.ASN1
+import Language.ASN1.BER
+import Language.ASN1
 import Test.HUnit
 
 {-

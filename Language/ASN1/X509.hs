@@ -1,8 +1,8 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Codec.ASN1.X509
--- Copyright   :  (c) Dominic Steinitz 2005
--- License     :  BSD-style (see the file ReadMe.tex)
+-- Module      :  Language.ASN1.X509
+-- Copyright   :  (c) Dominic Steinitz 2005 - 2007
+-- License     :  BSD3
 -- 
 -- Maintainer  :  dominic.steinitz@blueyonder.co.uk
 -- Stability   :  experimental
@@ -13,7 +13,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Codec.ASN1.X509 (
+module Language.ASN1.X509 (
    -- * Types
    Certificate(..),
    SignedCertificate(..),
@@ -48,8 +48,8 @@ module Codec.ASN1.X509 (
 ) where
 import System.Time
 import Data.Maybe
-import Codec.ASN1.BER
-import Codec.ASN1
+import Language.ASN1.BER
+import Language.ASN1
 
 {-
 CertificateSerialNumber ::= INTEGER

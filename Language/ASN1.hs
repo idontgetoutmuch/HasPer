@@ -2,7 +2,7 @@
 -- |
 -- Module      :  Language.ASN1
 -- Copyright   :  (c) Dominic Steinitz 2005 - 2007
--- License     :  BSD-style (see the file ReadMe.tex)
+-- License     :  BSD3
 -- 
 -- Maintainer  :  dominic.steinitz@blueyonder.co.uk
 -- Stability   :  experimental

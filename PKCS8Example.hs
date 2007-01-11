@@ -16,11 +16,11 @@ import NewBinary.Binary
 import Codec.Utils (
    toOctets
    )
-import Codec.ASN1.BER
-import Codec.ASN1
-import Codec.ASN1.TLV
-import Codec.ASN1.PKCS8
-import Codec.ASN1.X509 (
+import Language.ASN1.BER
+import Language.ASN1
+import Language.ASN1.TLV
+import Language.ASN1.PKCS8
+import Language.ASN1.X509 (
    algorithm1, 
    parameters1
    )

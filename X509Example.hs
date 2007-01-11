@@ -7,10 +7,10 @@ import Data.Maybe
 import Data.List
 import Numeric
 import NewBinary.Binary
-import Codec.ASN1.BER
-import Codec.ASN1
-import Codec.ASN1.TLV
-import Codec.ASN1.X509
+import Language.ASN1.BER
+import Language.ASN1
+import Language.ASN1.TLV
+import Language.ASN1.X509
 import Codec.Utils
 import Text.PrettyPrint
 import Control.Monad.State

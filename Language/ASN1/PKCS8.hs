@@ -1,7 +1,7 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Coded.ASN1.PKCS8
--- Copyright   :  (c) Dominic Steinitz 2003
+-- Module      :  Language.ASN1.PKCS8
+-- Copyright   :  (c) Dominic Steinitz 2003 - 2007
 -- License     :  BSD-style (see the file ReadMe.tex)
 -- 
 -- Maintainer  :  dominic.steinitz@blueyonder.co.uk
@@ -15,7 +15,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Codec.ASN1.PKCS8 (
+module Language.ASN1.PKCS8 (
 -- * Type declarations
    RSAPrivateKey(..),
    PrivateKeyInfo(..),
@@ -25,9 +25,9 @@ module Codec.ASN1.PKCS8 (
    ) where
 
 import Data.Maybe
-import Codec.ASN1
-import Codec.ASN1.BER
-import Codec.ASN1.X509 (
+import Language.ASN1
+import Language.ASN1.BER
+import Language.ASN1.X509 (
    algorithmIdentifier,
    AlgorithmIdentifier,
    attributeTypeAndValue,

@@ -1,8 +1,8 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Codec.ASN1.BER
--- Copyright   :  (c) Dominic Steinitz 2005
--- License     :  BSD-style (see the file ReadMe.tex)
+-- Module      :  Language.ASN1.BER
+-- Copyright   :  (c) Dominic Steinitz 2005 - 2007
+-- License     :  BSD3
 -- 
 -- Maintainer  :  dominic.steinitz@blueyonder.co.uk
 -- Stability   :  experimental
@@ -13,7 +13,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Codec.ASN1.BER (
+module Language.ASN1.BER (
    -- * Types
    Encoding(..),
    Defaulted(..),
@@ -35,7 +35,7 @@ import qualified Data.Map as Map
 import Control.Monad.Error
 import Control.Monad.State
 import Codec.Utils
-import Codec.ASN1
+import Language.ASN1
 
 type Length = Integer
 type PrimitiveValue = [Octet]
