@@ -49,22 +49,3 @@ Other-modules:   Language.ASN1.BER
                  Language.ASN1.X509
                  Language.ASN1.InformationFramework
                  Language.ASN1.X509.AttributeCertificateDefinitions
-
-Executable:      RSAEncryptionExample
-Main-Is:         RSAEncryptionExample.hs
-Ghc-options:     -fglasgow-exts
-Other-modules:   Language.ASN1
-                 Language.ASN1.TLV
-                 Language.ASN1.X509
-                 Language.ASN1.BER
-
-Executable:      RSAVerifyExample
-Main-Is:         RSAVerifyExample.hs
-Ghc-options:     -fglasgow-exts
-Other-modules:   Language.ASN1
-                 Language.ASN1.TLV
-                 Language.ASN1.X509
-                 Language.ASN1.BER
-                 Language.ASN1.PKCS1v15
-
-
