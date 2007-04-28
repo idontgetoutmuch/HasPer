@@ -10,7 +10,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Codec.Text.Raw(
+module Language.ASN1.Raw(
    hexdump,
    hexdumpBy,
    ) where
