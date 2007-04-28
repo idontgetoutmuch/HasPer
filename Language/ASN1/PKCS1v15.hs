@@ -28,10 +28,13 @@ module Language.ASN1.PKCS1v15(
    ) where
 
 import Data.Maybe
-import Codec.Utils (Octet)
+-- import Codec.Utils (Octet)
+import Data.Word
 import Language.ASN1
 import qualified Language.ASN1.BER as BER
 import Language.ASN1.X509 (algorithmIdentifier,AlgorithmIdentifier)
+
+type Octet = Word8
 
 -- | Not yet implemented.
 
