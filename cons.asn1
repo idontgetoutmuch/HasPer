@@ -1,0 +1,16 @@
+FooBar {1 2 0 0 6 1} DEFINITIONS ::=
+   BEGIN
+      T1 ::= INTEGER (3)
+      T2 ::= INTEGER
+      T3 ::= INTEGER (3) (T2)
+      T4 ::= INTEGER (3) (INTEGER)
+      T5 ::= INTEGER (3) (INTEGER (3))
+      T6 ::= INTEGER (3..6)
+      T7 ::= INTEGER (3..6) (4..5)
+      T8 ::= BIT STRING (SIZE (32))
+      T9 ::= BIT STRING (SIZE (0..31))
+      T10 ::= BIT STRING (SIZE (INCLUDES T1))
+      T10 ::= BIT STRING (SIZE (T1))
+      T11 ::= NumericString (FROM ("2"))
+      T12 ::= NumericString (FROM (("4")|("2")))
+   END
