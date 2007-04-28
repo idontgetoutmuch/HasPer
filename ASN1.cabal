@@ -27,7 +27,7 @@ Other-modules:	 Language.ASN1
                  Language.ASN1.BER
 
 Executable:      BERTest2
-Main-Is:         BERTest.hs
+Main-Is:         BERTest2.hs
 Ghc-options:     -fglasgow-exts
 Other-modules:	 Language.ASN1
                  Language.ASN1.BER
