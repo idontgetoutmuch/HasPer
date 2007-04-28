@@ -1,7 +1,7 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Coded.Text.Raw
--- Copyright   :  (c) Dominic Steinitz 2006
+-- Module      :  Language.ASN1.Raw
+-- Copyright   :  (c) Dominic Steinitz 2007
 -- License     :  BSD-style (see the file ReadMe.tex)
 --
 -- Maintainer  :  dominic.steinitz@blueyonder.co.uk
@@ -16,7 +16,7 @@ module Codec.Text.Raw(
    ) where
    
 import Data.List
-import Codec.Utils
+import Language.ASN1.Utils
 import Numeric
 import Text.PrettyPrint
 
