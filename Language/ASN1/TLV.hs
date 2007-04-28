@@ -27,7 +27,7 @@ import Control.Monad.Error
 import System.IO.Error
 import qualified NewBinary.Binary as B (BinHandle, getBits, getByte)
 import Language.ASN1.BER
-import Codec.Utils
+import Language.ASN1.Utils
 
 -- The bit decoder will (by design) never lie about lengths
 -- because it can check these. It may lie (if that's what it's being

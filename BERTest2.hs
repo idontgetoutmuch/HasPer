@@ -4,10 +4,10 @@ import Data.Char
 import Data.Maybe
 import Control.Monad.Error
 import Control.Monad.State
-import Codec.ASN1.BER
-import Codec.ASN1
-import Codec.ASN1.X509
-import Codec.ASN1.InformationFramework(
+import Language.ASN1.BER
+import Language.ASN1
+import Language.ASN1.X509
+import Language.ASN1.InformationFramework(
    generalNames,
    GeneralNames,
    rdnSequence,
@@ -16,7 +16,7 @@ import Codec.ASN1.InformationFramework(
    GeneralNames(..),
    Name(..)
    )
-import Codec.ASN1.X509.AttributeCertificateDefinitions (
+import Language.ASN1.X509.AttributeCertificateDefinitions (
    AttributeCertificate,
    attributeCertificate,
    Holder(..),
@@ -36,8 +36,8 @@ import Test.HUnit
 import System.IO
 import System.Environment
 import System.Console.GetOpt
-import Codec.Utils
-import Codec.ASN1.TLV
+-- import Codec.Utils
+import Language.ASN1.TLV
 import NewBinary.Binary
 
 expectSuccess testName asnType berValue expectedAbsValue =
@@ -613,9 +613,13 @@ tSetOfAny =
 
 typeCheck' :: TypeDefn -> Encoding -> IO (TypeDefn,Defaulted)
 
+{-
 typeCheck' a b =
    do ((q,r),_) <- runStateT (tc a b) []
       return (q,r)
+-}
+
+typeCheck' = typeCheck
 
 {-
 TextBook = SEQUENCE {

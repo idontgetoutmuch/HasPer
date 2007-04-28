@@ -67,7 +67,9 @@ module Language.ASN1 (
 
 import Data.Char
 import qualified Data.Map as Map
-import Codec.Utils
+-- import Codec.Utils
+import Data.Word
+type Octet = Word8
 
 data TagType = Universal | Application | Context | Private
    deriving (Eq,Show, Enum)

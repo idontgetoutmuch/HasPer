@@ -9,7 +9,7 @@
 -- Portability :  portable
 --
 -- Typecheck and decode BER representations as produced by
--- Codec.ASN1.TLV 
+-- Language.ASN1.TLV 
 --
 -----------------------------------------------------------------------------
 
@@ -34,7 +34,7 @@ import Data.List
 import qualified Data.Map as Map
 import Control.Monad.Error
 import Control.Monad.State
-import Codec.Utils
+import Language.ASN1.Utils
 import Language.ASN1
 
 type Length = Integer
