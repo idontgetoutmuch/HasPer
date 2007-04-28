@@ -3,10 +3,14 @@ Version:         0.0.1
 License:         BSD3
 Author:          Dominic Steinitz
 Maintainer:	 dominic.steinitz@blueyonder.co.uk
-Copyright:       Dominic Steinitz 2003 - 2006
+Copyright:       Dominic Steinitz 2003 - 2007
 Stability:	 Alpha
-Synopsis:        X.509 Identity and Attribute Certificates, 
-                 General ASN.1 Support, PKCS8, PKCS1v15.
+Category:	 Language
+Homepage:	 http://www.haskell.org/asn1
+Synopsis:        General ASN.1 support.
+Description:     Enough ASN.1 suppport for X.509 
+                 identity and attribute certificates, PKCS8, PKCS1v15.
+                 Only the Basic Encoding Rules (BER) are supported.
 Build-Depends:   base, mtl, QuickCheck, HUnit, NewBinary
 Ghc-options:     -fglasgow-exts
 Exposed-Modules: Language.ASN1
