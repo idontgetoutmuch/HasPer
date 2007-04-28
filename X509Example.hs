@@ -11,7 +11,7 @@ import Language.ASN1.BER
 import Language.ASN1
 import Language.ASN1.TLV
 import Language.ASN1.X509
-import Codec.Utils
+import Language.ASN1.Utils
 import Text.PrettyPrint
 import Control.Monad.State
 
