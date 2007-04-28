@@ -13,7 +13,7 @@ import Numeric (
    showHex
    )
 import NewBinary.Binary
-import Codec.Utils (
+import Language.ASN1.Utils (
    toOctets
    )
 import Language.ASN1.BER
