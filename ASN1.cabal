@@ -26,6 +26,16 @@ Ghc-options:     -fglasgow-exts
 Other-modules:	 Language.ASN1
                  Language.ASN1.BER
 
+Executable:      BERTest2
+Main-Is:         BERTest.hs
+Ghc-options:     -fglasgow-exts
+Other-modules:	 Language.ASN1
+                 Language.ASN1.BER
+                 Language.ASN1.X509
+                 Language.ASN1.InformationFramework
+                 Language.ASN1.X509.AttributeCertificateDefinitions
+                 Language.ASN1.TLV
+
 Executable:      X509Example
 Main-Is:         X509Example.hs
 Ghc-options:     -fglasgow-exts
