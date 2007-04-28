@@ -13,11 +13,11 @@ import Test.HUnit
 import System.IO
 import System.Environment
 import System.Console.GetOpt
-import Codec.Utils
+import Language.ASN1.Utils
 import Language.ASN1.TLV
 import NewBinary.Binary
 import Text.PrettyPrint
-import Codec.Text.Raw
+import Language.ASN1.Raw
 
 instance PP AttributeCertificate where
    pp ac =
