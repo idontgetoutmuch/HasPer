@@ -110,6 +110,14 @@ t19b = Size a2 (SingleValueConstraint 3)
       a1 = UnionAlpha (SingleValueAlpha (PrintableString "D")) 
                       (SingleValueAlpha (PrintableString "E")) 
       a2 = From PRINTABLESTRING a1
+t19c = Size a3 (RangeConstraint 4 5)
+   where
+      a1 = UnionAlpha (SingleValueAlpha (PrintableString "A"))
+                      (SingleValueAlpha (PrintableString "B"))
+      a2 = UnionAlpha (SingleValueAlpha (PrintableString "D"))
+                      (SingleValueAlpha (PrintableString "F"))
+      a3 = From PRINTABLESTRING (UnionAlpha a1 a2)
+t19 = Union t19a (Union t19b t19c)
 t20 = Range t2 3 15
 two = SingleValue INTEGER 2
 exactly31BitsString = Size BITSTRING (SingleValueConstraint 31)
@@ -157,5 +165,13 @@ FooBar {1 2 0 0 6 1} DEFINITIONS ::=
                         |FROM ("DE")^SIZE (3)
                         |FROM ("ABDF")^SIZE (4..5))
       T20 ::= T2 (3..15)
+      Two = INTEGER (2)
+      Exactly31BitsString = BIT STRING (SIZE (31))
+      StringsOf31BitsAtTheMost = BITSTRING (SIZE (0..31))
+      Dna = PrintableString (FROM ("TAGC"))
+      SmallSeq = Dna (SIZE (10))
+      CapitalAndSmall = PrintableString (FROM ("A".."Z"|"a".."z"))
+      CapitalOrSmall = PrintableString (FROM ("A".."Z")|FROM ("a".."z"))
+      ExoticString = PrintableString (SIZE (1..4)|FROM ("abc"))
    END
 -}
