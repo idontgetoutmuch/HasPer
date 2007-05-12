@@ -51,4 +51,5 @@ FooBaz {1 2 0 0 6 2} DEFINITIONS ::=
       CapitalAndSmall ::= PrintableString (FROM ("A".."Z"|"a".."z"))
       CapitalOrSmall ::= PrintableString (FROM ("A".."Z")|FROM ("a".."z"))
       ExoticString ::= PrintableString (SIZE (1..4)|FROM ("abc"))
+      MyInteger ::= INTEGER (INTEGER) (INTEGER)
    END

@@ -79,6 +79,15 @@ instance Ranged Int
 instance Ranged IA5String
 instance Ranged PrintableString
 
+-- A calculus of constraints
+g INTEGER y = y
+g x INTEGER = x
+g (SingleValue u v) (SingleValue x y) = Range (g u x ) (min v y) (max v y)
+g a@(SingleValue u v) (Includes x y)  = g a (g x y)
+g (Includes u v) b@(SingleValue x y)  = g (g u v) b
+g (SingleValue u v) (Range x y z)     = Range (g u x) (min v y) (max v z)
+g (Includes u v) (Includes x y)       = g (g u v) (g x y)
+
 t1 = SingleValue INTEGER 3
 t2 = INTEGER
 t3 = Includes (SingleValue INTEGER 3) t2
