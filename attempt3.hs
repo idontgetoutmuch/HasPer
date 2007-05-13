@@ -1,5 +1,7 @@
 {-
 A third attempt to model subtyping constraints
+
+The encoding is for UNALIGNED PER
 -}
 
 import Data.Monoid
@@ -120,8 +122,8 @@ perConstrainedness (Includes t1 t2) =
    (perConstrainedness t1) `mappend` (perConstrainedness t2)
 -- TEMPORARY just now for testing of semi-constrained
 perConstrainedness (Range t l 0) =
--- END TEMPORARY
    (perConstrainedness t) `mappend` (Constrained (Just l) Nothing)
+-- END TEMPORARY
 perConstrainedness (Range t l u) =
    (perConstrainedness t) `mappend` (Constrained (Just l) (Just u))
 
@@ -137,7 +139,7 @@ encode x t =
                -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
                else reverse (map fst (k (x-lb) range))
       -- 10.7 Encoding of a semi-constrained whole number
-      Constrained (Just lb) y ->
+      Constrained (Just lb) Nothing ->
          minOctets (x-lb) -- TEMPORARY there's no length yet just the value
    where
       p = perConstrainedness t
@@ -147,12 +149,40 @@ encode x t =
       k = curry (unfoldr (uncurry h))
       
 -- 10.3 Encoding as a non-negative-binary-integer
+-- 10.3.6
+minOctets :: Int -> [Bit]
 minOctets =  
    flip (curry (unfoldr (uncurry g))) 8 where
       g 0 0 = Nothing
       g 0 p = Just (0,(0,p-1))
       g n 0 = Just (n `mod` 2,(n `div` 2,7))
       g n p = Just (n `mod` 2,(n `div` 2,p-1))
+
+minBits = 
+   ((.).(.)) (reverse . (map fst)) (curry (unfoldr (uncurry h)))
+      where
+         h _ 0 = Nothing
+         h 0 w = Just ((0,w `mod` 2),(0,w `div` 2))
+         h n w = Just ((n `mod` 2, w `mod` 2),(n `div` 2,w `div` 2))
+
+type Bit = Int
+noEncoding = []
+zeroBit = 0
+oneBit  = 1
+
+-- 10.9 General rules for encoding a length determinant
+-- 10.9.4
+lengthDeterminant n (Constrained (Just lb) (Just ub))
+-- 10.9.4.1
+   | range <= 1     = noEncoding
+   | ub < 64*(2^10) = minOctets n
+-- 10.9.4.2, 10.9.3.5, 10.9.3.6 Note not very efficient since we know log2 128 = 7
+   | n <= 127       = zeroBit:(minBits n 127)
+-- 10.9.3.7 Note not very efficient since we know log2 16*(2^10) = 14
+   | n < 16*(2^10)  = oneBit:zeroBit:(minBits n (16*(2^10)-1))
+-- 10.9.3.8
+   where
+      range = (ub - lb + 1)
    
 t1 = Range INTEGER 25 30
 t2 = Includes INTEGER t1
