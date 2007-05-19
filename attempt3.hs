@@ -165,6 +165,67 @@ minBits =
          h 0 w = Just ((0,w `mod` 2),(0,w `div` 2))
          h n w = Just ((n `mod` 2, w `mod` 2),(n `div` 2,w `div` 2))
 
+takeCount :: Int -> [a] -> (Int,[a])
+takeCount n xs | n <= 0 = (0,[])
+takeCount n []          = (0,[])
+takeCount n (x:xs)      = let (m,ys) = takeCount (n-1) xs in (m+1,x:ys)
+
+dropCount :: Int -> [a] -> (Int,[a])
+dropCount n xs | n <= 0 = (0,xs)
+dropCount n []          =  (0,[])
+dropCount n (x:xs)      = let (m,ys) = dropCount (n-1) xs in (m+1,ys)
+
+splitAtCount n xs = (takeCount n xs, dropCount n xs)
+
+-- f :: Int -> [a] -> [(Int,[a])]
+
+g :: (Int,[a]) -> Maybe ((Int,a),(Int,[a]))
+g (n,[])   = Nothing
+g (16,x:xs) = Just ((0, x),(0, xs))
+g (n,x:xs)  = Just ((n+1,x),(n+1,xs))
+
+foo = unfoldr k
+   where 
+      k [] = Nothing
+      k p  = Just (splitAt (2^14) p)
+
+bar = unfoldr k
+   where
+      k [] = Nothing
+      k p = Just (splitAt 4 p)
+
+baz us 
+   | null us = ld 0
+   | l == 4 = if l3 >= (2^14) then 
+                 oneBit:oneBit:(minBits l (2^6-1)) ++ concat vs ++ baz (tail us)
+              else
+                 oneBit:oneBit:(minBits (l-1) (2^6-1)) ++ concat (take 3 vs) ++ ld l3 ++ (vs!!3)
+   | l == 3 = if l2 >= (2^14) then
+                 oneBit:oneBit:(minBits l (2^6-1)) ++ concat vs ++ ld 0 
+              else
+                 oneBit:oneBit:(minBits (l-1) (2^6-1)) ++ concat (take 2 vs) ++ ld l2 ++ (vs!!2)
+   | l == 2 = if l1 >= (2^14) then
+                 oneBit:oneBit:(minBits l (2^6-1)) ++ concat vs ++ ld 0 
+              else
+                 oneBit:oneBit:(minBits (l-1) (2^6-1)) ++ concat (take 1 vs) ++ ld l1 ++ (vs!!1)
+   | l == 1 = if l0 >= (2^14) then
+                 oneBit:oneBit:(minBits l (2^6-1)) ++ concat vs ++ ld 0 
+              else
+                 ld l0 ++ (vs!!0)
+   where vs = head us
+         l  = length vs
+         l0 = length (vs!!0)
+         l1 = length (vs!!1)
+         l2 = length (vs!!2)
+         l3 = length (vs!!3)
+
+ld n 
+-- 10.9.4.2, 10.9.3.5, 10.9.3.6 Note not very efficient since we know log2 128 = 7
+   | n <= 127       = zeroBit:(minBits n 127)
+-- 10.9.3.7 Note not very efficient since we know log2 16*(2^10) = 14
+   | n < 16*(2^10)  = oneBit:zeroBit:(minBits n (16*(2^10)-1))
+   | otherwise = error (show n)
+
 type Bit = Int
 noEncoding = []
 zeroBit = 0
@@ -182,7 +243,7 @@ lengthDeterminant n (Constrained (Just lb) (Just ub))
 -- 10.9.3.8
    where
       range = (ub - lb + 1)
-   
+
 t1 = Range INTEGER 25 30
 t2 = Includes INTEGER t1
 t3 = Includes t1 t1
