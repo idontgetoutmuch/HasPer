@@ -174,7 +174,6 @@ oneBit  = 1
 -- 10.9.4
 lengthDeterminant n (Constrained (Just lb) (Just ub))
 -- 10.9.4.1
-   | range <= 1     = noEncoding
    | ub < 64*(2^10) = minOctets n
 -- 10.9.4.2, 10.9.3.5, 10.9.3.6 Note not very efficient since we know log2 128 = 7
    | n <= 127       = zeroBit:(minBits n 127)
