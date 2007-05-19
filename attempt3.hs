@@ -250,3 +250,20 @@ t3 = Includes t1 t1
 -- TEMPORARY just now for testing of semi-constrained
 t4 = Range INTEGER (-256) 0
 -- END TEMPORARY
+
+encode' :: Int -> ConstrainedType Int -> [Int]
+encode' x t =
+   case p of
+      -- 10.5 Encoding of a constrained whole number
+      Constrained (Just lb) (Just ub) ->
+         let range = ub - lb + 1 in
+            if range <= 1
+               -- 10.5.4 
+               then []
+               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
+               else minBits (x-lb) range
+      -- 10.7 Encoding of a semi-constrained whole number
+      Constrained (Just lb) Nothing ->
+         minOctets (x-lb) -- TEMPORARY there's no length yet just the value
+   where
+      p = perConstrainedness t
