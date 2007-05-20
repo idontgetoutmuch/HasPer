@@ -196,35 +196,78 @@ bar = unfoldr k
 
 baz us 
    | null us = ld 0
-   | l == 4 = if l3 >= (2^14) then 
-                 oneBit:oneBit:(minBits l (2^6-1)) ++ concat vs ++ baz (tail us)
+   | l == 4 = if l3 >= l1b then 
+                 oneBit:oneBit:(minBits l w6)     ++ concat vs ++ baz (tail us)
               else
-                 oneBit:oneBit:(minBits (l-1) (2^6-1)) ++ concat (take 3 vs) ++ ld l3 ++ (vs!!3)
-   | l == 3 = if l2 >= (2^14) then
-                 oneBit:oneBit:(minBits l (2^6-1)) ++ concat vs ++ ld 0 
+                 oneBit:oneBit:(minBits (l-1) w6) ++ concat (take 3 vs) ++ ld l3 ++ (vs!!3)
+   | l == 3 = if l2 >= l1b then
+                 oneBit:oneBit:(minBits l w6)     ++ concat vs ++ ld 0 
               else
-                 oneBit:oneBit:(minBits (l-1) (2^6-1)) ++ concat (take 2 vs) ++ ld l2 ++ (vs!!2)
-   | l == 2 = if l1 >= (2^14) then
-                 oneBit:oneBit:(minBits l (2^6-1)) ++ concat vs ++ ld 0 
+                 oneBit:oneBit:(minBits (l-1) w6) ++ concat (take 2 vs) ++ ld l2 ++ (vs!!2)
+   | l == 2 = if l1 >= l1b then
+                 oneBit:oneBit:(minBits l w6)     ++ concat vs ++ ld 0 
               else
-                 oneBit:oneBit:(minBits (l-1) (2^6-1)) ++ concat (take 1 vs) ++ ld l1 ++ (vs!!1)
-   | l == 1 = if l0 >= (2^14) then
-                 oneBit:oneBit:(minBits l (2^6-1)) ++ concat vs ++ ld 0 
+                 oneBit:oneBit:(minBits (l-1) w6) ++ concat (take 1 vs) ++ ld l1 ++ (vs!!1)
+   | l == 1 = if l0 >= l1b then
+                 oneBit:oneBit:(minBits l w6)     ++ concat vs ++ ld 0 
               else
                  ld l0 ++ (vs!!0)
-   where vs = head us
-         l  = length vs
-         l0 = length (vs!!0)
-         l1 = length (vs!!1)
-         l2 = length (vs!!2)
-         l3 = length (vs!!3)
+   where vs  = head us
+         l   = length vs
+         l0  = length (vs!!0)
+         l1  = length (vs!!1)
+         l2  = length (vs!!2)
+         l3  = length (vs!!3)
+         l1b = 16*(2^10)
+         w6  = 2^6 - 1
+         ld n 
+         -- 10.9.4.2, 10.9.3.5, 10.9.3.6 Note not very efficient since we know log2 128 = 7
+            | n <= 127       = zeroBit:(minBits n 127)
+         -- 10.9.3.7 Note not very efficient since we know log2 16*(2^10) = 14
+            | n < 16*(2^10)  = oneBit:zeroBit:(minBits n (16*(2^10)-1))
 
-ld n 
--- 10.9.4.2, 10.9.3.5, 10.9.3.6 Note not very efficient since we know log2 128 = 7
-   | n <= 127       = zeroBit:(minBits n 127)
--- 10.9.3.7 Note not very efficient since we know log2 16*(2^10) = 14
-   | n < 16*(2^10)  = oneBit:zeroBit:(minBits n (16*(2^10)-1))
-   | otherwise = error (show n)
+-- Currently [Bit] -> [Bit] so length count is always the number of bits.
+-- It needs to be something like [a] -> [Bit] so the length count is the real length.
+encodeWithLengthDeterminant =
+   insertLengths . groupBy 4 . groupBy (16*(2^10))
+   where
+      groupBy n =
+         unfoldr k
+         where
+            k [] = Nothing
+            k p = Just (splitAt n p)
+      insertLengths us 
+         | null us = ld 0
+         | l == 4 = if l3 >= l1b then 
+                       oneBit:oneBit:(minBits l w6)     ++ concat vs ++ baz (tail us)
+                    else
+                       oneBit:oneBit:(minBits (l-1) w6) ++ concat (take 3 vs) ++ ld l3 ++ (vs!!3)
+         | l == 3 = if l2 >= l1b then
+                       oneBit:oneBit:(minBits l w6)     ++ concat vs ++ ld 0 
+                    else
+                       oneBit:oneBit:(minBits (l-1) w6) ++ concat (take 2 vs) ++ ld l2 ++ (vs!!2)
+         | l == 2 = if l1 >= l1b then
+                       oneBit:oneBit:(minBits l w6)     ++ concat vs ++ ld 0 
+                    else
+                       oneBit:oneBit:(minBits (l-1) w6) ++ concat (take 1 vs) ++ ld l1 ++ (vs!!1)
+         | l == 1 = if l0 >= l1b then
+                       oneBit:oneBit:(minBits l w6)     ++ concat vs ++ ld 0 
+                    else
+                       ld l0 ++ (vs!!0)
+         where vs  = head us
+               l   = length vs
+               l0  = length (vs!!0)
+               l1  = length (vs!!1)
+               l2  = length (vs!!2)
+               l3  = length (vs!!3)
+               l1b = 16*(2^10)
+               w6  = 2^6 - 1
+               ld n 
+               -- 10.9.4.2, 10.9.3.5, 10.9.3.6 Note not very efficient since we know log2 128 = 7
+                  | n <= 127       = zeroBit:(minBits n 127)
+               -- 10.9.3.7 Note not very efficient since we know log2 16*(2^10) = 14
+                  | n < 16*(2^10)  = oneBit:zeroBit:(minBits n (16*(2^10)-1))
+               -- Note there is no clause for >= 16*(2^10) as we have groupBy 16*(2^10)
 
 type Bit = Int
 noEncoding = []
@@ -262,8 +305,9 @@ encode' x t =
                then []
                -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
                else minBits (x-lb) range
-      -- 10.7 Encoding of a semi-constrained whole number
+      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
+      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
       Constrained (Just lb) Nothing ->
-         minOctets (x-lb) -- TEMPORARY there's no length yet just the value
+         encodeWithLengthDeterminant (minOctets (x-lb))
    where
       p = perConstrainedness t
