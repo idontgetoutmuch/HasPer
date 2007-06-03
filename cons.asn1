@@ -53,8 +53,11 @@ FooBaz {1 2 0 0 6 2} DEFINITIONS ::=
       ExoticString ::= PrintableString (SIZE (1..4)|FROM ("abc"))
       MyInteger ::= INTEGER (INTEGER) (INTEGER)
       My-type ::= 
-      SEQUENCE {
-         first-item  T6,
-	 second-item T7
-      }
+         SEQUENCE {
+            first-item  T6,
+            second-item T7
+         }
+      EmptySeq ::=
+         SEQUENCE {
+         }   
    END
