@@ -233,13 +233,8 @@ compressIntWithRange r@(Range t l u) m v x =
    compressIntWithRange t rl ru x where
       (Constrained' rl ru) = (Constrained' l u) `mappend` (Constrained' m v)
 
-compressSeq :: Sequence a -> a -> [Int]
-compressSeq Nil _ = []
-compressSeq (Cons a as) (x:*:xs) = compress a x ++ compressSeq as xs
--- compressSeq (Optional a as) (Nothing:*:xs) = 0:(compressSeq as xs) -- THIS IS WRONG
--- compressSeq (Optional a as) ((Just x):*:xs) = [1] -- VERY WRONG
+compressSeq = compressSeqAux [] []
 
--- THIS IS ALMOST CERTAINLY WRONG BUT WE NEEDED TO SEE IF IT TYPECHECKED
 compressSeqAux :: [Int] -> [Int] -> Sequence a -> a -> [Int]
 compressSeqAux preamble body Nil _ = preamble ++ body
 compressSeqAux preamble body (Cons a as) (x:*:xs) = compressSeqAux preamble ((compress a x) ++ body) as xs
@@ -285,6 +280,11 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
             first  T1,
             second T1
          }
+      Test2 ::=
+         SEQUENCE {
+            first  T1 OPTIONAL,
+            second T1 OPTIONAL
+         }      
    END
 -}
 
@@ -296,3 +296,9 @@ t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
 
 test1 = compress (SEQUENCE (Cons (SEQUENCE (Cons t1 Nil)) Nil)) ((27:*:Empty):*:Empty)
 test2 = compress (SEQUENCE (Cons t1 (Cons t1 Nil))) (29:*:(30:*:Empty))
+test3 = compress (SEQUENCE (Optional t1 (Optional t1 Nil))) ((Just 29):*:((Just 30):*:Empty))
+petest2 = compress (SEQUENCE (Optional t1 (Optional t1 Nil)))
+test4 = petest2 ((Just 29):*:((Just 30):*:Empty))
+test5 = petest2 (Nothing:*:((Just 30):*:Empty))
+test6 = petest2 ((Just 29):*:(Nothing:*:Empty))
+test7 = petest2 (Nothing:*:(Nothing:*:Empty))
