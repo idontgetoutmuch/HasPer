@@ -78,7 +78,7 @@ data a:*:l = a:*:l
 data Sequence :: * -> * where
    Nil :: Sequence Nil
    Cons :: ConstrainedType a -> Sequence l -> Sequence (a:*:l)
-   Optional :: ConstrainedType a -> Sequence l -> Sequence (a:*:l)
+   Optional :: ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
    Default :: ConstrainedType a -> Sequence l -> Sequence (a:*:l)
 
 -- The major data structure itself
@@ -236,7 +236,18 @@ compressIntWithRange r@(Range t l u) m v x =
 compressSeq :: Sequence a -> a -> [Int]
 compressSeq Nil _ = []
 compressSeq (Cons a as) (x:*:xs) = compress a x ++ compressSeq as xs
-   
+-- compressSeq (Optional a as) (Nothing:*:xs) = 0:(compressSeq as xs) -- THIS IS WRONG
+-- compressSeq (Optional a as) ((Just x):*:xs) = [1] -- VERY WRONG
+
+-- THIS IS ALMOST CERTAINLY WRONG BUT WE NEEDED TO SEE IF IT TYPECHECKED
+compressSeqAux :: [Int] -> [Int] -> Sequence a -> a -> [Int]
+compressSeqAux preamble body Nil _ = preamble ++ body
+compressSeqAux preamble body (Cons a as) (x:*:xs) = compressSeqAux preamble ((compress a x) ++ body) as xs
+compressSeqAux preamble body (Optional a as) (Nothing:*:xs) = 
+   compressSeqAux (0:preamble) body as xs
+compressSeqAux preamble body (Optional a as) ((Just x):*:xs) =
+   compressSeqAux (1:preamble) ((compress a x) ++ body) as xs
+
 perConstrainedness' :: Ord a => ConstrainedType a -> Constraint' a
 perConstrainedness' INTEGER = Constrained' Nothing Nothing
 {-
