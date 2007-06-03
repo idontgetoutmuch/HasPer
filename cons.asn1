@@ -15,6 +15,16 @@ FooBar {1 2 0 0 6 1} DEFINITIONS ::=
       T12 ::= NumericString (FROM (("4")|("2")))
    END
    
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      T1 ::= INTEGER (25..30)
+      Test1 ::=
+         SEQUENCE {
+            first  T1,
+            second T1
+         }
+   END
+
 FooBaz {1 2 0 0 6 2} DEFINITIONS ::=
    BEGIN
       T1 ::= INTEGER (3)

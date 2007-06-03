@@ -167,12 +167,6 @@ lengthDeterminant n (Constrained (Just lb) (Just ub))
    where
       range = (ub - lb + 1)
 
-t1 = Range INTEGER (Just 25) (Just 30)
-t2 = Includes INTEGER t1
-t3 = Includes t1 t1
-t4 = Range INTEGER (Just (-256)) Nothing
-t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
-
 encode :: Int -> ConstrainedType Int -> [Int]
 encode x t =
    case p of
@@ -271,5 +265,23 @@ instance Ord a => Monoid (Constraint' a) where
          g (Constrained' (Just x) _) (Constrained' Nothing _)  = Just x
          g (Constrained' (Just x) _) (Constrained' (Just y) _) = Just (min x y)
 
+{-
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      T1 ::= INTEGER (25..30)
+      Test1 ::=
+         SEQUENCE {
+            first  T1,
+            second T1
+         }
+   END
+-}
+
+t1 = Range INTEGER (Just 25) (Just 30)
+t2 = Includes INTEGER t1
+t3 = Includes t1 t1
+t4 = Range INTEGER (Just (-256)) Nothing
+t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
+
 test1 = compress (SEQUENCE (Cons (SEQUENCE (Cons t1 Nil)) Nil)) ((27:*:Empty):*:Empty)
-test2 = compress (SEQUENCE (Cons t1 (Cons t1 Nil))) (29:*:(31:*:Empty))
+test2 = compress (SEQUENCE (Cons t1 (Cons t1 Nil))) (29:*:(30:*:Empty))
