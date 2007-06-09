@@ -128,7 +128,7 @@ instance Monoid Constraint where
          g (Constrained Nothing _)  (Constrained Nothing _)  = Nothing
          g (Constrained Nothing _)  (Constrained (Just y) _) = Just y
          g (Constrained (Just x) _) (Constrained Nothing _)  = Just x
-         g (Constrained (Just x) _) (Constrained (Just y) _) = Just (min x y)
+         g (Constrained (Just x) _) (Constrained (Just y) _) = Just (max x y)
 
 perConstrainedness :: ConstrainedType Int -> Constraint
 perConstrainedness INTEGER = Constrained Nothing Nothing
