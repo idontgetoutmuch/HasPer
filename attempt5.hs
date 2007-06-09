@@ -227,15 +227,15 @@ compress INTEGER x = encode x INTEGER
 compress r@(Range INTEGER l u) x = encode x (Range INTEGER l u)
 compress (SEQUENCE s) x = compressSeq s x
 
-compressSeq = compressSeqAux [] []
+compressSeq s x = concat (compressSeqAux [] [] s x)
 
-compressSeqAux :: [Int] -> [Int] -> Sequence a -> a -> [Int]
-compressSeqAux preamble body Nil _ = preamble ++ body
-compressSeqAux preamble body (Cons a as) (x:*:xs) = compressSeqAux preamble ((compress a x) ++ body) as xs
+compressSeqAux :: [Int] -> [[Int]] -> Sequence a -> a -> [[Int]]
+compressSeqAux preamble body Nil _ = (reverse preamble):(reverse body)
+compressSeqAux preamble body (Cons a as) (x:*:xs) = compressSeqAux preamble ((compress a x):body) as xs
 compressSeqAux preamble body (Optional a as) (Nothing:*:xs) = 
    compressSeqAux (0:preamble) body as xs
 compressSeqAux preamble body (Optional a as) ((Just x):*:xs) =
-   compressSeqAux (1:preamble) ((compress a x) ++ body) as xs
+   compressSeqAux (1:preamble) ((compress a x):body) as xs
 
 perConstrainedness' :: Ord a => ConstrainedType a -> Constraint' a
 perConstrainedness' INTEGER = Constrained' Nothing Nothing
