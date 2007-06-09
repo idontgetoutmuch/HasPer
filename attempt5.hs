@@ -224,14 +224,8 @@ ld n
 
 compress :: ConstrainedType a -> a -> [Int]
 compress INTEGER x = encode x INTEGER
-compress r@(Range INTEGER l u) x = compressIntWithRange r l u x
+compress r@(Range INTEGER l u) x = encode x (Range INTEGER l u)
 compress (SEQUENCE s) x = compressSeq s x
-
-compressIntWithRange :: ConstrainedType Int -> Maybe Int -> Maybe Int -> Int -> [Int]
-compressIntWithRange INTEGER u l x = encode x (Range INTEGER u l)
-compressIntWithRange r@(Range t l u) m v x = 
-   compressIntWithRange t rl ru x where
-      (Constrained' rl ru) = (Constrained' l u) `mappend` (Constrained' m v)
 
 compressSeq = compressSeqAux [] []
 
