@@ -194,6 +194,11 @@ encode x t =
       -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
       Constrained (Just lb) Nothing ->
          encodeWithLengthDeterminant (minOctets (x-lb))
+      -- 12.2.4, 10.8 Encoding of an unconstrained whole number, 10.8.3 and
+      -- 10.4 Encoding as a 2's-complement-binary-integer
+      Constrained Nothing _ ->
+      -- encodeWithLengthDeterminant (minOctets ??)
+         undefined
    where
       p = perConstrainedness t
 
@@ -241,7 +246,7 @@ compress (SEQUENCE s) x = compressSeq s x
 
 compressIntWithRange :: ConstrainedType Int -> Maybe Int -> Maybe Int -> Int -> [Int]
 compressIntWithRange INTEGER u l x = encode x (Range INTEGER u l)
-compressIntWithRange r@(Range t l u) m v x = 
+compressIntWithRange r@(Range t l u) m v x =
    compressIntWithRange t rl ru x where
       (Constrained' rl ru) = (Constrained' l u) `mappend` (Constrained' m v)
 
