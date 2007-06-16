@@ -288,6 +288,27 @@ instance Ord a => Monoid (Constraint' a) where
          g (Constrained' (Just x) _) (Constrained' Nothing _)  = Just x
          g (Constrained' (Just x) _) (Constrained' (Just y) _) = Just (min x y)
 
+to2sComplemnet n
+   | n >= 0 = 0:(h n)
+   | otherwise = minOctets (2^p + n)
+   where
+      p = length (h (-n-1)) + 1
+
+g (0,0) = Nothing
+g (0,p) = Just (0,(0,p-1))
+g (n,0) = Just (n `rem` 2,(n `quot` 2,7))
+g (n,p) = Just (n `rem` 2,(n `quot` 2,p-1))
+
+h n = reverse (flip (curry (unfoldr g)) 7 n)
+
+from2sComplement a@(x:xs) =
+   -(x*(2^(l-1))) + sum (zipWith (*) xs ys)
+   where
+      l = length a
+      ys = map (2^) (f (l-2))
+      f 0 = [0]
+      f x = x:(f (x-1)) 
+
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
