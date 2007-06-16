@@ -288,7 +288,7 @@ instance Ord a => Monoid (Constraint' a) where
          g (Constrained' (Just x) _) (Constrained' Nothing _)  = Just x
          g (Constrained' (Just x) _) (Constrained' (Just y) _) = Just (min x y)
 
-to2sComplemnet n
+to2sComplement n
    | n >= 0 = 0:(h n)
    | otherwise = minOctets (2^p + n)
    where
