@@ -245,7 +245,7 @@ compressIntWithRange r@(Range t l u) m v x =
    compressIntWithRange t rl ru x where
       (Constrained' rl ru) = (Constrained' l u) `mappend` (Constrained' m v)
 
-compressSeq = compressSeqAux [] []
+compressSeq s x = concat (compressSeqAux [] [] s x)
 
 compressSeqAux :: [Int] -> [[Int]] -> Sequence a -> a -> [[Int]]
 compressSeqAux preamble body Nil _ = (reverse preamble):(reverse body)
