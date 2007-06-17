@@ -189,7 +189,7 @@ encode x t =
                -- 10.5.4
                then []
                -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
-               else minBits ((x-lb),range)
+               else minBits ((x-lb),range-1)
       -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
       -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
       Constrained (Just lb) Nothing ->
