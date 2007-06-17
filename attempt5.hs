@@ -331,6 +331,33 @@ t3 = Includes t1 t1
 t4 = Range INTEGER (Just (-256)) Nothing
 t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
 
+-- Unconstrained INTEGER
+integer1 = compress INTEGER 4096
+integer2 = compress (Range INTEGER Nothing (Just 65535)) 127
+integer3 = compress (Range INTEGER Nothing (Just 65535)) (-128)
+integer4 = compress (Range INTEGER Nothing (Just 65535)) 128
+
+-- Semi-constrained INTEGER
+integer5 = compress (Range INTEGER (Just (-1)) Nothing) 4096
+integer6 = compress (Range INTEGER (Just 1) Nothing) 127
+integer7 = compress (Range INTEGER (Just 0) Nothing) 128
+
+-- Constrained INTEGER
+integer8'1 = compress (Range INTEGER (Just 3) (Just 6)) 3
+integer8'2 = compress (Range INTEGER (Just 3) (Just 6)) 4
+integer8'3 = compress (Range INTEGER (Just 3) (Just 6)) 5
+integer8'4 = compress (Range INTEGER (Just 3) (Just 6)) 6
+integer9'1 = compress (Range INTEGER (Just 4000) (Just 4254)) 4002
+integer9'2 = compress (Range INTEGER (Just 4000) (Just 4254)) 4006
+integer10'1 = compress (Range INTEGER (Just 4000) (Just 4255)) 4002
+integer10'2 = compress (Range INTEGER (Just 4000) (Just 4255)) 4006
+integer11'1 = compress (Range INTEGER (Just 0) (Just 32000)) 0
+integer11'2 = compress (Range INTEGER (Just 0) (Just 32000)) 31000
+integer11'3 = compress (Range INTEGER (Just 0) (Just 32000)) 32000
+integer12'1 = compress (Range INTEGER (Just 1) (Just 65538)) 1
+integer12'2 = compress (Range INTEGER (Just 1) (Just 65538)) 257
+integer12'3 = compress (Range INTEGER (Just 1) (Just 65538)) 65538
+
 test0 = compress t1 27
 
 test1 = compress (SEQUENCE (Cons (SEQUENCE (Cons t1 Nil)) Nil)) ((27:*:Empty):*:Empty)
