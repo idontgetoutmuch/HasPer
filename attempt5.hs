@@ -197,8 +197,7 @@ encode x t =
       -- 12.2.4, 10.8 Encoding of an unconstrained whole number, 10.8.3 and
       -- 10.4 Encoding as a 2's-complement-binary-integer
       Constrained Nothing _ ->
-      -- encodeWithLengthDeterminant (minOctets ??)
-         undefined
+         encodeWithLengthDeterminant (to2sComplement x)
    where
       p = perConstrainedness t
 
