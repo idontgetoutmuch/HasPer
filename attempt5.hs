@@ -6,6 +6,9 @@ The encoding is for UNALIGNED PER
 
 import Data.Monoid
 import Data.List hiding (groupBy)
+import Data.Bits
+import Control.Monad.State
+import qualified Data.ByteString.Lazy as B
 
 data BitString = BitString
    deriving Show
@@ -243,6 +246,36 @@ compress INTEGER x = encode x INTEGER
 compress r@(Range INTEGER l u) x = encode x (Range INTEGER l u)
 compress (SEQUENCE s) x = compressSeq s x
 
+uncompressInt t b =
+   case p of
+      -- 10.5 Encoding of a constrained whole number
+      Constrained (Just lb) (Just ub) ->
+         let range = ub - lb + 1 
+             n     = length (minBits ((ub-lb),range-1)) in
+            if range <= 1
+               -- 10.5.4
+               then return lb
+               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
+               else do offset <- get
+                       put (offset + (fromIntegral n))
+                       return (lb + (fromNonNeg (map fromIntegral (getBits offset (fromIntegral n) b))))
+      _ -> undefined
+   where
+      p = perConstrainedness t   
+
+-- Very inefficient
+getBits o n b =
+   concat (map (flip getBit b) [o..o+n-1])
+
+getBit o xs =
+   if B.null ys
+      then []
+      else [u]
+   where (nBytes,nBits) = o `divMod` 8
+         ys = B.drop nBytes xs
+         z = B.head ys
+         u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
+
 compressIntWithRange :: ConstrainedType Int -> Maybe Int -> Maybe Int -> Int -> [Int]
 compressIntWithRange INTEGER u l x = encode x (Range INTEGER u l)
 compressIntWithRange r@(Range t l u) m v x =
@@ -308,6 +341,14 @@ from2sComplement a@(x:xs) =
       f 0 = [0]
       f x = x:(f (x-1)) 
 
+fromNonNeg xs =
+   sum (zipWith (*) xs ys)
+   where
+      l = length xs
+      ys = map (2^) (f (l-1))
+      f 0 = [0]
+      f x = x:(f (x-1)) 
+
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
@@ -369,3 +410,5 @@ test4 = petest2 ((Just 29):*:((Just 30):*:Empty))
 test5 = petest2 (Nothing:*:((Just 30):*:Empty))
 test6 = petest2 ((Just 29):*:(Nothing:*:Empty))
 test7 = petest2 (Nothing:*:(Nothing:*:Empty))
+
+uncompTest1 = runState (uncompressInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0x80,0,0,0])) 0
