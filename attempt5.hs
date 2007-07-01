@@ -8,6 +8,7 @@ import Data.Monoid
 import Data.List hiding (groupBy)
 import Data.Bits
 import Control.Monad.State
+import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
 
 data BitString = BitString
@@ -241,6 +242,31 @@ ld n
    | n < 16*(2^10)  = [1:0:(minBits (n, (16*(2^10)-1)))]
 -- Note there is no clause for >= 16*(2^10) as we have groupBy 16*(2^10)
 
+decodeLengthDeterminant b = 
+   do n <- get
+      let bit8 = getBit n b
+      if null bit8
+         then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
+         else
+            case (head bit8) of
+               -- 10.9.3.6
+               0 ->
+                  do let l = fromNonNeg (getBits (n+1) 7 b)
+                     put (n + 8 + l*8)
+                     return (fromNonNeg (getBits (n+8) (l*8) b))
+               1 -> 
+                  do let bit7 = getBit (n+1) b
+                     if null bit7
+                        then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
+                        else case (head bit7) of
+                                -- 10.9.3.7
+                                0 ->
+                                   do let l = fromNonNeg (getBits (n+2) 14 b)
+                                      put (n + 16 + l*8)
+                                      return (fromNonNeg (getBits (n+16) (l*8) b))
+                                1 ->
+                                   undefined
+         
 compress :: ConstrainedType a -> a -> [Int]
 compress INTEGER x = encode x INTEGER
 compress r@(Range INTEGER l u) x = encode x (Range INTEGER l u)
@@ -259,13 +285,18 @@ uncompressInt t b =
                else do offset <- get
                        put (offset + (fromIntegral n))
                        return (lb + (fromNonNeg (map fromIntegral (getBits offset (fromIntegral n) b))))
+      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
+      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
+      Constrained (Just lb) Nothing ->
+         -- encodeWithLengthDeterminant (minOctets (x-lb))
+         undefined
       _ -> undefined
    where
       p = perConstrainedness t   
 
 -- Very inefficient
 getBits o n b =
-   concat (map (flip getBit b) [o..o+n-1])
+   map fromIntegral (concat (map (flip getBit b) [o..o+n-1]))
 
 getBit o xs =
    if B.null ys
