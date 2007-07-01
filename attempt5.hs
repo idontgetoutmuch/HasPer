@@ -164,12 +164,13 @@ minBits =
 -}
 
 minBits
-    = (reverse . unfoldr h)
+    = reverse . unfoldr h
       where
         h (_,0) = Nothing
         h (0,w) = Just (0, (0, w `div` 2))
         h (n,w) = Just (n `mod` 2, (n `div` 2, w `div` 2))
 
+{-
 -- 10.9 General rules for encoding a length determinant
 -- 10.9.4
 lengthDeterminant n (Constrained (Just lb) (Just ub))
@@ -182,6 +183,7 @@ lengthDeterminant n (Constrained (Just lb) (Just ub))
 -- 10.9.3.8
    where
       range = (ub - lb + 1)
+-}
 
 encode :: Int -> ConstrainedType Int -> [Int]
 encode x t =
