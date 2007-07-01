@@ -207,6 +207,8 @@ encode x t =
    where
       p = perConstrainedness t
 
+-- 10.9 General rules for encoding a length determinant
+-- 10.9.4, 10.9.4.2 and 10.9.3.4 to 10.9.3.8.4.
 encodeWithLengthDeterminant =
    concat . concat . insertLengths . groupBy 4 . groupBy (16*(2^10)) . groupBy 8
 
