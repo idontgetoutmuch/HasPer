@@ -134,7 +134,7 @@ instance Monoid Constraint where
          g (Constrained (Just x) _) (Constrained Nothing _)  = Just x
          g (Constrained (Just x) _) (Constrained (Just y) _) = Just (max x y)
 
-perConstrainedness :: ConstrainedType Int -> Constraint
+-- perConstrainedness :: ConstrainedType Int -> Constraint
 perConstrainedness INTEGER = Constrained Nothing Nothing
 perConstrainedness (Includes t1 t2) = 
    (perConstrainedness t1) `mappend` (perConstrainedness t2)
@@ -143,7 +143,7 @@ perConstrainedness (Range t l u) =
 
 -- 10.3 Encoding as a non-negative-binary-integer
 -- 10.3.6
-minOctets :: Int -> [Int]
+-- minOctets :: Int -> [Int]
 minOctets =
    reverse . flip (curry (unfoldr (uncurry g))) 8 where
       g 0 0 = Nothing
@@ -185,7 +185,7 @@ lengthDeterminant n (Constrained (Just lb) (Just ub))
       range = (ub - lb + 1)
 -}
 
-encode :: Int -> ConstrainedType Int -> [Int]
+-- encode :: Int -> ConstrainedType Int -> [Int]
 encode x t =
    case p of
       -- 10.5 Encoding of a constrained whole number
@@ -309,7 +309,7 @@ getBit o xs =
          z = B.head ys
          u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
 
-compressIntWithRange :: ConstrainedType Int -> Maybe Int -> Maybe Int -> Int -> [Int]
+-- compressIntWithRange :: ConstrainedType Int -> Maybe Int -> Maybe Int -> Int -> [Int]
 compressIntWithRange INTEGER u l x = encode x (Range INTEGER u l)
 compressIntWithRange r@(Range t l u) m v x =
    compressIntWithRange t rl ru x where
@@ -444,4 +444,13 @@ test5 = petest2 (Nothing:*:((Just 30):*:Empty))
 test6 = petest2 ((Just 29):*:(Nothing:*:Empty))
 test7 = petest2 (Nothing:*:(Nothing:*:Empty))
 
-uncompTest1 = runState (uncompressInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0x80,0,0,0])) 0
+uncompTest1 = runState (uncompressInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0])) 0
+
+-- These tests are wrong
+-- uncompTest2 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x18,0,1,1]))) 0
+-- uncompTest3 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x81,0x80,0,0]))) 0
+
+unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
+
+-- This gives the wrong answer presumably because we are using Int
+wrong = compress (Range INTEGER (Just 0) Nothing) (256^4)
