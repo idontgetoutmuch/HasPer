@@ -6,7 +6,7 @@ import Control.Monad.Error
 import Control.Monad.State
 import Language.ASN1.BER
 import Language.ASN1
-import Language.ASN1.X509
+import Language.ASN1.X509 hiding (Name)
 import Language.ASN1.InformationFramework
 import Language.ASN1.X509.AttributeCertificateDefinitions
 import Test.HUnit

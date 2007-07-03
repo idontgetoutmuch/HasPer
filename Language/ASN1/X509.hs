@@ -23,6 +23,7 @@ module Language.ASN1.X509 (
    AttributeTypeAndValue(..),
    RelativeDistinguishedName(..),
    CertificateVersion,
+   Name(..),
    -- * Type classes
    -- * Function types
    time,
