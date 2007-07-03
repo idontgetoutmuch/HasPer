@@ -61,7 +61,7 @@ defaultedTagValue (DefCons _ t _ _) = t
 -- | Type check the abstract representation of a Tag Length Value
 --   against an ASN.1 type definition.
 
-typeCheck :: TypeDefn -> Encoding -> IO (TypeDefn,Defaulted)
+typeCheck :: (MonadError e m) => TypeDefn -> Encoding -> m (TypeDefn,Defaulted)
 
 typeCheck a b =
    do ((q,r),_) <- runStateT (tc a b) []
