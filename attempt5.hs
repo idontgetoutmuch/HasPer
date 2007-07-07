@@ -56,8 +56,8 @@ instance ContainedSubtype Int
 class ValueRange a
 
 -- BIT STRING cannot be given value ranges
--- IA5STRING cannot be given value ranges
--- PRINTABLESTRING cannot be given value ranges
+instance ValueRange IA5STRING
+instance ValueRange PRINTABLESTRING
 instance ValueRange Int
 
 class PermittedAlphabet a
