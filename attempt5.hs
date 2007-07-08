@@ -170,21 +170,6 @@ minBits
         h (0,w) = Just (0, (0, w `div` 2))
         h (n,w) = Just (n `mod` 2, (n `div` 2, w `div` 2))
 
-{-
--- 10.9 General rules for encoding a length determinant
--- 10.9.4
-lengthDeterminant n (Constrained (Just lb) (Just ub))
--- 10.9.4.1
-   | ub < 64*(2^10) = minOctets n
--- 10.9.4.2, 10.9.3.5, 10.9.3.6 Note not very efficient since we know log2 128 = 7
-   | n <= 127       = 0:(minBits (n, 127))
--- 10.9.3.7 Note not very efficient since we know log2 16*(2^10) = 14
-   | n < 16*(2^10)  = 1:0:(minBits (n, (16*(2^10)-1)))
--- 10.9.3.8
-   where
-      range = (ub - lb + 1)
--}
-
 -- encode :: Int -> ConstrainedType Int -> [Int]
 encode x t =
    case p of
