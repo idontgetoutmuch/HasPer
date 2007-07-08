@@ -14,12 +14,12 @@ import qualified Data.ByteString.Lazy as B
 data BitString = BitString
    deriving Show
 
-newtype IA5String = IA5String {unIA5String :: String}
+newtype IA5String = IA5String {iA5String :: String}
 
 instance Show IA5String where
    show (IA5String x) = show x
 
-newtype IA5Char = IA5Char {unIA5Char :: Char}
+newtype IA5Char = IA5Char {iA5Char :: Char}
 
 class List a b | a -> b where
    nil  :: b
@@ -27,7 +27,7 @@ class List a b | a -> b where
 
 instance List IA5Char IA5String where
    nil = IA5String []
-   cons x y = IA5String ((unIA5Char x):(unIA5String y))
+   cons x y = IA5String ((iA5Char x):(iA5String y))
 
 data AlphabetConstraint :: * -> * where
    SingleValueAlpha      :: List a b => a -> AlphabetConstraint b
