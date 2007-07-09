@@ -149,6 +149,12 @@ bounds (Range t l u) =
 bounds (SEQUENCEOF x) = Constrained Nothing Nothing
 bounds (SIZE t l u) = Constrained l u
 
+
+compress :: ConstrainedType a -> a -> [Int]
+compress INTEGER x = encode x INTEGER
+compress r@(Range INTEGER l u) x = encode x (Range INTEGER l u)
+compress (SEQUENCE s) x = compressSeq s x
+
 -- 10.3 Encoding as a non-negative-binary-integer
 -- 10.3.6
 -- minOctets :: Int -> [Int]
@@ -264,10 +270,6 @@ decodeLengthDeterminant b =
                                 1 ->
                                    undefined
 
-compress :: ConstrainedType a -> a -> [Int]
-compress INTEGER x = encode x INTEGER
-compress r@(Range INTEGER l u) x = encode x (Range INTEGER l u)
-compress (SEQUENCE s) x = compressSeq s x
 
 uncompressInt t b =
    case p of
