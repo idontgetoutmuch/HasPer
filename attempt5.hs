@@ -159,6 +159,31 @@ toPer (SEQUENCE s) x             = encodeSeq s x
 toPer (SEQUENCEOF s) xs          = encodeSeqOf (SEQUENCEOF s) xs
 toPer t@(SIZE c l u) x           = encodeSz t x
 
+-- INTEGER ENCODING 10.3 - 10.8
+
+encodeInt :: ConstrainedType Int -> Int -> [Int]
+encodeInt t x =
+   case p of
+      -- 10.5 Encoding of a constrained whole number
+      Constrained (Just lb) (Just ub) ->
+         let range = ub - lb + 1 in
+            if range <= 1
+               -- 10.5.4
+               then []
+               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
+               else minBits ((x-lb),range-1)
+      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
+      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
+      Constrained (Just lb) Nothing ->
+         encodeWithLengthDeterminant (minOctets (x-lb))
+      -- 12.2.4, 10.8 Encoding of an unconstrained whole number, 10.8.3 and
+      -- 10.4 Encoding as a 2's-complement-binary-integer
+      Constrained Nothing _ ->
+        encodeWithLengthDeterminant (to2sComplement x)
+   where
+      p = bounds t
+
+
 -- 10.3 Encoding as a non-negative-binary-integer
 -- 10.3.6
 -- minOctets :: Int -> [Int]
@@ -188,27 +213,6 @@ minBits
         h (0,w) = Just (0, (0, w `div` 2))
         h (n,w) = Just (n `mod` 2, (n `div` 2, w `div` 2))
 
--- encode :: Int -> ConstrainedType Int -> [Int]
-encode x t =
-   case p of
-      -- 10.5 Encoding of a constrained whole number
-      Constrained (Just lb) (Just ub) ->
-         let range = ub - lb + 1 in
-            if range <= 1
-               -- 10.5.4
-               then []
-               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
-               else minBits ((x-lb),range-1)
-      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
-      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
-      Constrained (Just lb) Nothing ->
-         encodeWithLengthDeterminant (minOctets (x-lb))
-      -- 12.2.4, 10.8 Encoding of an unconstrained whole number, 10.8.3 and
-      -- 10.4 Encoding as a 2's-complement-binary-integer
-      Constrained Nothing _ ->
-         encodeWithLengthDeterminant (to2sComplement x)
-   where
-      p = perConstrainedness t
 
 -- 10.9 General rules for encoding a length determinant
 -- 10.9.4, 10.9.4.2 and 10.9.3.4 to 10.9.3.8.4.
