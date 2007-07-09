@@ -138,7 +138,7 @@ instance Monoid Constraint where
 
 -- perConstrainedness :: ConstrainedType Int -> Constraint
 perConstrainedness INTEGER = Constrained Nothing Nothing
-perConstrainedness (Includes t1 t2) = 
+perConstrainedness (Includes t1 t2) =
    (perConstrainedness t1) `mappend` (perConstrainedness t2)
 perConstrainedness (Range t l u) =
    (perConstrainedness t) `mappend` (Constrained l u)
@@ -233,7 +233,7 @@ ld n
    | n < 16*(2^10)  = [1:0:(minBits (n, (16*(2^10)-1)))]
 -- Note there is no clause for >= 16*(2^10) as we have groupBy 16*(2^10)
 
-decodeLengthDeterminant b = 
+decodeLengthDeterminant b =
    do n <- get
       let bit8 = getBit n b
       if null bit8
@@ -245,7 +245,7 @@ decodeLengthDeterminant b =
                   do let l = fromNonNeg (getBits (n+1) 7 b)
                      put (n + 8 + l*8)
                      return (fromNonNeg (getBits (n+8) (l*8) b))
-               1 -> 
+               1 ->
                   do let bit7 = getBit (n+1) b
                      if null bit7
                         then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
@@ -257,7 +257,7 @@ decodeLengthDeterminant b =
                                       return (fromNonNeg (getBits (n+16) (l*8) b))
                                 1 ->
                                    undefined
-         
+
 compress :: ConstrainedType a -> a -> [Int]
 compress INTEGER x = encode x INTEGER
 compress r@(Range INTEGER l u) x = encode x (Range INTEGER l u)
@@ -267,7 +267,7 @@ uncompressInt t b =
    case p of
       -- 10.5 Encoding of a constrained whole number
       Constrained (Just lb) (Just ub) ->
-         let range = ub - lb + 1 
+         let range = ub - lb + 1
              n     = length (minBits ((ub-lb),range-1)) in
             if range <= 1
                -- 10.5.4
@@ -283,7 +283,7 @@ uncompressInt t b =
          undefined
       _ -> undefined
    where
-      p = perConstrainedness t   
+      p = perConstrainedness t
 
 -- Very inefficient
 getBits o n b =
@@ -361,7 +361,7 @@ from2sComplement a@(x:xs) =
       l = length a
       ys = map (2^) (f (l-2))
       f 0 = [0]
-      f x = x:(f (x-1)) 
+      f x = x:(f (x-1))
 
 fromNonNeg xs =
    sum (zipWith (*) xs ys)
@@ -369,7 +369,7 @@ fromNonNeg xs =
       l = length xs
       ys = map (2^) (f (l-1))
       f 0 = [0]
-      f x = x:(f (x-1)) 
+      f x = x:(f (x-1))
 
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
