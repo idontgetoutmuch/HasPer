@@ -72,6 +72,7 @@ class SizeConstraint a
 instance SizeConstraint BitString
 instance SizeConstraint IA5String
 instance SizeConstraint PrintableString
+instance SizeConstraint [a]
 -- INTEGER cannot be given a size constraint
 
 -- Heterogeneous lists of constrained types
