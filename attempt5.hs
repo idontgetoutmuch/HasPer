@@ -150,10 +150,14 @@ bounds (SEQUENCEOF x) = Constrained Nothing Nothing
 bounds (SIZE t l u) = Constrained l u
 
 
-compress :: ConstrainedType a -> a -> [Int]
-compress INTEGER x = encode x INTEGER
-compress r@(Range INTEGER l u) x = encode x (Range INTEGER l u)
-compress (SEQUENCE s) x = compressSeq s x
+-- toPer is the top-level PER encoding function.
+
+toPer :: ConstrainedType a -> a -> [Int]
+toPer INTEGER x                  = encodeInt INTEGER x
+toPer r@(Range INTEGER l u) x    = encodeInt r x
+toPer (SEQUENCE s) x             = encodeSeq s x
+toPer (SEQUENCEOF s) xs          = encodeSeqOf (SEQUENCEOF s) xs
+toPer t@(SIZE c l u) x           = encodeSz t x
 
 -- 10.3 Encoding as a non-negative-binary-integer
 -- 10.3.6
