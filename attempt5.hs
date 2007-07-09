@@ -184,19 +184,19 @@ encodeInt t x =
       p = bounds t
 
 
--- 10.3 Encoding as a non-negative-binary-integer
--- 10.3.6
--- minOctets :: Int -> [Int]
-minOctets =
-   reverse . flip (curry (unfoldr (uncurry g))) 8 where
-      g 0 0 = Nothing
-      g 0 p = Just (0,(0,p-1))
-      g n 0 = Just (n `mod` 2,(n `div` 2,7))
-      g n p = Just (n `mod` 2,(n `div` 2,p-1))
+-- minBits encodes a constrained whole number (10.5.6) in the minimum
+-- number of bits required for the range (assuming the range is at least 2).
+
+minBits
+    = (reverse . unfoldr h)
+      where
+        h (_,0) = Nothing
+        h (0,w) = Just (0, (0, w `div` 2))
+        h (n,w) = Just (n `mod` 2, (n `div` 2, w `div` 2))
 
 {-
     A new version of this function which avoids curry/uncurry is
-    implemented below.
+    implemented above.
 
 minBits =
    ((.).(.)) (reverse . (map fst)) (curry (unfoldr (uncurry h)))
@@ -212,6 +212,21 @@ minBits
         h (_,0) = Nothing
         h (0,w) = Just (0, (0, w `div` 2))
         h (n,w) = Just (n `mod` 2, (n `div` 2, w `div` 2))
+
+{-
+-- 10.9 General rules for encoding a length determinant
+-- 10.9.4
+lengthDeterminant n (Constrained (Just lb) (Just ub))
+-- 10.9.4.1
+   | ub < 64*(2^10) = minOctets n
+-- 10.9.4.2, 10.9.3.5, 10.9.3.6 Note not very efficient since we know log2 128 = 7
+   | n <= 127       = 0:(minBits (n, 127))
+-- 10.9.3.7 Note not very efficient since we know log2 16*(2^10) = 14
+   | n < 16*(2^10)  = 1:0:(minBits (n, (16*(2^10)-1)))
+-- 10.9.3.8
+   where
+      range = (ub - lb + 1)
+-}
 
 
 -- 10.9 General rules for encoding a length determinant
