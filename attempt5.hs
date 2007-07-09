@@ -137,12 +137,17 @@ instance Monoid Constraint where
          g (Constrained (Just x) _) (Constrained Nothing _)  = Just x
          g (Constrained (Just x) _) (Constrained (Just y) _) = Just (max x y)
 
--- perConstrainedness :: ConstrainedType Int -> Constraint
-perConstrainedness INTEGER = Constrained Nothing Nothing
-perConstrainedness (Includes t1 t2) =
-   (perConstrainedness t1) `mappend` (perConstrainedness t2)
-perConstrainedness (Range t l u) =
-   (perConstrainedness t) `mappend` (Constrained l u)
+-- bounds converts a constrained type value into a value
+-- highlighting the max and min range or size.
+
+bounds :: ConstrainedType a -> Constraint
+bounds INTEGER = Constrained Nothing Nothing
+bounds (Includes t1 t2) =
+   (bounds t1) `mappend` (bounds t2)
+bounds (Range t l u) =
+   (bounds t) `mappend` (Constrained l u)
+bounds (SEQUENCEOF x) = Constrained Nothing Nothing
+bounds (SIZE t l u) = Constrained l u
 
 -- 10.3 Encoding as a non-negative-binary-integer
 -- 10.3.6
