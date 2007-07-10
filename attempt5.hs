@@ -306,6 +306,54 @@ encodeSeqAux preamble body (Optional a as) (Nothing:*:xs) =
 encodeSeqAux preamble body (Optional a as) ((Just x):*:xs) =
    encodeSeqAux (1:preamble) ((toPer a x):body) as xs
 
+-- 19. ENCODING THE SEQUENCE-OF TYPE
+
+-- encodeSeqOf implements the encoding of an unconstrained
+-- sequence-of value. This requires both the encoding of each of the
+-- components, and the encoding of the length of the sequence of
+-- (which may require fragmentation into 64K blocks).
+
+encodeSeqOf :: ConstrainedType a -> a -> [Int]
+encodeSeqOf (SEQUENCEOF s) xs
+    = encodeWithLD s xs
+
+-- encodeWithLD splits the components into 16K blocks, and then
+-- splits these into blocks of 4 (thus a maximum of 64K in each
+-- block). insertL then manages the interleaving of the length-value
+-- encoding of the components.
+
+encodeWithLD :: ConstrainedType a -> [a] -> [Int]
+encodeWithLD s
+    = concat . insertL s . groupBy 4 . groupBy (16*(2^10))
+
+insertL :: ConstrainedType a -> [[[a]]] -> [[Int]]
+insertL s = unfoldr (sk s)
+
+sk :: ConstrainedType a -> [[[a]]] -> Maybe ([Int], [[[a]]])
+sk t [] = Nothing
+sk t (x:xs)
+   | l == n && lm == l1b = Just (ws,xs)
+   | l == 1 && lm <  l1b = Just (us,[])
+   | otherwise           = Just (vs,[])
+   where
+      l   = length x
+      m   = x!!(l-1)
+      lm  = length m
+      ws  = (1:1:(minBits (l,w6)))++ (concat . map (concat . map (toPer t))) x
+      us  = ld2 (length m) ++ (concat . map (toPer t)) m
+      vs  = if lm == l1b then
+               (1:1:(minBits (l,w6)))++ (concat . map (concat . map (toPer t))) x ++ ld2 0
+            else
+               (1:1:(minBits ((l-1), w6)))++ (concat . map (concat . map (toPer t)))
+                                            (take (l-1) x) ++ ld2 (length m) ++ (concat . map (toPer t)) m
+      n   = 4
+      w6  = 2^6 - 1
+      l1b = 16*(2^10)
+
+ld2 n
+   | n <= 127       = 0:(minBits (n, 127))
+   | n < 16*(2^10)  = 1:0:(minBits (n, (16*(2^10)-1)))
+
 
 decodeLengthDeterminant b =
    do n <- get
