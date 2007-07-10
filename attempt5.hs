@@ -289,6 +289,23 @@ g (n,p) = Just (n `rem` 2,(n `quot` 2,p-1))
 h n = reverse (flip (curry (unfoldr g)) 7 n)
 
 
+-- 18 ENCODING THE SEQUENCE TYPE
+
+encodeSeq s x = concat (encodeSeqAux [] [] s x)
+
+-- encodeSeqAux is the auxillary function for encodeSeq. When
+-- encoding a sequence, one has to both encode each component and
+-- produce a preamble which indicates the presence or absence of an
+-- optional or default value.
+
+encodeSeqAux :: [Int] -> [[Int]] -> Sequence a -> a -> [[Int]]
+encodeSeqAux preamble body Nil _ = (reverse preamble):(reverse body)
+encodeSeqAux preamble body (Cons a as) (x:*:xs) = encodeSeqAux preamble ((toPer a x):body) as xs
+encodeSeqAux preamble body (Optional a as) (Nothing:*:xs) =
+   encodeSeqAux (0:preamble) body as xs
+encodeSeqAux preamble body (Optional a as) ((Just x):*:xs) =
+   encodeSeqAux (1:preamble) ((toPer a x):body) as xs
+
 
 decodeLengthDeterminant b =
    do n <- get
@@ -357,15 +374,7 @@ compressIntWithRange r@(Range t l u) m v x =
    compressIntWithRange t rl ru x where
       (Constrained' rl ru) = (Constrained' l u) `mappend` (Constrained' m v)
 
-compressSeq s x = concat (compressSeqAux [] [] s x)
 
-compressSeqAux :: [Int] -> [[Int]] -> Sequence a -> a -> [[Int]]
-compressSeqAux preamble body Nil _ = (reverse preamble):(reverse body)
-compressSeqAux preamble body (Cons a as) (x:*:xs) = compressSeqAux preamble ((compress a x):body) as xs
-compressSeqAux preamble body (Optional a as) (Nothing:*:xs) =
-   compressSeqAux (0:preamble) body as xs
-compressSeqAux preamble body (Optional a as) ((Just x):*:xs) =
-   compressSeqAux (1:preamble) ((compress a x):body) as xs
 
 perConstrainedness' :: Ord a => ConstrainedType a -> Constraint' a
 perConstrainedness' INTEGER = Constrained' Nothing Nothing
