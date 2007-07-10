@@ -434,7 +434,7 @@ uncompressInt t b =
          undefined
       _ -> undefined
    where
-      p = perConstrainedness t
+      p = bounds t
 
 -- Very inefficient
 getBits o n b =
