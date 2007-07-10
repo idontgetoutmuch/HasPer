@@ -449,42 +449,6 @@ getBit o xs =
          z = B.head ys
          u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
 
--- compressIntWithRange :: ConstrainedType Int -> Maybe Int -> Maybe Int -> Int -> [Int]
-compressIntWithRange INTEGER u l x = encode x (Range INTEGER u l)
-compressIntWithRange r@(Range t l u) m v x =
-   compressIntWithRange t rl ru x where
-      (Constrained' rl ru) = (Constrained' l u) `mappend` (Constrained' m v)
-
-
-
-perConstrainedness' :: Ord a => ConstrainedType a -> Constraint' a
-perConstrainedness' INTEGER = Constrained' Nothing Nothing
-{-
-perConstrainedness' (Includes t1 t2) =
-   (perConstrainedness' t1) `mappend` (perConstrainedness' t2)
--}
-perConstrainedness' (Range t l u) =
-   (perConstrainedness' t) `mappend` (Constrained' l u)
-
-type Upper' a = Maybe a
-type Lower' a = Maybe a
-
-data Constraint' a = Constrained' (Lower' a) (Upper' a)
-   deriving Show
-
-instance Ord a => Monoid (Constraint' a) where
-   mempty = Constrained' Nothing Nothing
-   mappend x y = Constrained' (g x y) (f x y)
-      where
-         f (Constrained' _ Nothing)  (Constrained' _ Nothing)  = Nothing
-         f (Constrained' _ Nothing)  (Constrained' _ (Just y)) = Just y
-         f (Constrained' _ (Just x)) (Constrained' _ Nothing)  = Just x
-         f (Constrained' _ (Just x)) (Constrained' _ (Just y)) = Just (min x y)
-         g (Constrained' Nothing _)  (Constrained' Nothing _)  = Nothing
-         g (Constrained' Nothing _)  (Constrained' (Just y) _) = Just y
-         g (Constrained' (Just x) _) (Constrained' Nothing _)  = Just x
-         g (Constrained' (Just x) _) (Constrained' (Just y) _) = Just (min x y)
-
 
 from2sComplement a@(x:xs) =
    -(x*(2^(l-1))) + sum (zipWith (*) xs ys)
