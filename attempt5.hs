@@ -95,7 +95,7 @@ data ConstrainedType :: * -> * where
    IA5STRING       :: ConstrainedType IA5String
    Single          :: SingleValue a => ConstrainedType a -> a -> ConstrainedType a
    Includes        :: ContainedSubtype a => ConstrainedType a -> ConstrainedType a -> ConstrainedType a
-   Range           :: ValueRange a => ConstrainedType a -> Lower -> Upper -> ConstrainedType a
+   Range           :: ValueRange a => ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
    SEQUENCE        :: Sequence a -> ConstrainedType a
    SEQUENCEOF      :: ConstrainedType a -> ConstrainedType [a]
    SIZE            :: ConstrainedType [a] -> Lower -> Upper -> ConstrainedType [a]
@@ -468,45 +468,45 @@ t4 = Range INTEGER (Just (-256)) Nothing
 t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
 
 -- Unconstrained INTEGER
-integer1 = toPer INTEGER 4096
-integer2 = toPer (Range INTEGER Nothing (Just 65535)) 127
-integer3 = toPer (Range INTEGER Nothing (Just 65535)) (-128)
-integer4 = toPer (Range INTEGER Nothing (Just 65535)) 128
+integer1 = compress INTEGER 4096
+integer2 = compress (Range INTEGER Nothing (Just 65535)) 127
+integer3 = compress (Range INTEGER Nothing (Just 65535)) (-128)
+integer4 = compress (Range INTEGER Nothing (Just 65535)) 128
 
 -- Semi-constrained INTEGER
-integer5 = toPer (Range INTEGER (Just (-1)) Nothing) 4096
-integer6 = toPer (Range INTEGER (Just 1) Nothing) 127
-integer7 = toPer (Range INTEGER (Just 0) Nothing) 128
+integer5 = compress (Range INTEGER (Just (-1)) Nothing) 4096
+integer6 = compress (Range INTEGER (Just 1) Nothing) 127
+integer7 = compress (Range INTEGER (Just 0) Nothing) 128
 
 -- Constrained INTEGER
-integer8'1 = toPer (Range INTEGER (Just 3) (Just 6)) 3
-integer8'2 = toPer (Range INTEGER (Just 3) (Just 6)) 4
-integer8'3 = toPer (Range INTEGER (Just 3) (Just 6)) 5
-integer8'4 = toPer (Range INTEGER (Just 3) (Just 6)) 6
-integer9'1 = toPer (Range INTEGER (Just 4000) (Just 4254)) 4002
-integer9'2 = toPer (Range INTEGER (Just 4000) (Just 4254)) 4006
-integer10'1 = toPer (Range INTEGER (Just 4000) (Just 4255)) 4002
-integer10'2 = toPer (Range INTEGER (Just 4000) (Just 4255)) 4006
-integer11'1 = toPer (Range INTEGER (Just 0) (Just 32000)) 0
-integer11'2 = toPer (Range INTEGER (Just 0) (Just 32000)) 31000
-integer11'3 = toPer (Range INTEGER (Just 0) (Just 32000)) 32000
-integer12'1 = toPer (Range INTEGER (Just 1) (Just 65538)) 1
-integer12'2 = toPer (Range INTEGER (Just 1) (Just 65538)) 257
-integer12'3 = toPer (Range INTEGER (Just 1) (Just 65538)) 65538
+integer8'1 = compress (Range INTEGER (Just 3) (Just 6)) 3
+integer8'2 = compress (Range INTEGER (Just 3) (Just 6)) 4
+integer8'3 = compress (Range INTEGER (Just 3) (Just 6)) 5
+integer8'4 = compress (Range INTEGER (Just 3) (Just 6)) 6
+integer9'1 = compress (Range INTEGER (Just 4000) (Just 4254)) 4002
+integer9'2 = compress (Range INTEGER (Just 4000) (Just 4254)) 4006
+integer10'1 = compress (Range INTEGER (Just 4000) (Just 4255)) 4002
+integer10'2 = compress (Range INTEGER (Just 4000) (Just 4255)) 4006
+integer11'1 = compress (Range INTEGER (Just 0) (Just 32000)) 0
+integer11'2 = compress (Range INTEGER (Just 0) (Just 32000)) 31000
+integer11'3 = compress (Range INTEGER (Just 0) (Just 32000)) 32000
+integer12'1 = compress (Range INTEGER (Just 1) (Just 65538)) 1
+integer12'2 = compress (Range INTEGER (Just 1) (Just 65538)) 257
+integer12'3 = compress (Range INTEGER (Just 1) (Just 65538)) 65538
 
-test0 = toPer t1 27
+test0 = compress t1 27
 
-test1 = toPer (SEQUENCE (Cons (SEQUENCE (Cons t1 Nil)) Nil)) ((27:*:Empty):*:Empty)
-test2 = toPer (SEQUENCE (Cons t1 (Cons t1 Nil))) (29:*:(30:*:Empty))
-test20 = toPer (SEQUENCE (Cons t1 (Cons t1 (Cons t1 Nil)))) (29:*:(30:*:(26:*:Empty)))
-test3 = toPer (SEQUENCE (Optional t1 (Optional t1 Nil))) ((Just 29):*:((Just 30):*:Empty))
-petest2 = toPer (SEQUENCE (Optional t1 (Optional t1 Nil)))
+test1 = compress (SEQUENCE (Cons (SEQUENCE (Cons t1 Nil)) Nil)) ((27:*:Empty):*:Empty)
+test2 = compress (SEQUENCE (Cons t1 (Cons t1 Nil))) (29:*:(30:*:Empty))
+test20 = compress (SEQUENCE (Cons t1 (Cons t1 (Cons t1 Nil)))) (29:*:(30:*:(26:*:Empty)))
+test3 = compress (SEQUENCE (Optional t1 (Optional t1 Nil))) ((Just 29):*:((Just 30):*:Empty))
+petest2 = compress (SEQUENCE (Optional t1 (Optional t1 Nil)))
 test4 = petest2 ((Just 29):*:((Just 30):*:Empty))
 test5 = petest2 (Nothing:*:((Just 30):*:Empty))
 test6 = petest2 ((Just 29):*:(Nothing:*:Empty))
 test7 = petest2 (Nothing:*:(Nothing:*:Empty))
 
-uncompTest1 = runState (uncompressInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0])) 0
+uncompTest1 = runState (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0])) 0
 
 -- These tests are wrong
 -- uncompTest2 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x18,0,1,1]))) 0
@@ -515,4 +515,4 @@ uncompTest1 = runState (uncompressInt (Range INTEGER (Just 3) (Just 6)) (B.pack 
 unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
 
 -- This gives the wrong answer presumably because we are using Int
-wrong = toPer (Range INTEGER (Just 0) Nothing) (256^4)
+wrong = compress (Range INTEGER (Just 0) Nothing) (256^4)
