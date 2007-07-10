@@ -268,6 +268,28 @@ ld n
    | n < 16*(2^10)  = [1:0:(minBits (n, (16*(2^10)-1)))]
 -- Note there is no clause for >= 16*(2^10) as we have groupBy 16*(2^10)
 
+
+-- 10.4 Encoding as a 2's-complement-binary-integer is used when
+-- encoding an integer with no lower bound (10.8) as in the final
+-- case of encodeInt. The encoding of the integer is accompanied
+-- by the encoding of its length using encodeWithLengthDeterminant
+-- (10.8.3)
+
+to2sComplement n
+   | n >= 0 = 0:(h n)
+   | otherwise = minOctets (2^p + n)
+   where
+      p = length (h (-n-1)) + 1
+
+g (0,0) = Nothing
+g (0,p) = Just (0,(0,p-1))
+g (n,0) = Just (n `rem` 2,(n `quot` 2,7))
+g (n,p) = Just (n `rem` 2,(n `quot` 2,p-1))
+
+h n = reverse (flip (curry (unfoldr g)) 7 n)
+
+
+
 decodeLengthDeterminant b =
    do n <- get
       let bit8 = getBit n b
@@ -373,18 +395,6 @@ instance Ord a => Monoid (Constraint' a) where
          g (Constrained' (Just x) _) (Constrained' Nothing _)  = Just x
          g (Constrained' (Just x) _) (Constrained' (Just y) _) = Just (min x y)
 
-to2sComplement n
-   | n >= 0 = 0:(h n)
-   | otherwise = minOctets (2^p + n)
-   where
-      p = length (h (-n-1)) + 1
-
-g (0,0) = Nothing
-g (0,p) = Just (0,(0,p-1))
-g (n,0) = Just (n `rem` 2,(n `quot` 2,7))
-g (n,p) = Just (n `rem` 2,(n `quot` 2,p-1))
-
-h n = reverse (flip (curry (unfoldr g)) 7 n)
 
 from2sComplement a@(x:xs) =
    -(x*(2^(l-1))) + sum (zipWith (*) xs ys)
