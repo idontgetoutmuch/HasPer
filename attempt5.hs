@@ -354,6 +354,39 @@ ld2 n
    | n <= 127       = 0:(minBits (n, 127))
    | n < 16*(2^10)  = 1:0:(minBits (n, (16*(2^10)-1)))
 
+-- 19.5, 19.6 ENCODING A SIZE-CONSTRAINED SEQUENCE-OF
+
+-- The encoding of a size-constrained value depends on the bounds.
+-- If the range is 1 and the upper bound is less than 64K then no
+-- length encoding is required. If the upper bound is less than 64K then
+-- the length is encoded in the minimum number of bits for the range.
+-- Otherwise the value is encoded as nay other sequence of.
+
+encodeSz :: ConstrainedType [a] -> [a] -> [Int]
+encodeSz t@(SIZE ty l u) x
+  =  case p of
+       Constrained (Just lb) (Just ub) ->
+         let range = ub - lb + 1 in
+            if range == 1 && ub < 65536
+               -- 10.5.4
+               then encodeNoL ty x
+               else if ub >= 65536
+                then  encodeSeqOf ty x
+                   else minBits ((length x-lb),range) ++ encodeNoL ty x
+       Constrained (Just lb) Nothing ->
+         encodeSeqOf ty x
+       Constrained Nothing Nothing ->
+         encodeSeqOf ty x
+   where
+      p = bounds t
+
+
+-- No length encoding of SEQUENCEOF
+
+encodeNoL :: ConstrainedType a -> a -> [Int]
+encodeNoL (SEQUENCEOF s) xs
+    = (concat . map (toPer s)) xs
+
 
 decodeLengthDeterminant b =
    do n <- get
