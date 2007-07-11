@@ -149,7 +149,6 @@ bounds (Range t l u) =
 bounds (SEQUENCEOF x) = Constrained Nothing Nothing
 bounds (SIZE t l u) = Constrained l u
 
-
 -- toPer is the top-level PER encoding function.
 
 toPer :: ConstrainedType a -> a -> [Int]
@@ -188,45 +187,25 @@ encodeInt t x =
 -- number of bits required for the range (assuming the range is at least 2).
 
 minBits
-    = (reverse . unfoldr h)
-      where
-        h (_,0) = Nothing
-        h (0,w) = Just (0, (0, w `div` 2))
-        h (n,w) = Just (n `mod` 2, (n `div` 2, w `div` 2))
-
-{-
-    A new version of this function which avoids curry/uncurry is
-    implemented above.
-
-minBits =
-   ((.).(.)) (reverse . (map fst)) (curry (unfoldr (uncurry h)))
-      where
-         h _ 0 = Nothing
-         h 0 w = Just ((0,w `mod` 2),(0,w `div` 2))
-         h n w = Just ((n `mod` 2, w `mod` 2),(n `div` 2,w `div` 2))
--}
-
-minBits
     = reverse . unfoldr h
       where
         h (_,0) = Nothing
         h (0,w) = Just (0, (0, w `div` 2))
         h (n,w) = Just (n `mod` 2, (n `div` 2, w `div` 2))
 
-{-
--- 10.9 General rules for encoding a length determinant
--- 10.9.4
-lengthDeterminant n (Constrained (Just lb) (Just ub))
--- 10.9.4.1
-   | ub < 64*(2^10) = minOctets n
--- 10.9.4.2, 10.9.3.5, 10.9.3.6 Note not very efficient since we know log2 128 = 7
-   | n <= 127       = 0:(minBits (n, 127))
--- 10.9.3.7 Note not very efficient since we know log2 16*(2^10) = 14
-   | n < 16*(2^10)  = 1:0:(minBits (n, (16*(2^10)-1)))
--- 10.9.3.8
-   where
-      range = (ub - lb + 1)
--}
+-- minOctets is used in the encoding of a semi-constrained integer (10.7). It is encoded
+-- as a non-negative-binary-integer (10.3, 10.3.6) where the offset
+-- from the lower bound is encoded in the minimum number of octets, preceded by
+-- (or interspersed with) the encoding of the length (using encodeWithLengthDeterminant)
+-- of the octet representation of the offset. (10.7.4)
+
+minOctets :: Int -> [Int]
+minOctets =
+   reverse . flip (curry (unfoldr (uncurry g))) 8 where
+      g 0 0 = Nothing
+      g 0 p = Just (0,(0,p-1))
+      g n 0 = Just (n `mod` 2,(n `div` 2,7))
+      g n p = Just (n `mod` 2,(n `div` 2,p-1))
 
 
 -- 10.9 General rules for encoding a length determinant
@@ -412,7 +391,6 @@ decodeLengthDeterminant b =
                                       return (fromNonNeg (getBits (n+16) (l*8) b))
                                 1 ->
                                    undefined
-
 
 uncompressInt t b =
    case p of
