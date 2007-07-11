@@ -95,7 +95,7 @@ data ConstrainedType :: * -> * where
    IA5STRING       :: ConstrainedType IA5String
    Single          :: SingleValue a => ConstrainedType a -> a -> ConstrainedType a
    Includes        :: ContainedSubtype a => ConstrainedType a -> ConstrainedType a -> ConstrainedType a
-   Range           :: ValueRange a => ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
+   Range           :: ValueRange a => ConstrainedType a -> Lower -> Upper -> ConstrainedType a
    SEQUENCE        :: Sequence a -> ConstrainedType a
    SEQUENCEOF      :: ConstrainedType a -> ConstrainedType [a]
    SIZE            :: ConstrainedType [a] -> Lower -> Upper -> ConstrainedType [a]
