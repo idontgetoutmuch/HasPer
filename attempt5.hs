@@ -98,7 +98,8 @@ data ConstrainedType :: * -> * where
    Range           :: ValueRange a => ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
    SEQUENCE        :: Sequence a -> ConstrainedType a
    SEQUENCEOF      :: ConstrainedType a -> ConstrainedType [a]
-   SIZE            :: ConstrainedType [a] -> Lower -> Upper -> ConstrainedType [a]
+   SIZE            :: SizeConstraint a => ConstrainedType a -> Lower -> Upper -> ConstrainedType a
+
 {-
    -- Size constraint: there are two sorts modelled by SizeConstraint
    Size         :: Sized a => ConstrainedType a -> SizeConstraint -> ConstrainedType a
@@ -152,11 +153,11 @@ bounds (SIZE t l u) = Constrained l u
 -- toPer is the top-level PER encoding function.
 
 toPer :: ConstrainedType a -> a -> [Int]
-toPer INTEGER x                  = encodeInt INTEGER x
-toPer r@(Range INTEGER l u) x    = encodeInt r x
-toPer (SEQUENCE s) x             = encodeSeq s x
-toPer t@(SEQUENCEOF s) xs        = encodeSO t xs
-toPer t@(SIZE c l u) x           = encodeSO t x
+toPer INTEGER x                      = encodeInt INTEGER x
+toPer r@(Range INTEGER l u) x        = encodeInt r x
+toPer (SEQUENCE s) x                 = encodeSeq s x
+toPer t@(SEQUENCEOF s) xs            = encodeSO t xs
+toPer t@(SIZE (SEQUENCEOF c) l u) x  = encodeSO t x
 
 -- INTEGER ENCODING 10.3 - 10.8
 
@@ -305,7 +306,7 @@ encodeSO t x
      where
       p = bounds t
 
-
+encodeSeqSz :: ConstrainedType [a] -> Int -> Int -> [a] -> [Int]
 encodeSeqSz t@(SIZE ty _ _) l u x
     = let range = u - l + 1
         in
