@@ -392,6 +392,7 @@ decodeLengthDeterminant b =
                                 1 ->
                                    undefined
 
+
 uncompressInt t b =
    case p of
       -- 10.5 Encoding of a constrained whole number
@@ -505,6 +506,32 @@ test4 = petest2 ((Just 29):*:((Just 30):*:Empty))
 test5 = petest2 (Nothing:*:((Just 30):*:Empty))
 test6 = petest2 ((Just 29):*:(Nothing:*:Empty))
 test7 = petest2 (Nothing:*:(Nothing:*:Empty))
+
+-- SEQUENCEOF
+test8 = toPer (SEQUENCEOF t1) [26,27,28,25]
+test9 = toPer (SEQUENCEOF t6) [29:*:(30:*:Empty),28:*:(28:*:Empty)]
+test10
+    = do
+        c <- return (toPer (SEQUENCEOF t41) (take (17000) [1,2..]))
+        writeFile "test12.txt" (show c)
+
+test11
+    = do
+        c <- return (toPer (SEQUENCEOF t42) (take (17000) [3..]))
+        writeFile "test14.txt" (show c)
+
+test12
+    = do
+        c <- return (toPer (SEQUENCEOF t42) (take (93000) [3..]))
+        writeFile "test15.txt" (show c)
+
+-- SIZE-CONSTRAINED SEQUENCEOF
+test14 = toPer t7 [26,25,28,27]
+
+test15 = toPer t8 [(29:*:(30:*:Empty)),((-10):*:(2:*:Empty))]
+
+test16 = toPer t10 [(Just (-10):*:(2:*:Empty))]
+
 
 uncompTest1 = runState (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0])) 0
 
