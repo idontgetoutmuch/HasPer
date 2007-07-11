@@ -155,8 +155,8 @@ toPer :: ConstrainedType a -> a -> [Int]
 toPer INTEGER x                  = encodeInt INTEGER x
 toPer r@(Range INTEGER l u) x    = encodeInt r x
 toPer (SEQUENCE s) x             = encodeSeq s x
-toPer (SEQUENCEOF s) xs          = encodeSeqOf (SEQUENCEOF s) xs
-toPer t@(SIZE c l u) x           = encodeSz t x
+toPer t@(SEQUENCEOF s) xs        = encodeSO t xs
+toPer t@(SIZE c l u) x           = encodeSO t x
 
 -- INTEGER ENCODING 10.3 - 10.8
 
@@ -287,10 +287,36 @@ encodeSeqAux preamble body (Optional a as) ((Just x):*:xs) =
 
 -- 19. ENCODING THE SEQUENCE-OF TYPE
 
--- encodeSeqOf implements the encoding of an unconstrained
--- sequence-of value. This requires both the encoding of each of the
--- components, and the encoding of the length of the sequence of
--- (which may require fragmentation into 64K blocks).
+-- encodeSO implements the encoding of an unconstrained
+-- sequence-of value. This requires both the encoding of
+-- each of the components, and in most cases the encoding
+-- of the length of the sequence of (which may require
+-- fragmentation into 64K blocks).
+
+encodeSO :: ConstrainedType [a] -> [a] -> [Int]
+encodeSO t x
+  =  case p of
+       Constrained (Just lb) (Just ub) ->
+         encodeSeqSz t lb ub x
+       Constrained (Just lb) Nothing ->
+         encodeSeqOf t x
+       Constrained Nothing Nothing ->
+         encodeSeqOf t x
+     where
+      p = bounds t
+
+
+encodeSeqSz t@(SIZE ty _ _) l u x
+    = let range = u - l + 1
+        in
+            if range == 1 && u < 65536
+--19.5
+               then encodeNoL ty x
+               else if u >= 65536
+--19.6
+                   then  encodeSeqOf ty x
+                   else minBits ((length x-l),range-1) ++ encodeNoL ty x
+
 
 encodeSeqOf :: ConstrainedType a -> a -> [Int]
 encodeSeqOf (SEQUENCEOF s) xs
@@ -332,32 +358,6 @@ sk t (x:xs)
 ld2 n
    | n <= 127       = 0:(minBits (n, 127))
    | n < 16*(2^10)  = 1:0:(minBits (n, (16*(2^10)-1)))
-
--- 19.5, 19.6 ENCODING A SIZE-CONSTRAINED SEQUENCE-OF
-
--- The encoding of a size-constrained value depends on the bounds.
--- If the range is 1 and the upper bound is less than 64K then no
--- length encoding is required. If the upper bound is less than 64K then
--- the length is encoded in the minimum number of bits for the range.
--- Otherwise the value is encoded as nay other sequence of.
-
-encodeSz :: ConstrainedType [a] -> [a] -> [Int]
-encodeSz t@(SIZE ty l u) x
-  =  case p of
-       Constrained (Just lb) (Just ub) ->
-         let range = ub - lb + 1 in
-            if range == 1 && ub < 65536
-               -- 10.5.4
-               then encodeNoL ty x
-               else if ub >= 65536
-                then  encodeSeqOf ty x
-                   else minBits ((length x-lb),range) ++ encodeNoL ty x
-       Constrained (Just lb) Nothing ->
-         encodeSeqOf ty x
-       Constrained Nothing Nothing ->
-         encodeSeqOf ty x
-   where
-      p = bounds t
 
 
 -- No length encoding of SEQUENCEOF
@@ -466,7 +466,14 @@ t1 = Range INTEGER (Just 25) (Just 30)
 t2 = Includes INTEGER t1
 t3 = Includes t1 t1
 t4 = Range INTEGER (Just (-256)) Nothing
+t41 = Range INTEGER (Just 0) (Just 18000)
+t42 = Range INTEGER (Just 3) (Just 3)
 t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
+t6 = SEQUENCE (Cons t1 (Cons t1 Nil))
+t7 = SIZE (SEQUENCEOF t1) (Just 3) (Just 5)
+t8 = SIZE (SEQUENCEOF t5) (Just 2) (Just 2)
+t9 = SEQUENCE (Optional t4 (Cons t4 Nil))
+t10 = SIZE (SEQUENCEOF t9) (Just 1) (Just 3)
 
 -- Unconstrained INTEGER
 integer1 = compress INTEGER 4096
