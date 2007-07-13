@@ -138,17 +138,24 @@ instance Ord a => Monoid (Constraint a) where
          g (Constrained (Just x) _) (Constrained Nothing _)  = Just x
          g (Constrained (Just x) _) (Constrained (Just y) _) = Just (max x y)
 
--- bounds converts a constrained type value into a value
--- highlighting the max and min range or size.
+-- bounds returns the range of a value. Nothing indicates
+-- no lower or upper bound.
 
-bounds :: ConstrainedType a -> Constraint
+bounds :: Ord a => ConstrainedType a -> Constraint a
 bounds INTEGER = Constrained Nothing Nothing
 bounds (Includes t1 t2) =
    (bounds t1) `mappend` (bounds t2)
 bounds (Range t l u) =
    (bounds t) `mappend` (Constrained l u)
 bounds (SEQUENCEOF x) = Constrained Nothing Nothing
-bounds (SIZE t l u) = Constrained l u
+bounds (SIZE t l u) = Constrained Nothing Nothing
+
+-- sizeLimit returns the size limits of a value. Nothing
+-- indicates no lower or upper bound.
+
+sizeLimit :: ConstrainedType a -> Constraint Int
+sizeLimit (SIZE t l u) = Constrained l u
+sizeLimit _            = Constrained Nothing Nothing
 
 -- toPer is the top-level PER encoding function.
 
@@ -304,7 +311,7 @@ encodeSO t x
        Constrained Nothing Nothing ->
          encodeSeqOf t x
      where
-      p = bounds t
+      p = sizeLimit t
 
 encodeSeqSz :: ConstrainedType [a] -> Int -> Int -> [a] -> [Int]
 encodeSeqSz t@(SIZE ty _ _) l u x
