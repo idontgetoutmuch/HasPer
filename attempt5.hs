@@ -122,10 +122,10 @@ isExtensible = undefined
 type Upper = Maybe Int
 type Lower = Maybe Int
 
-data Constraint = Constrained Lower Upper
+data Constraint a = Constrained (Maybe a) (Maybe a)
    deriving Show
 
-instance Monoid Constraint where
+instance Ord a => Monoid (Constraint a) where
    mempty = Constrained Nothing Nothing
    mappend x y = Constrained (g x y) (f x y)
       where
