@@ -11,6 +11,8 @@ import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
 
+type BitStream = [Int]
+
 data BitString = BitString
    deriving Show
 
@@ -44,21 +46,21 @@ class SingleValue a
 instance SingleValue BitString
 instance SingleValue IA5String
 instance SingleValue PrintableString
-instance SingleValue Int
+instance SingleValue Integer
 
 class ContainedSubtype a
 
 instance ContainedSubtype BitString
 instance ContainedSubtype IA5String
 instance ContainedSubtype PrintableString
-instance ContainedSubtype Int
+instance ContainedSubtype Integer
 
 class ValueRange a
 
 -- BIT STRING cannot be given value ranges
 instance ValueRange IA5String
 instance ValueRange PrintableString
-instance ValueRange Int
+instance ValueRange Integer
 
 class PermittedAlphabet a
 
@@ -89,7 +91,7 @@ data Sequence :: * -> * where
 -- The major data structure itself
 
 data ConstrainedType :: * -> * where
-   INTEGER         :: ConstrainedType Int
+   INTEGER         :: ConstrainedType Integer
    BITSTRING       :: ConstrainedType BitString
    PRINTABLESTRING :: ConstrainedType PrintableString
    IA5STRING       :: ConstrainedType IA5String
@@ -119,8 +121,8 @@ data ConstrainedType :: * -> * where
 isExtensible :: ConstrainedType a -> Bool
 isExtensible = undefined
 
-type Upper = Maybe Int
-type Lower = Maybe Int
+type Upper = Maybe Integer
+type Lower = Maybe Integer
 
 data Constraint a = Constrained (Maybe a) (Maybe a)
    deriving Show
@@ -153,7 +155,7 @@ bounds (SIZE t l u) = Constrained Nothing Nothing
 -- sizeLimit returns the size limits of a value. Nothing
 -- indicates no lower or upper bound.
 
-sizeLimit :: ConstrainedType a -> Constraint Int
+sizeLimit :: ConstrainedType a -> Constraint Integer
 sizeLimit (SIZE t l u) = Constrained l u
 sizeLimit _            = Constrained Nothing Nothing
 
@@ -168,7 +170,7 @@ toPer t@(SIZE (SEQUENCEOF c) l u) x  = encodeSO t x
 
 -- INTEGER ENCODING 10.3 - 10.8
 
-encodeInt :: ConstrainedType Int -> Int -> [Int]
+encodeInt :: ConstrainedType Integer -> Integer -> [Int]
 encodeInt t x =
    case p of
       -- 10.5 Encoding of a constrained whole number
@@ -194,8 +196,9 @@ encodeInt t x =
 -- minBits encodes a constrained whole number (10.5.6) in the minimum
 -- number of bits required for the range (assuming the range is at least 2).
 
+minBits :: (Integer,Integer) -> BitStream
 minBits
-    = reverse . unfoldr h
+    = map fromIntegral . reverse . unfoldr h
       where
         h (_,0) = Nothing
         h (0,w) = Just (0, (0, w `div` 2))
@@ -207,9 +210,9 @@ minBits
 -- (or interspersed with) the encoding of the length (using encodeWithLengthDeterminant)
 -- of the octet representation of the offset. (10.7.4)
 
-minOctets :: Int -> [Int]
+minOctets :: Integer -> BitStream
 minOctets =
-   reverse . flip (curry (unfoldr (uncurry g))) 8 where
+   map fromIntegral . reverse . flip (curry (unfoldr (uncurry g))) 8 where
       g 0 0 = Nothing
       g 0 p = Just (0,(0,p-1))
       g n 0 = Just (n `mod` 2,(n `div` 2,7))
@@ -235,15 +238,15 @@ k (x:xs)
    | l == 1 && lm <  l1b = Just (us,[])
    | otherwise           = Just (vs,[])
    where
-      l   = length x
-      m   = x!!(l-1)
-      lm  = length m
+      l   = genericLength x
+      m   = x `genericIndex` (l-1)
+      lm  = genericLength m
       ws  = (1:1:(minBits (l,w6))):(concat x)
-      us  = ld (length m) ++ m
+      us  = ld (genericLength m) ++ m
       vs  = if lm >= l1b then
                (1:1:(minBits (l,w6))):(concat x ++ ld 0)
             else
-               ((1:1:(minBits ((l-1), w6))):(concat (take (l-1) x)) ++ ld (length m) ++ m)
+               ((1:1:(minBits ((l-1), w6))):(concat (genericTake (l-1) x)) ++ ld (genericLength m) ++ m)
       n   = 4
       w6  = 2^6 - 1
       l1b = 16*(2^10)
@@ -273,7 +276,7 @@ g (0,p) = Just (0,(0,p-1))
 g (n,0) = Just (n `rem` 2,(n `quot` 2,7))
 g (n,p) = Just (n `rem` 2,(n `quot` 2,p-1))
 
-h n = reverse (flip (curry (unfoldr g)) 7 n)
+h n = map fromIntegral (reverse (flip (curry (unfoldr g)) 7 n))
 
 
 -- 18 ENCODING THE SEQUENCE TYPE
@@ -313,7 +316,7 @@ encodeSO t x
      where
       p = sizeLimit t
 
-encodeSeqSz :: ConstrainedType [a] -> Int -> Int -> [a] -> [Int]
+encodeSeqSz :: ConstrainedType [a] -> Integer -> Integer -> [a] -> [Int]
 encodeSeqSz t@(SIZE ty _ _) l u x
     = let range = u - l + 1
         in
@@ -322,8 +325,8 @@ encodeSeqSz t@(SIZE ty _ _) l u x
                then encodeNoL ty x
                else if u >= 65536
 --19.6
-                   then  encodeSeqOf ty x
-                   else minBits ((length x-l),range-1) ++ encodeNoL ty x
+                   then encodeSeqOf ty x
+                   else minBits ((genericLength x-l),range-1) ++ encodeNoL ty x
 
 
 encodeSeqOf :: ConstrainedType a -> a -> [Int]
@@ -349,16 +352,16 @@ sk t (x:xs)
    | l == 1 && lm <  l1b = Just (us,[])
    | otherwise           = Just (vs,[])
    where
-      l   = length x
-      m   = x!!(l-1)
-      lm  = length m
+      l   = genericLength x
+      m   = x `genericIndex` (l-1)
+      lm  = genericLength m
       ws  = (1:1:(minBits (l,w6)))++ (concat . map (concat . map (toPer t))) x
-      us  = ld2 (length m) ++ (concat . map (toPer t)) m
+      us  = ld2 (genericLength m) ++ (concat . map (toPer t)) m
       vs  = if lm == l1b then
                (1:1:(minBits (l,w6)))++ (concat . map (concat . map (toPer t))) x ++ ld2 0
             else
                (1:1:(minBits ((l-1), w6)))++ (concat . map (concat . map (toPer t)))
-                                            (take (l-1) x) ++ ld2 (length m) ++ (concat . map (toPer t)) m
+                                            (genericTake (l-1) x) ++ ld2 (genericLength m) ++ (concat . map (toPer t)) m
       n   = 4
       w6  = 2^6 - 1
       l1b = 16*(2^10)
@@ -412,14 +415,14 @@ untoPerInt t b =
       -- 10.5 Encoding of a constrained whole number
       Constrained (Just lb) (Just ub) ->
          let range = ub - lb + 1
-             n     = length (minBits ((ub-lb),range-1)) in
+             n     = genericLength (minBits ((ub-lb),range-1)) in
             if range <= 1
                -- 10.5.4
                then return lb
                -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
                else do offset <- get
-                       put (offset + (fromIntegral n))
-                       return (lb + (fromNonNeg (map fromIntegral (getBits offset (fromIntegral n) b))))
+                       put (offset + n)
+                       return (lb + (fromNonNeg (getBits offset (fromIntegral n) b)))
       -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
       -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
       Constrained (Just lb) Nothing ->
@@ -441,7 +444,6 @@ getBit o xs =
          ys = B.drop nBytes xs
          z = B.head ys
          u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
-
 
 from2sComplement a@(x:xs) =
    -(x*(2^(l-1))) + sum (zipWith (*) xs ys)
@@ -571,8 +573,9 @@ uncompTest1 = runState (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0x
 
 unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
 
+decodeEncode :: BitStream -> BitStream
 decodeEncode x =
-   case runTest (map fromIntegral x) 0 of
+   case runTest x 0 of
       (Left _,_)   -> undefined
       (Right xs,_) -> xs
    where 
@@ -590,6 +593,8 @@ unSemi7 = decodeEncode integer7
 semi7 = drop 8 integer7
 semiTest7 = semi7 == unSemi7
 
--- This gives the wrong answer presumably because we are using Int
+-- This used to give the wrong answer presumably because we were using Int
 
 wrong = toPer (Range INTEGER (Just 0) Nothing) (256^4)
+unWrong = decodeEncode wrong
+wrongTest = drop 8 wrong == unWrong
