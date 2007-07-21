@@ -454,9 +454,9 @@ from2sComplement a@(x:xs) =
       f x = x:(f (x-1))
 
 fromNonNeg xs =
-   sum (zipWith (*) xs ys)
+   sum (zipWith (*) (map fromIntegral xs) ys)
    where
-      l = length xs
+      l = genericLength xs
       ys = map (2^) (f (l-1))
       f 0 = [0]
       f x = x:(f (x-1))
@@ -598,3 +598,10 @@ semiTest7 = semi7 == unSemi7
 wrong = toPer (Range INTEGER (Just 0) Nothing) (256^4)
 unWrong = decodeEncode wrong
 wrongTest = drop 8 wrong == unWrong
+
+longer = toPer (Range INTEGER (Just 0) Nothing) (256^128)
+unLonger = decodeEncode longer
+
+longer1 = toPer (Range INTEGER (Just 0) Nothing) (256^(2^10))
+unLonger1 = decodeEncode longer1
+
