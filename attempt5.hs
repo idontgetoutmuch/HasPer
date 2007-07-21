@@ -161,7 +161,7 @@ sizeLimit _            = Constrained Nothing Nothing
 
 -- toPer is the top-level PER encoding function.
 
-toPer :: ConstrainedType a -> a -> [Int]
+toPer :: ConstrainedType a -> a -> BitStream
 toPer INTEGER x                      = encodeInt INTEGER x
 toPer r@(Range INTEGER l u) x        = encodeInt r x
 toPer (SEQUENCE s) x                 = encodeSeq s x
@@ -170,7 +170,7 @@ toPer t@(SIZE (SEQUENCEOF c) l u) x  = encodeSO t x
 
 -- INTEGER ENCODING 10.3 - 10.8
 
-encodeInt :: ConstrainedType Integer -> Integer -> [Int]
+encodeInt :: ConstrainedType Integer -> Integer -> BitStream
 encodeInt t x =
    case p of
       -- 10.5 Encoding of a constrained whole number
@@ -288,7 +288,7 @@ encodeSeq s x = concat (encodeSeqAux [] [] s x)
 -- produce a preamble which indicates the presence or absence of an
 -- optional or default value.
 
-encodeSeqAux :: [Int] -> [[Int]] -> Sequence a -> a -> [[Int]]
+encodeSeqAux :: [Int] -> [[Int]] -> Sequence a -> a -> [BitStream]
 encodeSeqAux preamble body Nil _ = (reverse preamble):(reverse body)
 encodeSeqAux preamble body (Cons a as) (x:*:xs) = encodeSeqAux preamble ((toPer a x):body) as xs
 encodeSeqAux preamble body (Optional a as) (Nothing:*:xs) =
@@ -304,7 +304,7 @@ encodeSeqAux preamble body (Optional a as) ((Just x):*:xs) =
 -- of the length of the sequence of (which may require
 -- fragmentation into 64K blocks).
 
-encodeSO :: ConstrainedType [a] -> [a] -> [Int]
+encodeSO :: ConstrainedType [a] -> [a] -> BitStream
 encodeSO t x
   =  case p of
        Constrained (Just lb) (Just ub) ->
@@ -316,7 +316,7 @@ encodeSO t x
      where
       p = sizeLimit t
 
-encodeSeqSz :: ConstrainedType [a] -> Integer -> Integer -> [a] -> [Int]
+encodeSeqSz :: ConstrainedType [a] -> Integer -> Integer -> [a] -> BitStream
 encodeSeqSz t@(SIZE ty _ _) l u x
     = let range = u - l + 1
         in
@@ -329,7 +329,7 @@ encodeSeqSz t@(SIZE ty _ _) l u x
                    else minBits ((genericLength x-l),range-1) ++ encodeNoL ty x
 
 
-encodeSeqOf :: ConstrainedType a -> a -> [Int]
+encodeSeqOf :: ConstrainedType a -> a -> BitStream
 encodeSeqOf (SEQUENCEOF s) xs
     = encodeWithLD s xs
 
@@ -338,14 +338,14 @@ encodeSeqOf (SEQUENCEOF s) xs
 -- block). insertL then manages the interleaving of the length-value
 -- encoding of the components.
 
-encodeWithLD :: ConstrainedType a -> [a] -> [Int]
+encodeWithLD :: ConstrainedType a -> [a] -> BitStream
 encodeWithLD s
     = concat . insertL s . groupBy 4 . groupBy (16*(2^10))
 
-insertL :: ConstrainedType a -> [[[a]]] -> [[Int]]
+insertL :: ConstrainedType a -> [[[a]]] -> [BitStream]
 insertL s = unfoldr (sk s)
 
-sk :: ConstrainedType a -> [[[a]]] -> Maybe ([Int], [[[a]]])
+sk :: ConstrainedType a -> [[[a]]] -> Maybe (BitStream, [[[a]]])
 sk t [] = Nothing
 sk t (x:xs)
    | l == n && lm == l1b = Just (ws,xs)
@@ -373,7 +373,7 @@ ld2 n
 
 -- No length encoding of SEQUENCEOF
 
-encodeNoL :: ConstrainedType a -> a -> [Int]
+encodeNoL :: ConstrainedType a -> a -> BitStream
 encodeNoL (SEQUENCEOF s) xs
     = (concat . map (toPer s)) xs
 
