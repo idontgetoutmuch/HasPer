@@ -374,7 +374,7 @@ encodeNoL :: ConstrainedType a -> a -> [Int]
 encodeNoL (SEQUENCEOF s) xs
     = (concat . map (toPer s)) xs
 
-
+-- This currently decodes the whole thing not just the length determinant as the name would suggest!
 decodeLengthDeterminant b =
    do n <- get
       let bit8 = getBit n b
@@ -386,7 +386,7 @@ decodeLengthDeterminant b =
                0 ->
                   do let l = fromNonNeg (getBits (n+1) 7 b)
                      put (n + 8 + l*8)
-                     return (fromNonNeg (getBits (n+8) (l*8) b))
+                     return (getBits (n+8) (l*8) b)
                1 ->
                   do let bit7 = getBit (n+1) b
                      if null bit7
@@ -396,11 +396,17 @@ decodeLengthDeterminant b =
                                 0 ->
                                    do let l = fromNonNeg (getBits (n+2) 14 b)
                                       put (n + 16 + l*8)
-                                      return (fromNonNeg (getBits (n+16) (l*8) b))
+                                      return (getBits (n+16) (l*8) b)
                                 1 ->
-                                   undefined
-
-
+                                   do let fragSize = fromNonNeg (getBits (n+2) 6 b)
+                                      if fragSize <= 0 || fragSize > 4
+                                         then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
+                                         else do let frag = getBits (n+8) (fragSize*16*(2^10)*8) b
+                                                 put (n + 8 + fragSize*16*(2^10)*8)
+                                                 -- This looks like it might be quadratic in efficiency!
+                                                 rest <- decodeLengthDeterminant b
+                                                 return (frag ++ rest)
+                                                 
 untoPerInt t b =
    case p of
       -- 10.5 Encoding of a constrained whole number
@@ -564,6 +570,25 @@ uncompTest1 = runState (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0x
 -- uncompTest3 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x81,0x80,0,0]))) 0
 
 unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
+
+decodeEncode x =
+   case runTest (map fromIntegral x) 0 of
+      (Left _,_)   -> undefined
+      (Right xs,_) -> xs
+   where 
+      runTest = runState . runErrorT . decodeLengthDeterminant . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
+
+unSemi5 = decodeEncode integer5
+semi5 = drop 8 integer5
+semiTest5 = semi5 == unSemi5
+
+unSemi6 = decodeEncode integer6
+semi6 = drop 8 integer6
+semiTest6 = semi6 == unSemi6
+
+unSemi7 = decodeEncode integer7
+semi7 = drop 8 integer7
+semiTest7 = semi7 == unSemi7
 
 -- This gives the wrong answer presumably because we are using Int
 
