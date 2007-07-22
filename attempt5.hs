@@ -409,6 +409,43 @@ decodeLengthDeterminant b =
                                                  -- This looks like it might be quadratic in efficiency!
                                                  rest <- decodeLengthDeterminant b
                                                  return (frag ++ rest)
+
+n16k = 16*(2^10)
+
+-- And we probably ought to check that the reported number of octets / bytes are available for decoding!
+-- getbits should probably fail if you ask it for bits that don't exist.
+-- Currently failure could return an empty list which we do check for or a partial list which we don't check for.
+decodeWithLengthDeterminant k b =
+   do n <- get
+      let bit8 = getBit n b
+      if null bit8
+         then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
+         else
+            case (head bit8) of
+               -- 10.9.3.6
+               0 ->
+                  do let l = fromNonNeg (getBits (n+1) 7 b)
+                     put (n + 8 + l*k)
+                     return (getBits (n+8) (l*k) b)
+               1 ->
+                  do let bit7 = getBit (n+1) b
+                     if null bit7
+                        then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
+                        else case (head bit7) of
+                                -- 10.9.3.7
+                                0 ->
+                                   do let l = fromNonNeg (getBits (n+2) 14 b)
+                                      put (n + 16 + l*k)
+                                      return (getBits (n+16) (l*k) b)
+                                1 ->
+                                   do let fragSize = fromNonNeg (getBits (n+2) 6 b)
+                                      if fragSize <= 0 || fragSize > 4
+                                         then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
+                                         else do let frag = getBits (n+8) (fragSize*n16k*k) b
+                                                 put (n + 8 + fragSize*n16k*k)
+                                                 -- This looks like it might be quadratic in efficiency!
+                                                 rest <- decodeWithLengthDeterminant k b
+                                                 return (frag ++ rest)
                                                  
 untoPerInt t b =
    case p of
@@ -426,8 +463,8 @@ untoPerInt t b =
       -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
       -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
       Constrained (Just lb) Nothing ->
-         -- encodeWithLengthDeterminant (minOctets (x-lb))
-         undefined
+         do o <- decodeWithLengthDeterminant 8 b
+            return (lb + (fromNonNeg o))
       _ -> undefined
    where
       p = bounds t
@@ -564,8 +601,8 @@ test15 = toPer t8 [(29:*:(30:*:Empty)),((-10):*:(2:*:Empty))]
 
 test16 = toPer t10 [(Just (-10):*:(2:*:Empty))]
 
-
-uncompTest1 = runState (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0])) 0
+-- Tests for constrained INTEGERs
+uncompTest1 = runState (runErrorT (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
 
 -- These tests are wrong
 -- uncompTest2 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x18,0,1,1]))) 0
