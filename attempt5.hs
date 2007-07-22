@@ -378,6 +378,9 @@ encodeNoL (SEQUENCEOF s) xs
     = (concat . map (toPer s)) xs
 
 -- This currently decodes the whole thing not just the length determinant as the name would suggest!
+-- And we probably ought to check that the reported number of octets / bytes are available for decoding!
+-- getbits should probably fail if you ask it for bits that don't exist.
+-- Currently failure could return an empty list which we do check for or a partial list which we don't check for.
 decodeLengthDeterminant b =
    do n <- get
       let bit8 = getBit n b
@@ -608,6 +611,9 @@ uncompTest1 = runState (runErrorT (untoPerInt (Range INTEGER (Just 3) (Just 6)) 
 -- uncompTest2 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x18,0,1,1]))) 0
 -- uncompTest3 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x81,0x80,0,0]))) 0
 
+
+-- Tests for semi-constrained INTEGERs
+-- We need to replace decodeLengthDeterminant with untoPerInt
 unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
 
 decodeEncode :: BitStream -> BitStream
@@ -638,7 +644,8 @@ wrongTest = drop 8 wrong == unWrong
 
 longer = toPer (Range INTEGER (Just 0) Nothing) (256^128)
 unLonger = decodeEncode longer
+longerTest = drop 16 longer == unLonger
 
-longer1 = toPer (Range INTEGER (Just 0) Nothing) (256^(2^10))
+longer1 = toPer (Range INTEGER (Just 0) Nothing) (256^(2^11))
 unLonger1 = decodeEncode longer1
-
+longerTest1 = drop 16 longer1 == unLonger1
