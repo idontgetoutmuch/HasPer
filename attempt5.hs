@@ -1,6 +1,4 @@
 {-
-A fifth attempt to model subtyping constraints
-
 The encoding is for UNALIGNED PER
 -}
 
