@@ -486,6 +486,31 @@ getBit o xs =
          z = B.head ys
          u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
 
+mGetBit o xs =
+   if B.null ys
+      then throwError ("Unable to decode " ++ show xs ++ " at bit " ++ show o)
+      else return u
+   where (nBytes,nBits) = o `divMod` 8
+         ys = B.drop nBytes xs
+         z = B.head ys
+         u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
+
+-- Very inefficient
+mGetBits o n b = mapM (flip mGetBit b) [o..o+n+1]
+
+mDecodeWithLengthDeterminant k b =
+   do n <- get
+      p <- mGetBit n b
+      case p of
+         -- 10.9.3.6
+         0 ->
+            do j <- mGetBits (n+1) 7 b
+               let l = fromNonNeg j
+               put (n + 8 + l*k)
+               mGetBits (n+8) (l*k) b
+         1 ->
+            undefined
+
 from2sComplement a@(x:xs) =
    -(x*(2^(l-1))) + sum (zipWith (*) xs ys)
    where
