@@ -1,3 +1,5 @@
+module ConstrainedType where
+
 {-
 The encoding is for UNALIGNED PER
 -}
