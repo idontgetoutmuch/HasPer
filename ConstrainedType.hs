@@ -11,6 +11,8 @@ import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
 import Text.PrettyPrint
+import System
+import IO
 
 type BitStream = [Int]
 
@@ -675,3 +677,11 @@ longerTest = drop 16 longer == unLonger
 longer1 = toPer (Range INTEGER (Just 0) Nothing) (256^(2^11))
 unLonger1 = decodeEncode longer1
 longerTest1 = drop 16 longer1 == unLonger1
+
+foo =
+   do h <- openFile "test" ReadMode
+      b <- B.hGetContents h
+      let d = runState(runErrorT (untoPerInt (Range INTEGER (Just 25) (Just 30)) b)) 0
+      case d of
+         (Left e,s)  -> return (e ++ " " ++ show s)
+         (Right n,s) -> return (show n ++ " " ++ show s)
