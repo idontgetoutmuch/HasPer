@@ -519,20 +519,6 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    END
 -}
 
-prettyType :: Show a => ConstrainedType a -> Doc
-prettyType INTEGER = text "INTEGER"
-prettyType (Range x l u) = 
-   let l' = 
-          case l of
-             Nothing -> text "MIN"
-             Just m  -> text (show m)
-       u' = case u of
-               Nothing -> text "MAX"
-               Just n  -> text (show n)
-       in
-    sep [prettyType x, parens (sep [l',text "..",u'])]
-prettyType (Includes t1 t2) = sep [prettyType t1, parens (prettyType t2)]
-
 t1 = Range INTEGER (Just 25) (Just 30)
 t2 = Includes INTEGER t1
 t3 = Includes t1 t1
