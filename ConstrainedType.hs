@@ -498,7 +498,7 @@ mGetBit o xs =
          u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
 
 -- Very inefficient
-mGetBits o n b = mapM (flip mGetBit b) [o..o+n+1]
+mGetBits o n b = mapM (flip mGetBit b) [o..o+n-1]
 
 mDecodeWithLengthDeterminant k b =
    do n <- get
