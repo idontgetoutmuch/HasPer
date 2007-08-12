@@ -380,113 +380,7 @@ encodeNoL :: ConstrainedType a -> a -> BitStream
 encodeNoL (SEQUENCEOF s) xs
     = (concat . map (toPer s)) xs
 
--- This currently decodes the whole thing not just the length determinant as the name would suggest!
--- And we probably ought to check that the reported number of octets / bytes are available for decoding!
--- getbits should probably fail if you ask it for bits that don't exist.
--- Currently failure could return an empty list which we do check for or a partial list which we don't check for.
-decodeLengthDeterminant b =
-   do n <- get
-      let bit8 = getBit n b
-      if null bit8
-         then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
-         else
-            case (head bit8) of
-               -- 10.9.3.6
-               0 ->
-                  do let l = fromNonNeg (getBits (n+1) 7 b)
-                     put (n + 8 + l*8)
-                     return (getBits (n+8) (l*8) b)
-               1 ->
-                  do let bit7 = getBit (n+1) b
-                     if null bit7
-                        then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
-                        else case (head bit7) of
-                                -- 10.9.3.7
-                                0 ->
-                                   do let l = fromNonNeg (getBits (n+2) 14 b)
-                                      put (n + 16 + l*8)
-                                      return (getBits (n+16) (l*8) b)
-                                1 ->
-                                   do let fragSize = fromNonNeg (getBits (n+2) 6 b)
-                                      if fragSize <= 0 || fragSize > 4
-                                         then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
-                                         else do let frag = getBits (n+8) (fragSize*16*(2^10)*8) b
-                                                 put (n + 8 + fragSize*16*(2^10)*8)
-                                                 -- This looks like it might be quadratic in efficiency!
-                                                 rest <- decodeLengthDeterminant b
-                                                 return (frag ++ rest)
-
 n16k = 16*(2^10)
-
--- And we probably ought to check that the reported number of octets / bytes are available for decoding!
--- getbits should probably fail if you ask it for bits that don't exist.
--- Currently failure could return an empty list which we do check for or a partial list which we don't check for.
-decodeWithLengthDeterminant k b =
-   do n <- get
-      let bit8 = getBit n b
-      if null bit8
-         then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
-         else
-            case (head bit8) of
-               -- 10.9.3.6
-               0 ->
-                  do let l = fromNonNeg (getBits (n+1) 7 b)
-                     put (n + 8 + l*k)
-                     return (getBits (n+8) (l*k) b)
-               1 ->
-                  do let bit7 = getBit (n+1) b
-                     if null bit7
-                        then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
-                        else case (head bit7) of
-                                -- 10.9.3.7
-                                0 ->
-                                   do let l = fromNonNeg (getBits (n+2) 14 b)
-                                      put (n + 16 + l*k)
-                                      return (getBits (n+16) (l*k) b)
-                                1 ->
-                                   do let fragSize = fromNonNeg (getBits (n+2) 6 b)
-                                      if fragSize <= 0 || fragSize > 4
-                                         then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
-                                         else do let frag = getBits (n+8) (fragSize*n16k*k) b
-                                                 put (n + 8 + fragSize*n16k*k)
-                                                 -- This looks like it might be quadratic in efficiency!
-                                                 rest <- decodeWithLengthDeterminant k b
-                                                 return (frag ++ rest)
-                                                 
-untoPerInt t b =
-   case p of
-      -- 10.5 Encoding of a constrained whole number
-      Constrained (Just lb) (Just ub) ->
-         let range = ub - lb + 1
-             n     = genericLength (minBits ((ub-lb),range-1)) in
-            if range <= 1
-               -- 10.5.4
-               then return lb
-               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
-               else do offset <- get
-                       put (offset + n)
-                       return (lb + (fromNonNeg (getBits offset (fromIntegral n) b)))
-      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
-      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
-      Constrained (Just lb) Nothing ->
-         do o <- decodeWithLengthDeterminant 8 b
-            return (lb + (fromNonNeg o))
-      _ -> undefined
-   where
-      p = bounds t
-
--- Very inefficient
-getBits o n b =
-   map fromIntegral (concat (map (flip getBit b) [o..o+n-1]))
-
-getBit o xs =
-   if B.null ys
-      then []
-      else [u]
-   where (nBytes,nBits) = o `divMod` 8
-         ys = B.drop nBytes xs
-         z = B.head ys
-         u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
 
 mGetBit o xs =
    if B.null ys
@@ -542,7 +436,8 @@ mUntoPerInt t b =
                -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
                else do offset <- get
                        put (offset + n)
-                       return (lb + (fromNonNeg (getBits offset (fromIntegral n) b)))
+                       j <- mGetBits offset (fromIntegral n) b
+                       return (lb + (fromNonNeg j))
       -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
       -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
       Constrained (Just lb) Nothing ->
@@ -782,7 +677,7 @@ mUnLongTest3 = longIntegerVal3 == mUnLong3
 foo =
    do h <- openFile "test" ReadMode
       b <- B.hGetContents h
-      let d = runState(runErrorT (untoPerInt (Range INTEGER (Just 25) (Just 30)) b)) 0
+      let d = runState(runErrorT (mUntoPerInt (Range INTEGER (Just 25) (Just 30)) b)) 0
       case d of
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
