@@ -511,7 +511,46 @@ mDecodeWithLengthDeterminant k b =
                put (n + 8 + l*k)
                mGetBits (n+8) (l*k) b
          1 ->
-            undefined
+            do q <- mGetBit (n+1) b
+               case q of
+                  -- 10.9.3.7
+                  0 ->
+                     do j <- mGetBits (n+2) 14 b
+                        let l = fromNonNeg j
+                        put (n + 16 + l*k)
+                        mGetBits (n+16) (l*k) b
+                  1 ->
+                     do j <- mGetBits (n+2) 6 b
+                        let fragSize = fromNonNeg j
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
+                           else do frag <- mGetBits (n+8) (fragSize*n16k*k) b
+                                   put (n + 8 + fragSize*n16k*k)
+                                   -- This looks like it might be quadratic in efficiency!
+                                   rest <- mDecodeWithLengthDeterminant k b
+                                   return (frag ++ rest)
+
+mUntoPerInt t b =
+   case p of
+      -- 10.5 Encoding of a constrained whole number
+      Constrained (Just lb) (Just ub) ->
+         let range = ub - lb + 1
+             n     = genericLength (minBits ((ub-lb),range-1)) in
+            if range <= 1
+               -- 10.5.4
+               then return lb
+               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
+               else do offset <- get
+                       put (offset + n)
+                       return (lb + (fromNonNeg (getBits offset (fromIntegral n) b)))
+      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
+      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
+      Constrained (Just lb) Nothing ->
+         do o <- mDecodeWithLengthDeterminant 8 b
+            return (lb + (fromNonNeg o))
+      _ -> undefined
+   where
+      p = bounds t
 
 from2sComplement a@(x:xs) =
    -(x*(2^(l-1))) + sum (zipWith (*) xs ys)
@@ -568,9 +607,15 @@ integer4 = toPer (Range INTEGER Nothing (Just 65535)) 128
 
 -- Semi-constrained INTEGER
 
-integer5 = toPer (Range INTEGER (Just (-1)) Nothing) 4096
-integer6 = toPer (Range INTEGER (Just 1) Nothing) 127
-integer7 = toPer (Range INTEGER (Just 0) Nothing) 128
+tInteger5 = Range INTEGER (Just (-1)) Nothing
+vInteger5 = 4096
+integer5  = toPer (Range INTEGER (Just (-1)) Nothing) 4096
+tInteger6 = Range INTEGER (Just 1) Nothing
+vInteger6 = 127
+integer6  = toPer (Range INTEGER (Just 1) Nothing) 127
+tInteger7 = Range INTEGER (Just 0) Nothing
+vInteger7 = 128
+integer7  = toPer (Range INTEGER (Just 0) Nothing) 128
 
 -- Constrained INTEGER
 
@@ -633,7 +678,8 @@ test15 = toPer t8 [(29:*:(30:*:Empty)),((-10):*:(2:*:Empty))]
 test16 = toPer t10 [(Just (-10):*:(2:*:Empty))]
 
 -- Tests for constrained INTEGERs
-uncompTest1 = runState (runErrorT (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
+-- ** uncompTest1 = runState (runErrorT (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
+mUncompTest1 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
 
 -- These tests are wrong
 -- uncompTest2 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x18,0,1,1]))) 0
@@ -642,8 +688,11 @@ uncompTest1 = runState (runErrorT (untoPerInt (Range INTEGER (Just 3) (Just 6)) 
 
 -- Tests for semi-constrained INTEGERs
 -- We need to replace decodeLengthDeterminant with untoPerInt
-unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
+-- ** unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
+mUnInteger5 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
 
+{-
+**
 decodeEncode :: BitStream -> BitStream
 decodeEncode x =
    case runTest x 0 of
@@ -651,32 +700,84 @@ decodeEncode x =
       (Right xs,_) -> xs
    where 
       runTest = runState . runErrorT . decodeLengthDeterminant . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
+-}
 
+mDecodeEncode :: ConstrainedType Integer -> BitStream -> Integer
+mDecodeEncode t x =
+   case runTest x 0 of
+      (Left _,_)   -> undefined
+      (Right xs,_) -> xs
+   where 
+      runTest = runState . runErrorT . mUntoPerInt t . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
+
+{-
+**
 unSemi5 = decodeEncode integer5
 semi5 = drop 8 integer5
 semiTest5 = semi5 == unSemi5
+-}
 
+mUnSemi5 = mDecodeEncode tInteger5 integer5
+mSemiTest5 = vInteger5 == mUnSemi5
+{-
+**
 unSemi6 = decodeEncode integer6
 semi6 = drop 8 integer6
 semiTest6 = semi6 == unSemi6
+-}
 
+mUnSemi6 = mDecodeEncode tInteger6 integer6
+mSemiTest6 = vInteger6 == mUnSemi6
+
+{-
+**
 unSemi7 = decodeEncode integer7
 semi7 = drop 8 integer7
 semiTest7 = semi7 == unSemi7
+-}
+
+mUnSemi7 = mDecodeEncode tInteger7 integer7
+mSemiTest7 = vInteger7 == mUnSemi7
 
 -- This used to give the wrong answer presumably because we were using Int
 
+{-
+**
 wrong = toPer (Range INTEGER (Just 0) Nothing) (256^4)
 unWrong = decodeEncode wrong
 wrongTest = drop 8 wrong == unWrong
+-}
 
+natural = Range INTEGER (Just 0) Nothing
+
+longIntegerVal1 = 256^4
+longIntegerPER1 = toPer natural longIntegerVal1
+mUnLong1 = mDecodeEncode natural longIntegerPER1
+mUnLongTest1 = longIntegerVal1 == mUnLong1
+
+{-
+**
 longer = toPer (Range INTEGER (Just 0) Nothing) (256^128)
 unLonger = decodeEncode longer
 longerTest = drop 16 longer == unLonger
+-}
 
+longIntegerVal2 = 256^128
+longIntegerPER2 = toPer natural longIntegerVal2
+mUnLong2 = mDecodeEncode natural longIntegerPER2
+mUnLongTest2 = longIntegerVal2 == mUnLong2
+
+{-
+**
 longer1 = toPer (Range INTEGER (Just 0) Nothing) (256^(2^11))
 unLonger1 = decodeEncode longer1
 longerTest1 = drop 16 longer1 == unLonger1
+-}
+
+longIntegerVal3 = 256^(2^11)
+longIntegerPER3 = toPer natural longIntegerVal3
+mUnLong3 = mDecodeEncode natural longIntegerPER3
+mUnLongTest3 = longIntegerVal3 == mUnLong3
 
 foo =
    do h <- openFile "test" ReadMode
