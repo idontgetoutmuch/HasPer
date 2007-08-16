@@ -72,12 +72,12 @@ import Data.Word
 type Octet = Word8
 
 data TagType = Universal | Application | Context | Private
-   deriving (Eq,Show, Enum)
+   deriving (Eq,Show,Enum,Ord)
 
 type TagValue = Integer
 
 data TagPlicity = Implicit | Explicit
-   deriving (Eq,Show)
+   deriving (Eq,Show,Ord)
 
 data AbsPrimType = AbsVisibleString
                  | AbsPrintableString
