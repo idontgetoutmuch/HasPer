@@ -7,19 +7,21 @@ The encoding is for UNALIGNED PER
 import Data.Monoid
 import Data.List hiding (groupBy)
 import Data.Bits
+import Data.Char
 import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
+import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default))
 import Text.PrettyPrint
 import System
 import IO
 
 type BitStream = [Int]
 
-data BitString = BitString
-   deriving Show
+bigIntLength = toInteger . length
 
 newtype IA5String = IA5String {iA5String :: String}
+newtype BitString = BitString {bitString :: BitStream}
 
 instance Show IA5String where
    show (IA5String x) = show x
@@ -40,7 +42,8 @@ data AlphabetConstraint :: * -> * where
    UnionAlpha            :: AlphabetConstraint a -> AlphabetConstraint a -> AlphabetConstraint a
 
 newtype PrintableString = PrintableString {unPrintableString :: String}
-   deriving Show
+
+
 
 -- X.680 (07/2002) Section 47.1 Table 9
 
@@ -65,11 +68,13 @@ instance ValueRange IA5String
 instance ValueRange PrintableString
 instance ValueRange Integer
 
+
 class PermittedAlphabet a
 
 -- BIT STRING cannot be given permitted alphabet
 instance PermittedAlphabet IA5String
 instance PermittedAlphabet PrintableString
+instance PermittedAlphabet VisibleString
 -- INTEGER cannot be given permitted alphabet
 
 class SizeConstraint a
@@ -78,7 +83,9 @@ instance SizeConstraint BitString
 instance SizeConstraint IA5String
 instance SizeConstraint PrintableString
 instance SizeConstraint [a]
+instance SizeConstraint VisibleString
 -- INTEGER cannot be given a size constraint
+
 
 -- Heterogeneous lists of constrained types
 
@@ -87,42 +94,54 @@ data a:*:l = a:*:l
 
 data Sequence :: * -> * where
    Nil :: Sequence Nil
-   Cons :: ConstrainedType a -> Sequence l -> Sequence (a:*:l)
+   Cons ::  ConstrainedType a -> Sequence l -> Sequence (a:*:l)
    Optional :: ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
-   Default :: ConstrainedType a -> Sequence l -> Sequence (a:*:l)
+   Default :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
+
+-- The Choice type is similar to a Sequence except that each value
+-- is optional and only one value can exist at a time. Note that
+-- the Choice type has no PER-visible constraints.
+
+data Choice :: * -> * where
+    NoChoice     :: Choice Nil
+    ChoiceOption :: ConstrainedType a -> Choice l -> Choice ((Maybe a):*:l)
+
+-- Type Aliases for Tag Information
+type TagInfo    = (TagType, TagValue, TagPlicity)
+type TagHistory = [TagInfo]
 
 -- The major data structure itself
 
 data ConstrainedType :: * -> * where
-   INTEGER         :: ConstrainedType Integer
-   BITSTRING       :: ConstrainedType BitString
-   PRINTABLESTRING :: ConstrainedType PrintableString
-   IA5STRING       :: ConstrainedType IA5String
-   Single          :: SingleValue a => ConstrainedType a -> a -> ConstrainedType a
-   Includes        :: ContainedSubtype a => ConstrainedType a -> ConstrainedType a -> ConstrainedType a
-   Range           :: (Ord a, ValueRange a) => ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
-   SEQUENCE        :: Sequence a -> ConstrainedType a
-   SEQUENCEOF      :: ConstrainedType a -> ConstrainedType [a]
-   SIZE            :: SizeConstraint a => ConstrainedType a -> Lower -> Upper -> ConstrainedType a
-
+   BOOLEAN         :: TagHistory -> ConstrainedType Bool
+   INTEGER         :: TagHistory -> ConstrainedType Integer
+--   ENUMERATED      :: TagHistory -> ConstrainedType Enumerated
+   BITSTRING       :: TagHistory -> ConstrainedType BitString
+   PRINTABLESTRING :: TagHistory -> ConstrainedType PrintableString
+   IA5STRING       :: TagHistory -> ConstrainedType IA5String
+   VISIBLESTRING   :: TagHistory -> ConstrainedType VisibleString
+   Single          :: SingleValue a => TagHistory -> ConstrainedType a -> a -> ConstrainedType a
+   Includes        :: ContainedSubtype a => TagHistory -> ConstrainedType a -> ConstrainedType a -> ConstrainedType a
+   Range           :: (Ord a, ValueRange a) => TagHistory -> ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
+   SEQUENCE        :: TagHistory -> Sequence a -> ConstrainedType a
+   SEQUENCEOF      :: TagHistory -> ConstrainedType a -> ConstrainedType [a]
+   SIZE            :: SizeConstraint a => TagHistory -> ConstrainedType a -> Lower -> Upper -> ConstrainedType a
+   SET             :: TagHistory -> Sequence a -> ConstrainedType a
+   SETOF           :: TagHistory -> ConstrainedType a -> ConstrainedType [a]
+   CHOICE          :: TagHistory -> Choice a -> ConstrainedType a
+   FROM            :: PermittedAlphabet a => TagHistory -> ConstrainedType a
+                        -> a -> ConstrainedType a
 {-
-   -- Size constraint: there are two sorts modelled by SizeConstraint
-   Size         :: Sized a => ConstrainedType a -> SizeConstraint -> ConstrainedType a
-   -- Alphabet constraint - not quite right see note below
-   From         :: PermittedAlphabet a => ConstrainedType a -> AlphabetConstraint a -> ConstrainedType a
    -- Regular expression constraint - ignore for now but it would be cool to do them
-   -- Constraint on SEQUENCE OF or SET OF - ignore for now until we fix the main datatype
-   -- Constraint on SEQUENCE, SET or CHOICE - ignore for now until we fix the main datatype
    -- Subtyping the content of an OCTET STRING - ignore for now
    -- Constraint combinations
    -- Note that we don't need intersections - we need a longer explanation for this
    Union        :: ConstrainedType a -> ConstrainedType a -> ConstrainedType a
 -}
 
+
 -- dna = From PRINTABLESTRING (SingleValueAlpha (PrintableString "TAGC")) shouldn't typecheck
 
-isExtensible :: ConstrainedType a -> Bool
-isExtensible = undefined
 
 type Upper = Maybe Integer
 type Lower = Maybe Integer
@@ -147,31 +166,61 @@ instance Ord a => Monoid (Constraint a) where
 -- no lower or upper bound.
 
 bounds :: Ord a => ConstrainedType a -> Constraint a
-bounds INTEGER = Constrained Nothing Nothing
-bounds (Includes t1 t2) =
-   (bounds t1) `mappend` (bounds t2)
-bounds (Range t l u) =
-   (bounds t) `mappend` (Constrained l u)
-bounds (SEQUENCEOF x) = Constrained Nothing Nothing
-bounds (SIZE t l u) = Constrained Nothing Nothing
+bounds (Includes _ t1 t2)   = (bounds t1) `mappend` (bounds t2)
+bounds (Range _ t l u)      = (bounds t) `mappend` (Constrained l u)
+bounds _                    = Constrained Nothing Nothing
+
 
 -- sizeLimit returns the size limits of a value. Nothing
 -- indicates no lower or upper bound.
 
 sizeLimit :: ConstrainedType a -> Constraint Integer
-sizeLimit (SIZE t l u) = Constrained l u
-sizeLimit _            = Constrained Nothing Nothing
+sizeLimit (SIZE _ _ l u) = Constrained l u
+sizeLimit _              = Constrained Nothing Nothing
+
+-- manageSize is a HOF used to manage the three size cases for a
+-- type amenable to a size constraint.
+
+manageSize :: (ConstrainedType a -> Integer -> Integer -> t -> t1) -> (ConstrainedType a -> t -> t1)
+                -> ConstrainedType a -> t -> t1
+manageSize fn1 fn2 t x
+    = case p of
+       Constrained (Just lb) (Just ub) ->
+         fn1 t lb ub x
+       Constrained (Just lb) Nothing ->
+         fn2 t x
+       Constrained Nothing Nothing ->
+         fn2 t x
+     where
+      p = sizeLimit t
 
 -- toPer is the top-level PER encoding function.
 
-toPer :: ConstrainedType a -> a -> BitStream
-toPer INTEGER x                      = encodeInt INTEGER x
-toPer r@(Range INTEGER l u) x        = encodeInt r x
-toPer (SEQUENCE s) x                 = encodeSeq s x
-toPer t@(SEQUENCEOF s) xs            = encodeSO t xs
-toPer t@(SIZE (SEQUENCEOF c) l u) x  = encodeSO t x
+toPer :: ConstrainedType a -> a -> [Int]
+toPer t@(BOOLEAN tgs) x                         = encodeBool t x
+toPer t@(INTEGER tgs) x                         = encodeInt t x
+toPer r@(Range tgs1 (INTEGER tgs2) l u) x       = encodeInt r x
+toPer t@(BITSTRING tgs) x                       = encodeBS t x
+toPer t@(SIZE tgs1 (BITSTRING tgs) l u) x       = encodeBS t x
+toPer (SEQUENCE tgs s) x                        = encodeSeq s x
+toPer t@(SEQUENCEOF tgs s) x                    = encodeSO t x
+toPer t@(SIZE tgs1 (SEQUENCEOF tgs2 c) l u) x   = encodeSO t x
+toPer (SET tgs s) x                             = encodeSet s x
+toPer t@(SETOF tgs s) x                         = encodeSO t x
+toPer t@(CHOICE tgs c) x                        = encodeChoice c x
+toPer t@(VISIBLESTRING tgs) x                   = encodeVS t x
+toPer t@(SIZE tgs1 (VISIBLESTRING tgs) l u) x   = encodeVS t x
+toPer t@(FROM tgs1 (VISIBLESTRING tgs) pac) x   = encodeVSF t x
+toPer t@(SIZE tgs1 (FROM tgs2 (VISIBLESTRING tgs) pac) l u) x
+                                                = encodeVSF t x
 
--- INTEGER ENCODING 10.3 - 10.8
+-- 11 ENCODING THE BOOLEAN TYPE
+
+encodeBool :: ConstrainedType Bool -> Bool -> BitStream
+encodeBool t True = [1]
+encodeBool t _    = [0]
+
+-- 10.3 - 10.8 ENCODING THE INTEGER TYPE
 
 encodeInt :: ConstrainedType Integer -> Integer -> BitStream
 encodeInt t x =
@@ -199,9 +248,9 @@ encodeInt t x =
 -- minBits encodes a constrained whole number (10.5.6) in the minimum
 -- number of bits required for the range (assuming the range is at least 2).
 
-minBits :: (Integer,Integer) -> BitStream
+minBits :: (Integer, Integer) -> BitStream
 minBits
-    = map fromIntegral . reverse . unfoldr h
+    = reverse . (map fromInteger) . unfoldr h
       where
         h (_,0) = Nothing
         h (0,w) = Just (0, (0, w `div` 2))
@@ -215,7 +264,7 @@ minBits
 
 minOctets :: Integer -> BitStream
 minOctets =
-   map fromIntegral . reverse . flip (curry (unfoldr (uncurry g))) 8 where
+   reverse . (map fromInteger) . flip (curry (unfoldr (uncurry g))) 8 where
       g 0 0 = Nothing
       g 0 p = Just (0,(0,p-1))
       g n 0 = Just (n `mod` 2,(n `div` 2,7))
@@ -224,36 +273,62 @@ minOctets =
 
 -- 10.9 General rules for encoding a length determinant
 -- 10.9.4, 10.9.4.2 and 10.9.3.4 to 10.9.3.8.4.
-encodeWithLengthDeterminant =
-   concat . concat . insertLengths . groupBy 4 . groupBy (16*(2^10)) . groupBy 8
 
+-- encodeInsert is a HOF which manages the fragmentation and
+-- encoding of a value with an unconstrained length.
+
+encodeInsert :: (t -> [[[t1]]] -> [[a]]) -> t -> [t1] -> [a]
+encodeInsert f s = concat . f s . groupBy 4 . groupBy (16*(2^10))
+
+encodeWithLengthDeterminant :: [Int] -> [Int]
+encodeWithLengthDeterminant = concat . encodeInsert unfoldr intLengths . groupBy 8
+
+groupBy :: Int -> [t] -> [[t]]
 groupBy n =
    unfoldr k
       where
          k [] = Nothing
          k p = Just (splitAt n p)
 
-insertLengths = unfoldr k
+-- HOFs of use when encoding values with an unconstrained length
+-- where the length value has to be interspersed with value encoding.
 
-k [] = Nothing
-k (x:xs)
-   | l == n && lm >= l1b = Just (ws,xs)
+ulWrapper :: (Num t) => ([a] -> [a1]) -> (t1 -> [a1] -> [a1]) -> (Integer -> t -> t1)
+                    -> (Integer -> [a1]) -> [[[a]]] -> Maybe ([a1], [[[a]]])
+ulWrapper fn op inp lf [] = Nothing
+ulWrapper fn op inp lf (x:xs)
+   | l == n && lm == l1b = Just (ws x,xs)
    | l == 1 && lm <  l1b = Just (us,[])
    | otherwise           = Just (vs,[])
    where
-      l   = genericLength x
-      m   = x `genericIndex` (l-1)
-      lm  = genericLength m
-      ws  = (1:1:(minBits (l,w6))):(concat x)
-      us  = ld (genericLength m) ++ m
-      vs  = if lm >= l1b then
-               (1:1:(minBits (l,w6))):(concat x ++ ld 0)
+      bl  = bigIntLength x
+      l   = length x
+      m   = x!!(l-1)
+      lm  = length m
+      ws  = abs1 fn op (inp bl r)
+      us  = lf (bigIntLength m) ++ fn m
+      vs  = if lm == l1b then
+               ws x ++ lf 0
             else
-               ((1:1:(minBits ((l-1), w6))):(concat (genericTake (l-1) x)) ++ ld (genericLength m) ++ m)
+               ws (take (l-1) x) ++ lf (bigIntLength m) ++ fn m
       n   = 4
-      w6  = 2^6 - 1
       l1b = 16*(2^10)
+      r = 2^6 - 1
 
+abs1 :: (a1 -> [a]) -> (t -> [a] -> t1) -> t -> [a1] -> t1
+abs1 f op x y
+    = x `op` (concat . map f) y
+
+arg1 :: Integer -> Integer -> [Int]
+arg1 x y = (1:1:(minBits (x,y)))
+
+
+-- intLengths adds length value to section of int value
+
+intLengths :: [[[BitStream]]] -> Maybe ([BitStream], [[[BitStream]]])
+intLengths = ulWrapper id (:) arg1 ld
+
+ld :: Integer -> [BitStream]
 ld n
 -- 10.9.4.2, 10.9.3.5, 10.9.3.6 Note not very efficient since we know log2 128 = 7
    | n <= 127       = [0:(minBits (n, 127))]
@@ -268,36 +343,108 @@ ld n
 -- by the encoding of its length using encodeWithLengthDeterminant
 -- (10.8.3)
 
+to2sComplement :: Integer -> BitStream
 to2sComplement n
    | n >= 0 = 0:(h n)
    | otherwise = minOctets (2^p + n)
    where
       p = length (h (-n-1)) + 1
 
+g :: (Integer, Integer) -> Maybe (Integer, (Integer, Integer))
 g (0,0) = Nothing
 g (0,p) = Just (0,(0,p-1))
 g (n,0) = Just (n `rem` 2,(n `quot` 2,7))
 g (n,p) = Just (n `rem` 2,(n `quot` 2,p-1))
 
-h n = map fromIntegral (reverse (flip (curry (unfoldr g)) 7 n))
+h :: Integer -> BitStream
+h n = (reverse . map fromInteger) (flip (curry (unfoldr g)) 7 n)
 
+-- 13 ENCODING THE ENUMERATED TYPE
+
+
+
+-- 15 ENCODING THE BITSTRING TYPE
+
+--
+
+encodeBS :: ConstrainedType BitString -> BitString -> BitStream
+encodeBS = manageSize encodeBSSz encodeBSNoSz
+
+
+encodeBSSz :: ConstrainedType BitString -> Integer -> Integer -> BitString -> BitStream
+encodeBSSz t@(SIZE tgs ty _ _) l u x@(BitString xs)
+    = let exs = editBS l u xs
+      in
+        if u == 0
+            then []
+            else if u == l && u <= 65536
+                    then exs
+                    else encodeBSWithLD exs
+
+encodeBSWithLD  = encodeInsert insertBSL (INTEGER [])
+
+insertBSL s = unfoldr (bsLengths s)
+
+bsLengths t = ulWrapper (id) (++) arg1 ld2
+
+editBS :: Integer -> Integer -> BitStream -> BitStream
+editBS l u xs
+    = let lxs = bigIntLength xs
+      in if lxs < l
+        then add0s (l-lxs) xs
+        else
+            if lxs > u
+             then rem0s (lxs-u) xs
+             else xs
+
+add0s :: Integer -> BitStream -> BitStream
+add0s n xs = xs ++ take (fromInteger n) [0,0..]
+
+rem0s (n+1) xs
+    = if last xs == 0
+           then rem0s n (init xs)
+           else error "Last value is not 0"
+rem0s 0 xs = xs
+
+encodeBSNoSz :: ConstrainedType BitString -> BitString -> BitStream
+encodeBSNoSz t (BitString bs)
+    = let rbs = reverse bs
+          rem0 = strip0s rbs
+       in reverse rem0
+
+strip0s (a:r)
+    = if a == 0
+        then strip0s r
+        else (a:r)
+strip0s [] = []
 
 -- 18 ENCODING THE SEQUENCE TYPE
 
-encodeSeq s x = concat (encodeSeqAux [] [] s x)
+encodeSeq :: Sequence a -> a -> BitStream
+encodeSeq s x
+    =   let (p,es) = encodeSeqAux [] [] s x
+        in  concat p ++ concat es
 
 -- encodeSeqAux is the auxillary function for encodeSeq. When
 -- encoding a sequence, one has to both encode each component and
 -- produce a preamble which indicates the presence or absence of an
--- optional or default value.
+-- optional or default value. The first list in the result is the
+-- preamble.
 
-encodeSeqAux :: [Int] -> [[Int]] -> Sequence a -> a -> [BitStream]
-encodeSeqAux preamble body Nil _ = (reverse preamble):(reverse body)
-encodeSeqAux preamble body (Cons a as) (x:*:xs) = encodeSeqAux preamble ((toPer a x):body) as xs
+encodeSeqAux :: [BitStream] -> [BitStream] -> Sequence a -> a ->
+    ([BitStream],[BitStream])
+encodeSeqAux preamble body Nil _ = ((reverse preamble),(reverse body))
+encodeSeqAux preamble body (Cons a as) (x:*:xs) =
+   encodeSeqAux ([]:preamble) ((toPer a x):body) as xs
 encodeSeqAux preamble body (Optional a as) (Nothing:*:xs) =
-   encodeSeqAux (0:preamble) body as xs
+   encodeSeqAux ([0]:preamble)([]:body) as xs
 encodeSeqAux preamble body (Optional a as) ((Just x):*:xs) =
-   encodeSeqAux (1:preamble) ((toPer a x):body) as xs
+   encodeSeqAux ([1]:preamble) ((toPer a x):body) as xs
+encodeSeqAux preamble body (Default a d as) (Nothing:*:xs) =
+   encodeSeqAux ([0]:preamble) ([]:body) as xs
+encodeSeqAux preamble body (Default a d as) ((Just x):*:xs) =
+   encodeSeqAux ([1]:preamble) ((toPer a x):body) as xs
+
 
 -- 19. ENCODING THE SEQUENCE-OF TYPE
 
@@ -305,35 +452,32 @@ encodeSeqAux preamble body (Optional a as) ((Just x):*:xs) =
 -- sequence-of value. This requires both the encoding of
 -- each of the components, and in most cases the encoding
 -- of the length of the sequence of (which may require
--- fragmentation into 64K blocks).
+-- fragmentation into 64K blocks). It uses the function manageSize
+-- which manages the 3 possible size cases.
 
 encodeSO :: ConstrainedType [a] -> [a] -> BitStream
-encodeSO t x
-  =  case p of
-       Constrained (Just lb) (Just ub) ->
-         encodeSeqSz t lb ub x
-       Constrained (Just lb) Nothing ->
-         encodeSeqOf t x
-       Constrained Nothing Nothing ->
-         encodeSeqOf t x
-     where
-      p = sizeLimit t
+encodeSO  = manageSize encodeSeqSz encodeSeqOf
 
-encodeSeqSz :: ConstrainedType [a] -> Integer -> Integer -> [a] -> BitStream
-encodeSeqSz t@(SIZE ty _ _) l u x
+-- encodeSeqSz encodes a size-constrained SEQUENCEOF. It uses the
+-- function manageExtremes which manages the 3 upper/lower bound size value cases.
+
+manageExtremes :: ([a] -> BitStream) -> ([a] -> BitStream) -> Integer -> Integer -> [a] -> BitStream
+manageExtremes fn1 fn2 l u x
     = let range = u - l + 1
         in
             if range == 1 && u < 65536
---19.5
-               then encodeNoL ty x
+               then fn1 x
                else if u >= 65536
---19.6
-                   then encodeSeqOf ty x
-                   else minBits ((genericLength x-l),range-1) ++ encodeNoL ty x
+                   then fn2 x
+                   else minBits ((bigIntLength x-l),range-1) ++ fn1 x
+
+encodeSeqSz :: ConstrainedType [a] -> Integer -> Integer -> [a] -> BitStream
+encodeSeqSz (SIZE tgs ty _ _) l u x
+        = manageExtremes (encodeNoL ty) (encodeSeqOf ty) l u x
 
 
 encodeSeqOf :: ConstrainedType a -> a -> BitStream
-encodeSeqOf (SEQUENCEOF s) xs
+encodeSeqOf (SEQUENCEOF tgs s) xs
     = encodeWithLD s xs
 
 -- encodeWithLD splits the components into 16K blocks, and then
@@ -343,31 +487,17 @@ encodeSeqOf (SEQUENCEOF s) xs
 
 encodeWithLD :: ConstrainedType a -> [a] -> BitStream
 encodeWithLD s
-    = concat . insertL s . groupBy 4 . groupBy (16*(2^10))
+    = encodeInsert insertL s
 
 insertL :: ConstrainedType a -> [[[a]]] -> [BitStream]
-insertL s = unfoldr (sk s)
+insertL s = unfoldr (soLengths s)
 
-sk :: ConstrainedType a -> [[[a]]] -> Maybe (BitStream, [[[a]]])
-sk t [] = Nothing
-sk t (x:xs)
-   | l == n && lm == l1b = Just (ws,xs)
-   | l == 1 && lm <  l1b = Just (us,[])
-   | otherwise           = Just (vs,[])
-   where
-      l   = genericLength x
-      m   = x `genericIndex` (l-1)
-      lm  = genericLength m
-      ws  = (1:1:(minBits (l,w6)))++ (concat . map (concat . map (toPer t))) x
-      us  = ld2 (genericLength m) ++ (concat . map (toPer t)) m
-      vs  = if lm == l1b then
-               (1:1:(minBits (l,w6)))++ (concat . map (concat . map (toPer t))) x ++ ld2 0
-            else
-               (1:1:(minBits ((l-1), w6)))++ (concat . map (concat . map (toPer t)))
-                                            (genericTake (l-1) x) ++ ld2 (genericLength m) ++ (concat . map (toPer t)) m
-      n   = 4
-      w6  = 2^6 - 1
-      l1b = 16*(2^10)
+
+-- soLengths adds length values to encodings of SEQUENCEOF
+-- components.
+
+soLengths :: ConstrainedType a -> [[[a]]] -> Maybe (BitStream, [[[a]]])
+soLengths t = ulWrapper (concat . map (toPer t)) (++) arg1 ld2
 
 ld2 n
    | n <= 127       = 0:(minBits (n, 127))
@@ -377,8 +507,222 @@ ld2 n
 -- No length encoding of SEQUENCEOF
 
 encodeNoL :: ConstrainedType a -> a -> BitStream
-encodeNoL (SEQUENCEOF s) xs
+encodeNoL (SEQUENCEOF _ s) xs
     = (concat . map (toPer s)) xs
+
+
+-- 20. Encoding the SET type. The encoding is the same as for a
+-- SEQUENCE except that the components must be canonically ordered.
+-- The ordering is based on the component's tags. Note, the
+-- preamble must be reordered to match the ordering of the
+-- components.
+
+encodeSet :: Sequence a -> a -> BitStream
+encodeSet s x
+    =   let ts     = getTags s
+            (p,es) = (encodeSeqAux [] [] s x)
+            ps     = zip ts es
+            pps    = zip p ps
+            os     = mergesort setPred pps
+            pr     = concat (map fst os)
+            en     = concat (map (snd . snd) os)
+        in
+            pr ++ en
+
+
+
+-- Sorting
+
+mergesort :: (a -> a -> Bool) -> [a] -> [a]
+mergesort pred [] = []
+mergesort pred [x] = [x]
+mergesort pred xs = merge pred (mergesort pred xs1) (mergesort pred xs2)
+                             where (xs1,xs2) = split xs
+split :: [a] -> ([a],[a])
+split xs = splitrec xs xs []
+splitrec :: [a] -> [a] -> [a] -> ([a],[a])
+splitrec [] ys zs = (reverse zs, ys)
+splitrec [x] ys zs = (reverse zs, ys)
+splitrec (x1:x2:xs) (y:ys) zs = splitrec xs ys (y:zs)
+
+merge :: (a -> a -> Bool) -> [a] -> [a] -> [a]
+merge pred xs [] = xs
+merge pred [] ys = ys
+merge pred (x:xs) (y:ys)
+    = case pred x y
+        of True -> x: merge pred xs (y:ys)
+           False -> y: merge pred (x:xs) ys
+
+-- Sorting predicate and tag selector
+
+setPred :: (BitStream,(TagInfo, BitStream)) -> (BitStream,(TagInfo, BitStream)) -> Bool
+setPred (_,(t1,_)) (_,(t2,_)) = t1 < t2
+
+tagOrder :: ConstrainedType a -> ConstrainedType a -> Bool
+tagOrder x y = getTI x < getTI y
+
+getTags :: Sequence a -> [TagInfo]
+getTags Nil               = []
+getTags (Cons a xs)       = getTI a : getTags xs
+getTags (Optional a xs)   = getTI a : getTags xs
+getTags (Default a d xs)  = getTI a : getTags xs
+
+getTI :: ConstrainedType a -> TagInfo
+getTI (INTEGER t)       = if null t then (Universal,2, Explicit) else head t
+getTI (Range t c _ _)   = if null t then getTI c else head t
+getTI (IA5STRING t)     = if null t then (Universal,22, Explicit) else head t
+getTI (BITSTRING t)     = if null t then (Universal, 3, Explicit) else head t
+getTI (PRINTABLESTRING t)
+                        = if null t then (Universal, 19, Explicit) else head t
+getTI (VISIBLESTRING t) = if null t then (Universal, 26, Explicit) else head t
+getTI (SEQUENCE t s)    = if null t then (Universal, 16, Explicit) else head t
+getTI (SEQUENCEOF t s)  = if null t then (Universal, 16, Explicit) else head t
+getTI (SET t s)         = if null t then (Universal, 17, Explicit) else head t
+getTI (SETOF t s)       = if null t then (Universal, 17, Explicit) else head t
+getTI (SIZE t c _ _)    = if null t then getTI c else head t
+getTI (CHOICE t c)      = if null t then (minimum . getCTags) c else head t
+
+
+
+-- 21. Encoding the set-of type.
+
+-- Since we are implementing BASIC-PER (and not CANONICAL-PER) the
+-- encoding is as for a sequence-of.
+
+
+-- 22. Encoding the choice type.
+
+-- encodeChoice encodes CHOICE values. It is not dissimilar to
+-- encodeSet in that the possible choice components must be
+-- assigned an index based on their canonical ordering. This index,
+-- which starts from 0, prefixes the value encoding and is absent if
+-- there is only a single choice.
+
+encodeChoice :: Choice a -> a -> BitStream
+encodeChoice c x
+    =   let ts  = getCTags c
+            ec  = (encodeChoiceAux [] c x)
+        in
+            if length ec == 1
+                then concat ec
+            else
+                let ps  = zip ts ec
+                    os  = mergesort choicePred ps
+                    pps = zip [0..] os
+                    fr  = (head . filter (not . nullValue)) pps
+                    ls  = bigIntLength os
+                in
+                     minBits (fst fr,ls-1) ++ (snd .snd) fr
+
+nullValue :: (Integer, (TagInfo, BitStream)) -> Bool
+nullValue (f,(s,t)) = null t
+
+getCTags :: Choice a -> [TagInfo]
+getCTags NoChoice              = []
+getCTags (ChoiceOption a xs)   = getTI a : getCTags xs
+
+choicePred :: (TagInfo, BitStream) -> (TagInfo, BitStream) -> Bool
+choicePred (t1,_) (t2,_) = t1 < t2
+
+
+encodeChoiceAux :: [BitStream] -> Choice a -> a -> [BitStream]
+encodeChoiceAux body NoChoice _ = reverse body
+encodeChoiceAux body (ChoiceOption a as) (Nothing:*:xs) =
+   encodeChoiceAux ([]:body) as xs
+encodeChoiceAux body (ChoiceOption a as) ((Just x):*:xs) =
+   encodeChoiceAux' ((toPer a x):body) as xs
+
+encodeChoiceAux' :: [BitStream] -> Choice a -> a -> [BitStream]
+encodeChoiceAux' body NoChoice _ = reverse body
+encodeChoiceAux' body (ChoiceOption a as) (Nothing:*:xs) =
+   encodeChoiceAux' ([]:body) as xs
+
+
+-- 27. Encoding the restricted character string types (VISIBLESTRING)
+
+encodeVS :: ConstrainedType VisibleString -> VisibleString -> BitStream
+encodeVS = manageSize encodeVisSz encodeVis
+
+encodeVisSz :: ConstrainedType VisibleString -> Integer -> Integer -> VisibleString -> BitStream
+encodeVisSz t@(SIZE tgs ty _ _) l u x@(VisibleString xs)
+    = manageExtremes encS (encodeVis ty . VisibleString) l u xs
+
+encodeVis :: ConstrainedType VisibleString -> VisibleString -> BitStream
+encodeVis vs (VisibleString s)
+    = encodeInsert insertLVS vs s
+
+insertLVS :: ConstrainedType VisibleString -> [[String]] -> [BitStream]
+insertLVS s = unfoldr (vsLengths s)
+
+
+-- vsLengths adds lengths values to encoding of sections of
+-- VISIBLESTRING.
+
+vsLengths :: ConstrainedType VisibleString -> [[String]] -> Maybe (BitStream, [[String]])
+vsLengths s = ulWrapper encS (++) arg1 ld2
+
+encC c  = minBits ((toInteger . ord) c, 94)
+encS s  = (concat . map encC) s
+
+
+-- 27.5.4 Encoding of a VISIBLESTRING with a permitted alphabet
+-- constraint.
+
+encodeVSF :: ConstrainedType VisibleString -> VisibleString -> BitStream
+encodeVSF = manageSize encodeVisSzF encodeVisF
+
+encodeVisSzF :: ConstrainedType VisibleString -> Integer -> Integer -> VisibleString -> BitStream
+encodeVisSzF t@(SIZE tgs ty@(FROM tgs2 cv pac)_ _) l u x@(VisibleString xs)
+    = manageExtremes (encSF pac) (encodeVisF ty . VisibleString) l u xs
+
+encodeVisF :: ConstrainedType VisibleString -> VisibleString -> BitStream
+encodeVisF vs@(FROM tgs2 cv pac) (VisibleString s)
+    = encodeInsert (insertLVSF pac) vs s
+
+insertLVSF :: VisibleString -> t -> [[String]] -> [BitStream]
+insertLVSF p s = unfoldr (vsLengthsF s p)
+
+
+-- vsLengths adds lengths values to encoding of sections of
+-- VISIBLESTRING.
+
+vsLengthsF :: t -> VisibleString -> [[String]] -> Maybe (BitStream, [[String]])
+vsLengthsF s p = ulWrapper (encSF p) (++) arg1 ld2
+
+encSF (VisibleString p) str
+    = let sp  = sort p
+          lp  = (toInteger. length) p
+          b   = minExp 2 0 lp
+          mp  = maximum p
+      in
+        if ord mp < 2^b -1
+            then
+                encS str
+            else
+                concat (canEnc (lp-1) sp str)
+
+
+minExp n e p
+    = if n^e < p
+        then minExp n (e+1) p
+        else e
+
+-- Clause 38.8 in X680 (Canonical ordering of VisibleString characters)
+
+canEnc b sp [] = []
+canEnc b sp (f:r)
+        = let v = (toInteger . length . findV f) sp
+           in minBits (v,b) : canEnc b sp r
+
+findV m []  = []
+findV m (a:rs)
+          = if m == a
+                then []
+                else a : findV m rs
+
+
+
+-- Decoding
 
 n16k = 16*(2^10)
 
@@ -463,6 +807,9 @@ fromNonNeg xs =
       f 0 = [0]
       f x = x:(f (x-1))
 
+
+
+
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
@@ -480,67 +827,84 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    END
 -}
 
-t1 = Range INTEGER (Just 25) (Just 30)
-t2 = Includes INTEGER t1
-t3 = Includes t1 t1
-t4 = Range INTEGER (Just (-256)) Nothing
-t41 = Range INTEGER (Just 0) (Just 18000)
-t42 = Range INTEGER (Just 3) (Just 3)
-t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
-t6 = SEQUENCE (Cons t1 (Cons t1 Nil))
-t7 = SIZE (SEQUENCEOF t1) (Just 3) (Just 5)
-t8 = SIZE (SEQUENCEOF t5) (Just 2) (Just 2)
-t9 = SEQUENCE (Optional t4 (Cons t4 Nil))
-t10 = SIZE (SEQUENCEOF t9) (Just 1) (Just 3)
+t0 = INTEGER []
+t01 = INTEGER [(Context,0,Implicit)]
+t02 = INTEGER [(Context,2, Implicit)]
+t03 = INTEGER [(Context, 3, Implicit)]
+t04 = INTEGER [(Context, 4, Implicit)]
+t1 = Range [(Context,1,Implicit)] (INTEGER []) (Just 25) (Just 30)
+t2 = Includes [] (INTEGER []) t1
+t3 = Includes [] t1 t1
+t4 = Range [] (INTEGER []) (Just (-256)) Nothing
+t41 = Range [] (INTEGER []) (Just 0) (Just 18000)
+t42 = Range [] (INTEGER []) (Just 3) (Just 3)
+t5 = SEQUENCE [] (Cons t4 (Cons t4 Nil))
+t6 = SEQUENCE [] (Cons t1 (Cons t1 Nil))
+t7 = SIZE [] (SEQUENCEOF [] t1) (Just 3) (Just 5)
+t8 = SIZE [] (SEQUENCEOF [] t5) (Just 2) (Just 2)
+t9 = SEQUENCE [] (Optional t4 (Cons t4 Nil))
+t10 = SIZE [] (SEQUENCEOF [] t9) (Just 1) (Just 3)
+t11 = CHOICE [] (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice))))
+t12 = CHOICE [] (ChoiceOption t04 (ChoiceOption t03 NoChoice))
 
 -- Unconstrained INTEGER
-integer1 = toPer INTEGER 4096
-integer2 = toPer (Range INTEGER Nothing (Just 65535)) 127
-integer3 = toPer (Range INTEGER Nothing (Just 65535)) (-128)
-integer4 = toPer (Range INTEGER Nothing (Just 65535)) 128
+integer1 = toPer (INTEGER []) 4096
+integer2 = toPer (Range [] (INTEGER []) Nothing (Just 65535)) 127
+integer3 = toPer (Range [] (INTEGER []) Nothing (Just 65535)) (-128)
+integer4 = toPer (Range [] (INTEGER []) Nothing (Just 65535)) 128
 
 
 -- Semi-constrained INTEGER
 
-tInteger5 = Range INTEGER (Just (-1)) Nothing
+tInteger5 = Range [] (INTEGER []) (Just (-1)) Nothing
 vInteger5 = 4096
-integer5  = toPer (Range INTEGER (Just (-1)) Nothing) 4096
-tInteger6 = Range INTEGER (Just 1) Nothing
+integer5  = toPer (Range [] (INTEGER []) (Just (-1)) Nothing) 4096
+tInteger6 = Range [] (INTEGER []) (Just 1) Nothing
 vInteger6 = 127
-integer6  = toPer (Range INTEGER (Just 1) Nothing) 127
-tInteger7 = Range INTEGER (Just 0) Nothing
+integer6  = toPer (Range [] (INTEGER []) (Just 1) Nothing) 127
+tInteger7 = Range [] (INTEGER []) (Just 0) Nothing
 vInteger7 = 128
-integer7  = toPer (Range INTEGER (Just 0) Nothing) 128
+integer7  = toPer (Range [] (INTEGER []) (Just 0) Nothing) 128
 
 -- Constrained INTEGER
 
-integer8'1 = toPer (Range INTEGER (Just 3) (Just 6)) 3
-integer8'2 = toPer (Range INTEGER (Just 3) (Just 6)) 4
-integer8'3 = toPer (Range INTEGER (Just 3) (Just 6)) 5
-integer8'4 = toPer (Range INTEGER (Just 3) (Just 6)) 6
-integer9'1 = toPer (Range INTEGER (Just 4000) (Just 4254)) 4002
-integer9'2 = toPer (Range INTEGER (Just 4000) (Just 4254)) 4006
-integer10'1 = toPer (Range INTEGER (Just 4000) (Just 4255)) 4002
-integer10'2 = toPer (Range INTEGER (Just 4000) (Just 4255)) 4006
-integer11'1 = toPer (Range INTEGER (Just 0) (Just 32000)) 0
-integer11'2 = toPer (Range INTEGER (Just 0) (Just 32000)) 31000
-integer11'3 = toPer (Range INTEGER (Just 0) (Just 32000)) 32000
-integer12'1 = toPer (Range INTEGER (Just 1) (Just 65538)) 1
-integer12'2 = toPer (Range INTEGER (Just 1) (Just 65538)) 257
-integer12'3 = toPer (Range INTEGER (Just 1) (Just 65538)) 65538
+integer8'1 = toPer (Range [] (INTEGER []) (Just 3) (Just 6)) 3
+integer8'2 = toPer (Range [] (INTEGER []) (Just 3) (Just 6)) 4
+integer8'3 = toPer (Range [] (INTEGER []) (Just 3) (Just 6)) 5
+integer8'4 = toPer (Range [] (INTEGER []) (Just 3) (Just 6)) 6
+integer9'1 = toPer (Range [] (INTEGER []) (Just 4000) (Just 4254)) 4002
+integer9'2 = toPer (Range [] (INTEGER []) (Just 4000) (Just 4254)) 4006
+integer10'1 = toPer (Range [] (INTEGER []) (Just 4000) (Just 4255)) 4002
+integer10'2 = toPer (Range [] (INTEGER []) (Just 4000) (Just 4255)) 4006
+integer11'1 = toPer (Range [] (INTEGER []) (Just 0) (Just 32000)) 0
+integer11'2 = toPer (Range [] (INTEGER []) (Just 0) (Just 32000)) 31000
+integer11'3 = toPer (Range [] (INTEGER []) (Just 0) (Just 32000)) 32000
+integer12'1 = toPer (Range [] (INTEGER []) (Just 1) (Just 65538)) 1
+integer12'2 = toPer (Range [] (INTEGER []) (Just 1) (Just 65538)) 257
+integer12'3 = toPer (Range [] (INTEGER []) (Just 1) (Just 65538)) 65538
 
 
 
 test0 = toPer t1 27
 
+-- BITSTRING
+
+bsTest1 = toPer (BITSTRING []) (BitString [1,1,0,0,0,1,0,0,0,0])
+
+-- Size-constrained BITSTRING
+
+bsTest2 = toPer (SIZE [] (BITSTRING []) (Just 7) (Just 7)) (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest3 = toPer (SIZE [] (BITSTRING []) (Just 12) (Just 15)) (BitString [1,1,0,0,0,1,0,0,0,0])
 
 
 -- SEQUENCE
-test1 = toPer (SEQUENCE (Cons (SEQUENCE (Cons t1 Nil)) Nil)) ((27:*:Empty):*:Empty)
-test2 = toPer (SEQUENCE (Cons t1 (Cons t1 Nil))) (29:*:(30:*:Empty))
-test20 = toPer (SEQUENCE (Cons t1 (Cons t1 (Cons t1 Nil)))) (29:*:(30:*:(26:*:Empty)))
-test3 = toPer (SEQUENCE (Optional t1 (Optional t1 Nil))) ((Just 29):*:((Just 30):*:Empty))
-petest2 = toPer (SEQUENCE (Optional t1 (Optional t1 Nil)))
+test1 = toPer (SEQUENCE [] (Cons (SEQUENCE [] (Cons t1 Nil)) Nil)) ((27:*:Empty):*:Empty)
+test2 = toPer (SEQUENCE [] (Cons t1 (Cons t1 Nil))) (29:*:(30:*:Empty))
+test2a = encodeSeqAux [] [] (Cons t1 (Cons t1 Nil)) (29:*:(30:*:Empty))
+test20 = toPer (SEQUENCE [] (Cons t1 (Cons t1 (Cons t1 Nil)))) (29:*:(30:*:(26:*:Empty)))
+test3 = toPer (SEQUENCE [] (Optional t1 (Optional t1 Nil))) ((Just 29):*:((Just 30):*:Empty))
+test3a = encodeSeqAux [] [] (Optional t1 (Optional t1 Nil)) ((Just 29):*:((Just 30):*:Empty))
+petest2 = toPer (SEQUENCE [] (Optional t1 (Optional t1 Nil)))
 
 test4 = petest2 ((Just 29):*:((Just 30):*:Empty))
 test5 = petest2 (Nothing:*:((Just 30):*:Empty))
@@ -548,33 +912,169 @@ test6 = petest2 ((Just 29):*:(Nothing:*:Empty))
 test7 = petest2 (Nothing:*:(Nothing:*:Empty))
 
 -- SEQUENCEOF
-test8 = toPer (SEQUENCEOF t1) [26,27,28,25]
-test9 = toPer (SEQUENCEOF t6) [29:*:(30:*:Empty),28:*:(28:*:Empty)]
+test8 = toPer (SEQUENCEOF [] t1) [26,27,28,25]
+test9 = toPer (SEQUENCEOF [] t6) [29:*:(30:*:Empty),28:*:(28:*:Empty)]
 test10
     = do
-        c <- return (toPer (SEQUENCEOF t41) (take (17000) [1,2..]))
+        c <- return (toPer (SEQUENCEOF [] t41) (take (17000) [1,2..]))
         writeFile "test12.txt" (show c)
 
 test11
     = do
-        c <- return (toPer (SEQUENCEOF t42) (take (17000) [3..]))
+        c <- return (toPer (SEQUENCEOF [] t42) (take (17000) [3..]))
         writeFile "test14.txt" (show c)
 
 test12
     = do
-        c <- return (toPer (SEQUENCEOF t42) (take (93000) [3..]))
+        c <- return (toPer (SEQUENCEOF [] t42) (take (93000) [3..]))
         writeFile "test15.txt" (show c)
 
 -- SIZE-CONSTRAINED SEQUENCEOF
+
 test14 = toPer t7 [26,25,28,27]
 
 test15 = toPer t8 [(29:*:(30:*:Empty)),((-10):*:(2:*:Empty))]
 
 test16 = toPer t10 [(Just (-10):*:(2:*:Empty))]
 
+-- SET tests
+
+test17  = toPer (SET [] (Cons t1 (Cons t0 Nil))) (27 :*: (5 :*: Empty))
+test17a = toPer (SEQUENCE [] (Cons t1 (Cons t0 Nil))) (27 :*: (5 :*: Empty))
+test17b = encodeSeqAux [] [] (Cons t1 (Cons t0 Nil)) (27 :*: (5 :*: Empty))
+
+test18  = toPer (SET [] (Optional t1 (Optional t0 Nil))) ((Just 29):*:(Nothing:*:Empty))
+test18a = toPer (SEQUENCE [] (Optional t1 (Optional t0 Nil))) ((Just 29):*:(Nothing:*:Empty))
+test18b = encodeSeqAux [] [] (Optional t1 (Optional t0 Nil)) ((Just 29):*:(Nothing:*:Empty))
+
+test19 = toPer (SET [] (Optional t1 (Optional t0 (Optional t01 Nil))))
+                ((Just 29):*: ((Just 19):*:(Nothing:*:Empty)))
+test19a = toPer (SEQUENCE [] (Optional t1 (Optional t0 (Optional t01 Nil))))
+                ((Just 29):*: ((Just 19):*:(Nothing:*:Empty)))
+test19b = encodeSeqAux [] [] (Optional t1 (Optional t0 (Optional t01 Nil)))
+                ((Just 29):*: ((Just 19):*:(Nothing:*:Empty)))
+
+-- CHOICE tests
+
+test20c  = toPer (CHOICE [] (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice)))))
+            (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
+
+test21c  = toPer (CHOICE [] (ChoiceOption t0 NoChoice)) (Just 31 :*: Empty)
+
+test22c
+  = toPer (CHOICE [] (ChoiceOption t0 (ChoiceOption t12 NoChoice)))
+             (Nothing :*: (Just (Just 52 :*: (Nothing :*: Empty)) :*: Empty))
+
+test23c
+    = toPer (CHOICE [] (ChoiceOption t11 (ChoiceOption t12 NoChoice)))
+        (Just (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
+            :*: (Nothing :*: Empty))
+
+-- VISIBLESTRING tests
+
+testvs1 = toPer (VISIBLESTRING []) (VisibleString "Director")
+
+-- VISIBLESTRING with permitted alphabet constraint and size constraints tests
+
+x = (SIZE [] (FROM [] (VISIBLESTRING []) (VisibleString ['0'..'9'])) (Just 8) (Just 8))
+
+testvsc1 = toPer x (VisibleString "19710917")
+
+-- X691: A.2.1 Example
+
+prTest = toPer personnelRecord pr
+
+pr = (emp :*: (t :*: (num :*: (hiredate :*: (sp :*: (Just cs :*: Empty))))))
+
+personnelRecord
+    = SET [(Application, 0, Implicit)]
+        (Cons name (Cons title (Cons number (Cons date (Cons spouse (Default children [] Nil))))))
+
+name
+    = SEQUENCE [(Application, 1, Implicit)]
+        (Cons givenName (Cons initial (Cons familyName Nil)))
+
+title
+    = VISIBLESTRING [(Context, 0, Explicit)]
+
+t = VisibleString "Director"
+
+number
+    = INTEGER [(Application, 2, Implicit)]
+
+num = 51
+
+date
+    = (SIZE [(Context, 1, Explicit),(Application, 3, Implicit)]
+            (FROM [] (VISIBLESTRING []) (VisibleString ['0'..'9'])) (Just 8) (Just 8))
+
+hiredate = VisibleString "19710917"
+
+spouse
+    = SEQUENCE [(Context, 2, Explicit),(Application, 1, Implicit)]
+        (Cons givenName (Cons initial (Cons familyName Nil)))
+
+spGN = VisibleString "Mary"
+
+spI  = VisibleString "T"
+
+spFN = VisibleString "Smith"
+
+sp = (spGN :*: (spI :*: (spFN :*: Empty)))
+
+children
+    = SEQUENCEOF [(Context, 3, Implicit)] childInfo
+
+
+c1GN = VisibleString "Ralph"
+c1I  = VisibleString "T"
+c1FN = VisibleString "Smith"
+c1BD = VisibleString "19571111"
+
+c2GN = VisibleString "Susan"
+c2I  = VisibleString "B"
+c2FN = VisibleString "Jones"
+c2BD = VisibleString "19590717"
+
+c1 = ((c1GN :*: (c1I :*: (c1FN :*: Empty))) :*: (c1BD :*: Empty))
+c2 = ((c2GN :*: (c2I :*: (c2FN :*: Empty))) :*: (c2BD :*: Empty))
+
+cs = [c1,c2]
+
+childInfo
+    = SET [] (Cons name (Cons birthDate Nil))
+
+birthDate
+    = (SIZE [(Context, 0, Explicit),(Application, 3, Implicit)]
+            (FROM [] (VISIBLESTRING []) (VisibleString ['0'..'9'])) (Just 8) (Just 8))
+
+
+givenName
+    = (SIZE []
+            (FROM [] (VISIBLESTRING []) (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])) )
+                            (Just 1) (Just 64))
+
+empGN = VisibleString "John"
+
+familyName
+    = givenName
+
+empFN = VisibleString "Smith"
+
+initial
+    = (SIZE []
+            (FROM [] (VISIBLESTRING [])(VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])) )
+                (Just 1) (Just 1))
+
+empI = VisibleString "P"
+
+emp = (empGN :*: (empI :*: (empFN :*: Empty)))
+
+-- Decoding
+
 -- Tests for constrained INTEGERs
 -- ** uncompTest1 = runState (runErrorT (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
-mUncompTest1 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
+mUncompTest1 = runState (runErrorT (mUntoPerInt (Range [] (INTEGER []) (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
 
 -- These tests are wrong
 -- uncompTest2 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x18,0,1,1]))) 0
@@ -584,7 +1084,7 @@ mUncompTest1 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just 3) (Just 6)
 -- Tests for semi-constrained INTEGERs
 -- We need to replace decodeLengthDeterminant with untoPerInt
 -- ** unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
-mUnInteger5 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
+mUnInteger5 = runState (runErrorT (mUntoPerInt (Range [] (INTEGER []) (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
 
 {-
 **
@@ -593,7 +1093,7 @@ decodeEncode x =
    case runTest x 0 of
       (Left _,_)   -> undefined
       (Right xs,_) -> xs
-   where 
+   where
       runTest = runState . runErrorT . decodeLengthDeterminant . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
 -}
 
@@ -602,7 +1102,7 @@ mDecodeEncode t x =
    case runTest x 0 of
       (Left _,_)   -> undefined
       (Right xs,_) -> xs
-   where 
+   where
       runTest = runState . runErrorT . mUntoPerInt t . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
 
 {-
@@ -643,7 +1143,7 @@ unWrong = decodeEncode wrong
 wrongTest = drop 8 wrong == unWrong
 -}
 
-natural = Range INTEGER (Just 0) Nothing
+natural = Range [] (INTEGER []) (Just 0) Nothing
 
 longIntegerVal1 = 256^4
 longIntegerPER1 = toPer natural longIntegerVal1
@@ -677,7 +1177,7 @@ mUnLongTest3 = longIntegerVal3 == mUnLong3
 foo =
    do h <- openFile "test" ReadMode
       b <- B.hGetContents h
-      let d = runState(runErrorT (mUntoPerInt (Range INTEGER (Just 25) (Just 30)) b)) 0
+      let d =  runState (runErrorT (mUntoPerInt (Range []  (INTEGER []) (Just 25) (Just 30)) b)) 0
       case d of
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
