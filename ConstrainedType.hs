@@ -848,8 +848,12 @@ t11 = CHOICE [] (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOptio
 t12 = CHOICE [] (ChoiceOption t04 (ChoiceOption t03 NoChoice))
 
 -- Unconstrained INTEGER
+tInteger1 = INTEGER []
+vInteger1 = 4096
 integer1 = toPer (INTEGER []) 4096
 integer2 = toPer (Range [] (INTEGER []) Nothing (Just 65535)) 127
+tInteger2 = Range [] (INTEGER []) Nothing (Just 65535)
+vInteger2 = 127
 integer3 = toPer (Range [] (INTEGER []) Nothing (Just 65535)) (-128)
 integer4 = toPer (Range [] (INTEGER []) Nothing (Just 65535)) 128
 
@@ -1071,6 +1075,25 @@ empI = VisibleString "P"
 emp = (empGN :*: (empI :*: (empFN :*: Empty)))
 
 -- Decoding
+
+-- Tests for unconstrained INTEGERs
+
+mUn1 = mDecodeEncode tInteger1 integer1
+mUnTest1 = vInteger1 == mUn1
+mUn2 = mDecodeEncode tInteger2 integer2
+mUnTest2 = vInteger2 == mUn2
+
+longUnIntegerPER1 = toPer tInteger1 longIntegerVal1
+mUnUnLong1 = mDecodeEncode tInteger1 longUnIntegerPER1
+mUnUnLongTest1 = longIntegerVal1 == mUnUnLong1
+
+longUnIntegerPER2 = toPer tInteger1 longIntegerVal2
+mUnUnLong2 = mDecodeEncode tInteger1 longUnIntegerPER2
+mUnUnLongTest2 = longIntegerVal2 == mUnUnLong2
+
+longUnIntegerPER3 = toPer tInteger1 longIntegerVal3
+mUnUnLong3 = mDecodeEncode tInteger1 longUnIntegerPER3
+mUnUnLongTest3 = longIntegerVal3 == mUnUnLong3
 
 -- Tests for constrained INTEGERs
 -- ** uncompTest1 = runState (runErrorT (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
