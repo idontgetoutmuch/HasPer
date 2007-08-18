@@ -1096,7 +1096,6 @@ mUnUnLong3 = mDecodeEncode tInteger1 longUnIntegerPER3
 mUnUnLongTest3 = longIntegerVal3 == mUnUnLong3
 
 -- Tests for constrained INTEGERs
--- ** uncompTest1 = runState (runErrorT (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
 mUncompTest1 = runState (runErrorT (mUntoPerInt (Range [] (INTEGER []) (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
 
 -- These tests are wrong
@@ -1106,19 +1105,7 @@ mUncompTest1 = runState (runErrorT (mUntoPerInt (Range [] (INTEGER []) (Just 3) 
 
 -- Tests for semi-constrained INTEGERs
 -- We need to replace decodeLengthDeterminant with untoPerInt
--- ** unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
 mUnInteger5 = runState (runErrorT (mUntoPerInt (Range [] (INTEGER []) (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
-
-{-
-**
-decodeEncode :: BitStream -> BitStream
-decodeEncode x =
-   case runTest x 0 of
-      (Left _,_)   -> undefined
-      (Right xs,_) -> xs
-   where
-      runTest = runState . runErrorT . decodeLengthDeterminant . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
--}
 
 mDecodeEncode :: ConstrainedType Integer -> BitStream -> Integer
 mDecodeEncode t x =
@@ -1128,43 +1115,14 @@ mDecodeEncode t x =
    where
       runTest = runState . runErrorT . mUntoPerInt t . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
 
-{-
-**
-unSemi5 = decodeEncode integer5
-semi5 = drop 8 integer5
-semiTest5 = semi5 == unSemi5
--}
-
 mUnSemi5 = mDecodeEncode tInteger5 integer5
 mSemiTest5 = vInteger5 == mUnSemi5
-{-
-**
-unSemi6 = decodeEncode integer6
-semi6 = drop 8 integer6
-semiTest6 = semi6 == unSemi6
--}
 
 mUnSemi6 = mDecodeEncode tInteger6 integer6
 mSemiTest6 = vInteger6 == mUnSemi6
 
-{-
-**
-unSemi7 = decodeEncode integer7
-semi7 = drop 8 integer7
-semiTest7 = semi7 == unSemi7
--}
-
 mUnSemi7 = mDecodeEncode tInteger7 integer7
 mSemiTest7 = vInteger7 == mUnSemi7
-
--- This used to give the wrong answer presumably because we were using Int
-
-{-
-**
-wrong = toPer (Range INTEGER (Just 0) Nothing) (256^4)
-unWrong = decodeEncode wrong
-wrongTest = drop 8 wrong == unWrong
--}
 
 natural = Range [] (INTEGER []) (Just 0) Nothing
 
@@ -1173,24 +1131,10 @@ longIntegerPER1 = toPer natural longIntegerVal1
 mUnLong1 = mDecodeEncode natural longIntegerPER1
 mUnLongTest1 = longIntegerVal1 == mUnLong1
 
-{-
-**
-longer = toPer (Range INTEGER (Just 0) Nothing) (256^128)
-unLonger = decodeEncode longer
-longerTest = drop 16 longer == unLonger
--}
-
 longIntegerVal2 = 256^128
 longIntegerPER2 = toPer natural longIntegerVal2
 mUnLong2 = mDecodeEncode natural longIntegerPER2
 mUnLongTest2 = longIntegerVal2 == mUnLong2
-
-{-
-**
-longer1 = toPer (Range INTEGER (Just 0) Nothing) (256^(2^11))
-unLonger1 = decodeEncode longer1
-longerTest1 = drop 16 longer1 == unLonger1
--}
 
 longIntegerVal3 = 256^(2^11)
 longIntegerPER3 = toPer natural longIntegerVal3
