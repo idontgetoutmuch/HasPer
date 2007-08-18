@@ -787,14 +787,17 @@ mUntoPerInt t b =
       Constrained (Just lb) Nothing ->
          do o <- mDecodeWithLengthDeterminant 8 b
             return (lb + (fromNonNeg o))
-      _ -> undefined
+      -- 12.2.4 and 10.8 Encoding of an uncostrained whole number and 12.2.6 (b)
+      _ -> 
+         do o <- mDecodeWithLengthDeterminant 8 b
+            return (from2sComplement o)
    where
       p = bounds t
 
 from2sComplement a@(x:xs) =
-   -(x*(2^(l-1))) + sum (zipWith (*) xs ys)
+   -((fromIntegral x)*(2^(l-1))) + sum (zipWith (*) (map fromIntegral xs) ys)
    where
-      l = length a
+      l = genericLength a
       ys = map (2^) (f (l-2))
       f 0 = [0]
       f x = x:(f (x-1))
@@ -806,9 +809,6 @@ fromNonNeg xs =
       ys = map (2^) (f (l-1))
       f 0 = [0]
       f x = x:(f (x-1))
-
-
-
 
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
