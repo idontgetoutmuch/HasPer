@@ -15,6 +15,7 @@ import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, Co
 import Text.PrettyPrint
 import System
 import IO
+import Data.Int
 
 type BitStream = [Int]
 
@@ -810,6 +811,18 @@ fromNonNeg xs =
       f 0 = [0]
       f x = x:(f (x-1))
 
+mFromPerSeq :: (MonadState Int64 m, MonadError [Char] m) => Sequence a -> B.ByteString -> m a
+mFromPerSeq Nil _ = return Empty
+mFromPerSeq (Cons t ts) bs =
+   do x  <- fromPer t bs
+      xs <- mFromPerSeq ts bs
+      return (x:*:xs)
+
+fromPer :: (MonadState Int64 m, MonadError [Char] m) => ConstrainedType a -> B.ByteString -> m a
+fromPer t@(INTEGER tgs) x                       = mUntoPerInt t x
+fromPer r@(Range tgs1 (INTEGER tgs2) l u) x     = mUntoPerInt r x
+fromPer (SEQUENCE tgs s) x                      = mFromPerSeq s x
+
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
@@ -1115,6 +1128,14 @@ mDecodeEncode t x =
    where
       runTest = runState . runErrorT . mUntoPerInt t . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
 
+mIdem :: ConstrainedType a -> BitStream -> a
+mIdem t x =
+   case runTest x 0 of
+      (Left _,_)   -> undefined
+      (Right xs,_) -> xs
+   where
+      runTest = runState . runErrorT . fromPer t . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
+
 mUnSemi5 = mDecodeEncode tInteger5 integer5
 mSemiTest5 = vInteger5 == mUnSemi5
 
@@ -1140,6 +1161,11 @@ longIntegerVal3 = 256^(2^11)
 longIntegerPER3 = toPer natural longIntegerVal3
 mUnLong3 = mDecodeEncode natural longIntegerPER3
 mUnLongTest3 = longIntegerVal3 == mUnLong3
+
+testType2 = SEQUENCE [] (Cons t1 (Cons t1 Nil))
+testVal2  = 29:*:(30:*:Empty)
+testToPer2 = toPer testType2 testVal2
+testFromPer2 = mIdem testType2 testToPer2
 
 foo =
    do h <- openFile "test" ReadMode
