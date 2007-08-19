@@ -93,9 +93,15 @@ instance SizeConstraint VisibleString
 data Nil = Empty
 data a:*:l = a:*:l
 
+instance Show Nil where
+   show _ = error "Don't try to show something of type Nil just yet"
+
+instance (Show a, Show l) => Show (a:*:l) where
+   show _ = error "Don't try to show something of type a:*:l just yet"
+
 data Sequence :: * -> * where
    Nil :: Sequence Nil
-   Cons ::  ConstrainedType a -> Sequence l -> Sequence (a:*:l)
+   Cons ::  Show a => ConstrainedType a -> Sequence l -> Sequence (a:*:l)
    Optional :: ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
    Default :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
 
