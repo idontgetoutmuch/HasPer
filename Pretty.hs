@@ -48,10 +48,7 @@ prettySeq (Cons x Nil) =
 prettySeq (Cons x xs) =
    vcat [prettyType x <> comma, prettySeq xs]
 
-pt1     = INTEGER []
-ptest1  = SEQUENCE [] (Cons (SEQUENCE [] (Cons pt1 Nil)) Nil)
-ptest11 = SEQUENCE [] (Cons pt1 (Cons pt1 Nil))
-ptest12 = SEQUENCE [] (Cons pt1 (Cons pt1 (Cons pt1 Nil)))
+data RepSeq = forall t . Show t => RepSeq (Sequence t)
 
 instance Arbitrary RepSeq where
    arbitrary =
