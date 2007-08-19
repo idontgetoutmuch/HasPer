@@ -46,7 +46,7 @@ prettySeq Nil =
 prettySeq (Cons x Nil) = 
    prettyType x
 prettySeq (Cons x xs) =
-   sep [prettyType x <> comma, prettySeq xs]
+   vcat [prettyType x <> comma, prettySeq xs]
 
 pt1     = INTEGER []
 ptest1  = SEQUENCE [] (Cons (SEQUENCE [] (Cons pt1 Nil)) Nil)
