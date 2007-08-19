@@ -432,8 +432,9 @@ encodeSeq s x
     =   let (p,es) = encodeSeqAux [] [] s x
         in  concat p ++ concat es
 
--- encodeSeqAux is the auxillary function for encodeSeq. When
--- encoding a sequence, one has to both encode each component and
+-- encodeSeqAux is the auxillary function for encodeSeq. 
+-- 18.2
+-- When encoding a sequence, one has to both encode each component and
 -- produce a preamble which indicates the presence or absence of an
 -- optional or default value. The first list in the result is the
 -- preamble.
