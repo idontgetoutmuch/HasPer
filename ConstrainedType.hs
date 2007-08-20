@@ -894,8 +894,12 @@ t11 = CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t
 t12 = CHOICE (ChoiceOption t04 (ChoiceOption t03 NoChoice))
 
 -- Unconstrained INTEGER
+tInteger1 = INTEGER
+vInteger1 = 4096
 integer1 = toPer INTEGER 4096
 integer2 = toPer (Range INTEGER Nothing (Just 65535)) 127
+tInteger2 = Range INTEGER Nothing (Just 65535)
+vInteger2 = 127
 integer3 = toPer (Range INTEGER Nothing (Just 65535)) (-128)
 integer4 = toPer (Range INTEGER Nothing (Just 65535)) 128
 
