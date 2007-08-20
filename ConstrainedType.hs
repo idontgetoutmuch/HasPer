@@ -19,8 +19,6 @@ import Data.Int
 
 type BitStream = [Int]
 
-bigIntLength = toInteger . length
-
 newtype IA5String = IA5String {iA5String :: String}
 newtype BitString = BitString {bitString :: BitStream}
 
@@ -334,16 +332,16 @@ ulWrapper fn op inp lf (x:xs)
    | l == 1 && lm <  l1b = Just (us,[])
    | otherwise           = Just (vs,[])
    where
-      bl  = bigIntLength x
+      bl  = genericLength x
       l   = length x
       m   = x!!(l-1)
       lm  = length m
       ws  = abs1 fn op (inp bl r)
-      us  = lf (bigIntLength m) ++ fn m
+      us  = lf (genericLength m) ++ fn m
       vs  = if lm == l1b then
                ws x ++ lf 0
             else
-               ws (take (l-1) x) ++ lf (bigIntLength m) ++ fn m
+               ws (take (l-1) x) ++ lf (genericLength m) ++ fn m
       n   = 4
       l1b = 16*(2^10)
       r = 2^6 - 1
@@ -422,7 +420,7 @@ bsLengths t = ulWrapper (id) (++) arg1 ld2
 
 editBS :: Integer -> Integer -> BitStream -> BitStream
 editBS l u xs
-    = let lxs = bigIntLength xs
+    = let lxs = genericLength xs
       in if lxs < l
         then add0s (l-lxs) xs
         else
@@ -502,7 +500,7 @@ manageExtremes fn1 fn2 l u x
                then fn1 x
                else if u >= 65536
                    then fn2 x
-                   else minBits ((bigIntLength x-l),range-1) ++ fn1 x
+                   else minBits ((genericLength x-l),range-1) ++ fn1 x
 
 encodeSeqSz :: ConstrainedType [a] -> Integer -> Integer -> [a] -> BitStream
 encodeSeqSz (SIZE ty _ _) l u x
@@ -646,7 +644,7 @@ encodeChoice c x
                     os  = mergesort choicePred ps
                     pps = zip [0..] os
                     fr  = (head . filter (not . nullValue)) pps
-                    ls  = bigIntLength os
+                    ls  = genericLength os
                 in
                      minBits (fst fr,ls-1) ++ (snd .snd) fr
 
