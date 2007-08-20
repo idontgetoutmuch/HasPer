@@ -849,9 +849,11 @@ mFromPerSeq (Cons t ts) bs =
       return (x:*:xs)
 
 fromPer :: (MonadState Int64 m, MonadError [Char] m) => ConstrainedType a -> B.ByteString -> m a
-fromPer t@(INTEGER tgs) x                       = mUntoPerInt t x
-fromPer r@(Range tgs1 (INTEGER tgs2) l u) x     = mUntoPerInt r x
-fromPer (SEQUENCE tgs s) x                      = mFromPerSeq s x
+fromPer t@INTEGER x                 = mUntoPerInt t x
+fromPer r@(Range INTEGER l u) x     = mUntoPerInt r x
+fromPer (SEQUENCE s) x              = mFromPerSeq s x
+
+
 
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
@@ -870,65 +872,62 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    END
 -}
 
-t0 = INTEGER []
-t01 = INTEGER [(Context,0,Implicit)]
-t02 = INTEGER [(Context,2, Implicit)]
-t03 = INTEGER [(Context, 3, Implicit)]
-t04 = INTEGER [(Context, 4, Implicit)]
-t1 = Range [(Context,1,Implicit)] (INTEGER []) (Just 25) (Just 30)
-t2 = Includes [] (INTEGER []) t1
-t3 = Includes [] t1 t1
-t4 = Range [] (INTEGER []) (Just (-256)) Nothing
-t41 = Range [] (INTEGER []) (Just 0) (Just 18000)
-t42 = Range [] (INTEGER []) (Just 3) (Just 3)
-t5 = SEQUENCE [] (Cons t4 (Cons t4 Nil))
-t6 = SEQUENCE [] (Cons t1 (Cons t1 Nil))
-t7 = SIZE [] (SEQUENCEOF [] t1) (Just 3) (Just 5)
-t8 = SIZE [] (SEQUENCEOF [] t5) (Just 2) (Just 2)
-t9 = SEQUENCE [] (Optional t4 (Cons t4 Nil))
-t10 = SIZE [] (SEQUENCEOF [] t9) (Just 1) (Just 3)
-t11 = CHOICE [] (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice))))
-t12 = CHOICE [] (ChoiceOption t04 (ChoiceOption t03 NoChoice))
+
+t0 = INTEGER
+t01 = INTEGER
+t02 = INTEGER
+t03 = INTEGER
+t04 = INTEGER
+t1 = Range INTEGER (Just 25) (Just 30)
+t2 = Includes INTEGER t1
+t3 = Includes t1 t1
+t4 = Range INTEGER (Just (-256)) Nothing
+t41 = Range INTEGER (Just 0) (Just 18000)
+t42 = Range INTEGER (Just 3) (Just 3)
+t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
+t6 = SEQUENCE (Cons t1 (Cons t1 Nil))
+t7 = SIZE (SEQUENCEOF t1) (Just 3) (Just 5)
+t8 = SIZE (SEQUENCEOF t5) (Just 2) (Just 2)
+t9 = SEQUENCE (Optional t4 (Cons t4 Nil))
+t10 = SIZE (SEQUENCEOF t9) (Just 1) (Just 3)
+t11 = CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice))))
+t12 = CHOICE (ChoiceOption t04 (ChoiceOption t03 NoChoice))
 
 -- Unconstrained INTEGER
-tInteger1 = INTEGER []
-vInteger1 = 4096
-integer1 = toPer (INTEGER []) 4096
-integer2 = toPer (Range [] (INTEGER []) Nothing (Just 65535)) 127
-tInteger2 = Range [] (INTEGER []) Nothing (Just 65535)
-vInteger2 = 127
-integer3 = toPer (Range [] (INTEGER []) Nothing (Just 65535)) (-128)
-integer4 = toPer (Range [] (INTEGER []) Nothing (Just 65535)) 128
+integer1 = toPer INTEGER 4096
+integer2 = toPer (Range INTEGER Nothing (Just 65535)) 127
+integer3 = toPer (Range INTEGER Nothing (Just 65535)) (-128)
+integer4 = toPer (Range INTEGER Nothing (Just 65535)) 128
 
 
 -- Semi-constrained INTEGER
 
-tInteger5 = Range [] (INTEGER []) (Just (-1)) Nothing
+tInteger5 = Range INTEGER (Just (-1)) Nothing
 vInteger5 = 4096
-integer5  = toPer (Range [] (INTEGER []) (Just (-1)) Nothing) 4096
-tInteger6 = Range [] (INTEGER []) (Just 1) Nothing
+integer5  = toPer (Range INTEGER (Just (-1)) Nothing) 4096
+tInteger6 = Range INTEGER (Just 1) Nothing
 vInteger6 = 127
-integer6  = toPer (Range [] (INTEGER []) (Just 1) Nothing) 127
-tInteger7 = Range [] (INTEGER []) (Just 0) Nothing
+integer6  = toPer (Range INTEGER (Just 1) Nothing) 127
+tInteger7 = Range INTEGER (Just 0) Nothing
 vInteger7 = 128
-integer7  = toPer (Range [] (INTEGER []) (Just 0) Nothing) 128
+integer7  = toPer (Range INTEGER (Just 0) Nothing) 128
 
 -- Constrained INTEGER
 
-integer8'1 = toPer (Range [] (INTEGER []) (Just 3) (Just 6)) 3
-integer8'2 = toPer (Range [] (INTEGER []) (Just 3) (Just 6)) 4
-integer8'3 = toPer (Range [] (INTEGER []) (Just 3) (Just 6)) 5
-integer8'4 = toPer (Range [] (INTEGER []) (Just 3) (Just 6)) 6
-integer9'1 = toPer (Range [] (INTEGER []) (Just 4000) (Just 4254)) 4002
-integer9'2 = toPer (Range [] (INTEGER []) (Just 4000) (Just 4254)) 4006
-integer10'1 = toPer (Range [] (INTEGER []) (Just 4000) (Just 4255)) 4002
-integer10'2 = toPer (Range [] (INTEGER []) (Just 4000) (Just 4255)) 4006
-integer11'1 = toPer (Range [] (INTEGER []) (Just 0) (Just 32000)) 0
-integer11'2 = toPer (Range [] (INTEGER []) (Just 0) (Just 32000)) 31000
-integer11'3 = toPer (Range [] (INTEGER []) (Just 0) (Just 32000)) 32000
-integer12'1 = toPer (Range [] (INTEGER []) (Just 1) (Just 65538)) 1
-integer12'2 = toPer (Range [] (INTEGER []) (Just 1) (Just 65538)) 257
-integer12'3 = toPer (Range [] (INTEGER []) (Just 1) (Just 65538)) 65538
+integer8'1 = toPer (Range INTEGER (Just 3) (Just 6)) 3
+integer8'2 = toPer (Range INTEGER (Just 3) (Just 6)) 4
+integer8'3 = toPer (Range INTEGER (Just 3) (Just 6)) 5
+integer8'4 = toPer (Range INTEGER (Just 3) (Just 6)) 6
+integer9'1 = toPer (Range INTEGER (Just 4000) (Just 4254)) 4002
+integer9'2 = toPer (Range INTEGER (Just 4000) (Just 4254)) 4006
+integer10'1 = toPer (Range INTEGER (Just 4000) (Just 4255)) 4002
+integer10'2 = toPer (Range INTEGER (Just 4000) (Just 4255)) 4006
+integer11'1 = toPer (Range INTEGER (Just 0) (Just 32000)) 0
+integer11'2 = toPer (Range INTEGER (Just 0) (Just 32000)) 31000
+integer11'3 = toPer (Range INTEGER (Just 0) (Just 32000)) 32000
+integer12'1 = toPer (Range INTEGER (Just 1) (Just 65538)) 1
+integer12'2 = toPer (Range INTEGER (Just 1) (Just 65538)) 257
+integer12'3 = toPer (Range INTEGER (Just 1) (Just 65538)) 65538
 
 
 
@@ -936,22 +935,22 @@ test0 = toPer t1 27
 
 -- BITSTRING
 
-bsTest1 = toPer (BITSTRING []) (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest1 = toPer BITSTRING (BitString [1,1,0,0,0,1,0,0,0,0])
 
 -- Size-constrained BITSTRING
 
-bsTest2 = toPer (SIZE [] (BITSTRING []) (Just 7) (Just 7)) (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest3 = toPer (SIZE [] (BITSTRING []) (Just 12) (Just 15)) (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest2 = toPer (SIZE BITSTRING (Just 7) (Just 7)) (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest3 = toPer (SIZE BITSTRING (Just 12) (Just 15)) (BitString [1,1,0,0,0,1,0,0,0,0])
 
 
 -- SEQUENCE
-test1 = toPer (SEQUENCE [] (Cons (SEQUENCE [] (Cons t1 Nil)) Nil)) ((27:*:Empty):*:Empty)
-test2 = toPer (SEQUENCE [] (Cons t1 (Cons t1 Nil))) (29:*:(30:*:Empty))
+test1 = toPer (SEQUENCE (Cons (SEQUENCE (Cons t1 Nil)) Nil)) ((27:*:Empty):*:Empty)
+test2 = toPer (SEQUENCE (Cons t1 (Cons t1 Nil))) (29:*:(30:*:Empty))
 test2a = encodeSeqAux [] [] (Cons t1 (Cons t1 Nil)) (29:*:(30:*:Empty))
-test20 = toPer (SEQUENCE [] (Cons t1 (Cons t1 (Cons t1 Nil)))) (29:*:(30:*:(26:*:Empty)))
-test3 = toPer (SEQUENCE [] (Optional t1 (Optional t1 Nil))) ((Just 29):*:((Just 30):*:Empty))
+test20 = toPer (SEQUENCE (Cons t1 (Cons t1 (Cons t1 Nil)))) (29:*:(30:*:(26:*:Empty)))
+test3 = toPer (SEQUENCE (Optional t1 (Optional t1 Nil))) ((Just 29):*:((Just 30):*:Empty))
 test3a = encodeSeqAux [] [] (Optional t1 (Optional t1 Nil)) ((Just 29):*:((Just 30):*:Empty))
-petest2 = toPer (SEQUENCE [] (Optional t1 (Optional t1 Nil)))
+petest2 = toPer (SEQUENCE (Optional t1 (Optional t1 Nil)))
 
 test4 = petest2 ((Just 29):*:((Just 30):*:Empty))
 test5 = petest2 (Nothing:*:((Just 30):*:Empty))
@@ -959,21 +958,21 @@ test6 = petest2 ((Just 29):*:(Nothing:*:Empty))
 test7 = petest2 (Nothing:*:(Nothing:*:Empty))
 
 -- SEQUENCEOF
-test8 = toPer (SEQUENCEOF [] t1) [26,27,28,25]
-test9 = toPer (SEQUENCEOF [] t6) [29:*:(30:*:Empty),28:*:(28:*:Empty)]
+test8 = toPer (SEQUENCEOF t1) [26,27,28,25]
+test9 = toPer (SEQUENCEOF t6) [29:*:(30:*:Empty),28:*:(28:*:Empty)]
 test10
     = do
-        c <- return (toPer (SEQUENCEOF [] t41) (take (17000) [1,2..]))
+        c <- return (toPer (SEQUENCEOF t41) (take (17000) [1,2..]))
         writeFile "test12.txt" (show c)
 
 test11
     = do
-        c <- return (toPer (SEQUENCEOF [] t42) (take (17000) [3..]))
+        c <- return (toPer (SEQUENCEOF t42) (take (17000) [3..]))
         writeFile "test14.txt" (show c)
 
 test12
     = do
-        c <- return (toPer (SEQUENCEOF [] t42) (take (93000) [3..]))
+        c <- return (toPer (SEQUENCEOF t42) (take (93000) [3..]))
         writeFile "test15.txt" (show c)
 
 -- SIZE-CONSTRAINED SEQUENCEOF
@@ -986,44 +985,44 @@ test16 = toPer t10 [(Just (-10):*:(2:*:Empty))]
 
 -- SET tests
 
-test17  = toPer (SET [] (Cons t1 (Cons t0 Nil))) (27 :*: (5 :*: Empty))
-test17a = toPer (SEQUENCE [] (Cons t1 (Cons t0 Nil))) (27 :*: (5 :*: Empty))
+test17  = toPer (SET (Cons t1 (Cons t0 Nil))) (27 :*: (5 :*: Empty))
+test17a = toPer (SEQUENCE (Cons t1 (Cons t0 Nil))) (27 :*: (5 :*: Empty))
 test17b = encodeSeqAux [] [] (Cons t1 (Cons t0 Nil)) (27 :*: (5 :*: Empty))
 
-test18  = toPer (SET [] (Optional t1 (Optional t0 Nil))) ((Just 29):*:(Nothing:*:Empty))
-test18a = toPer (SEQUENCE [] (Optional t1 (Optional t0 Nil))) ((Just 29):*:(Nothing:*:Empty))
+test18  = toPer (SET (Optional t1 (Optional t0 Nil))) ((Just 29):*:(Nothing:*:Empty))
+test18a = toPer (SEQUENCE (Optional t1 (Optional t0 Nil))) ((Just 29):*:(Nothing:*:Empty))
 test18b = encodeSeqAux [] [] (Optional t1 (Optional t0 Nil)) ((Just 29):*:(Nothing:*:Empty))
 
-test19 = toPer (SET [] (Optional t1 (Optional t0 (Optional t01 Nil))))
+test19 = toPer (SET (Optional t1 (Optional t0 (Optional t01 Nil))))
                 ((Just 29):*: ((Just 19):*:(Nothing:*:Empty)))
-test19a = toPer (SEQUENCE [] (Optional t1 (Optional t0 (Optional t01 Nil))))
+test19a = toPer (SEQUENCE (Optional t1 (Optional t0 (Optional t01 Nil))))
                 ((Just 29):*: ((Just 19):*:(Nothing:*:Empty)))
 test19b = encodeSeqAux [] [] (Optional t1 (Optional t0 (Optional t01 Nil)))
                 ((Just 29):*: ((Just 19):*:(Nothing:*:Empty)))
 
 -- CHOICE tests
 
-test20c  = toPer (CHOICE [] (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice)))))
+test20c  = toPer (CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice)))))
             (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
 
-test21c  = toPer (CHOICE [] (ChoiceOption t0 NoChoice)) (Just 31 :*: Empty)
+test21c  = toPer (CHOICE (ChoiceOption t0 NoChoice)) (Just 31 :*: Empty)
 
 test22c
-  = toPer (CHOICE [] (ChoiceOption t0 (ChoiceOption t12 NoChoice)))
+  = toPer (CHOICE (ChoiceOption t0 (ChoiceOption t12 NoChoice)))
              (Nothing :*: (Just (Just 52 :*: (Nothing :*: Empty)) :*: Empty))
 
 test23c
-    = toPer (CHOICE [] (ChoiceOption t11 (ChoiceOption t12 NoChoice)))
+    = toPer (CHOICE (ChoiceOption t11 (ChoiceOption t12 NoChoice)))
         (Just (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
             :*: (Nothing :*: Empty))
 
 -- VISIBLESTRING tests
 
-testvs1 = toPer (VISIBLESTRING []) (VisibleString "Director")
+testvs1 = toPer VISIBLESTRING (VisibleString "Director")
 
 -- VISIBLESTRING with permitted alphabet constraint and size constraints tests
 
-x = (SIZE [] (FROM [] (VISIBLESTRING []) (VisibleString ['0'..'9'])) (Just 8) (Just 8))
+x = (SIZE (FROM VISIBLESTRING (VisibleString ['0'..'9'])) (Just 8) (Just 8))
 
 testvsc1 = toPer x (VisibleString "19710917")
 
@@ -1034,32 +1033,37 @@ prTest = toPer personnelRecord pr
 pr = (emp :*: (t :*: (num :*: (hiredate :*: (sp :*: (Just cs :*: Empty))))))
 
 personnelRecord
-    = SET [(Application, 0, Implicit)]
-        (Cons name (Cons title (Cons number (Cons date (Cons spouse (Default children [] Nil))))))
+    = TYPEASS "PersonnelRecord" (Just (Application, 0, Implicit))
+        (SET
+          (Cons (NAMEDTYPE "name" Nothing name)
+            (Cons (NAMEDTYPE "title" (Just (Context, 0, Explicit)) VISIBLESTRING)
+              (Cons (NAMEDTYPE "number" Nothing empNumber)
+                (Cons (NAMEDTYPE "dateOfHire" (Just (Context, 1, Explicit)) date)
+                  (Cons (NAMEDTYPE "nameOfSpouse" (Just (Context, 2, Explicit)) name)
+                    (Default (NAMEDTYPE "children" (Just (Context, 3, Implicit))
+                                                             (SEQUENCEOF childInfo)) [] Nil)))))))
 
 name
-    = SEQUENCE [(Application, 1, Implicit)]
-        (Cons givenName (Cons initial (Cons familyName Nil)))
+    = TYPEASS "Name" (Just (Application, 1, Implicit))
+        (SEQUENCE
+          (Cons (NAMEDTYPE "givenName" Nothing nameString)
+            (Cons (NAMEDTYPE "initial" Nothing (SIZE nameString (Just 1) (Just 1)))
+              (Cons (NAMEDTYPE "familyName" Nothing nameString) Nil))))
 
-title
-    = VISIBLESTRING [(Context, 0, Explicit)]
 
 t = VisibleString "Director"
 
-number
-    = INTEGER [(Application, 2, Implicit)]
+empNumber
+    = TYPEASS "EmployeeNumber" (Just (Application, 2, Implicit)) INTEGER
 
 num = 51
 
 date
-    = (SIZE [(Context, 1, Explicit),(Application, 3, Implicit)]
-            (FROM [] (VISIBLESTRING []) (VisibleString ['0'..'9'])) (Just 8) (Just 8))
+    = TYPEASS "Date" (Just (Application, 3, Implicit))
+        (SIZE (FROM VISIBLESTRING  (VisibleString ['0'..'9'])) (Just 8) (Just 8))
 
 hiredate = VisibleString "19710917"
 
-spouse
-    = SEQUENCE [(Context, 2, Explicit),(Application, 1, Implicit)]
-        (Cons givenName (Cons initial (Cons familyName Nil)))
 
 spGN = VisibleString "Mary"
 
@@ -1068,10 +1072,6 @@ spI  = VisibleString "T"
 spFN = VisibleString "Smith"
 
 sp = (spGN :*: (spI :*: (spFN :*: Empty)))
-
-children
-    = SEQUENCEOF [(Context, 3, Implicit)] childInfo
-
 
 c1GN = VisibleString "Ralph"
 c1I  = VisibleString "T"
@@ -1089,29 +1089,21 @@ c2 = ((c2GN :*: (c2I :*: (c2FN :*: Empty))) :*: (c2BD :*: Empty))
 cs = [c1,c2]
 
 childInfo
-    = SET [] (Cons name (Cons birthDate Nil))
+    = TYPEASS "ChildInformation" Nothing
+        (SET
+            (Cons (NAMEDTYPE "name" Nothing name)
+                (Cons (NAMEDTYPE "dateOfBirth" (Just (Context, 0, Explicit)) date) Nil)))
 
-birthDate
-    = (SIZE [(Context, 0, Explicit),(Application, 3, Implicit)]
-            (FROM [] (VISIBLESTRING []) (VisibleString ['0'..'9'])) (Just 8) (Just 8))
 
 
-givenName
-    = (SIZE []
-            (FROM [] (VISIBLESTRING []) (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])) )
+nameString
+    = TYPEASS "NameString" Nothing
+        (SIZE (FROM VISIBLESTRING (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])) )
                             (Just 1) (Just 64))
 
 empGN = VisibleString "John"
 
-familyName
-    = givenName
-
 empFN = VisibleString "Smith"
-
-initial
-    = (SIZE []
-            (FROM [] (VISIBLESTRING [])(VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])) )
-                (Just 1) (Just 1))
 
 empI = VisibleString "P"
 
