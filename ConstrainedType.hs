@@ -181,8 +181,8 @@ instance Ord a => Monoid (Constraint a) where
 -- no lower or upper bound.
 
 bounds :: Ord a => ConstrainedType a -> Constraint a
-bounds (Includes _ t1 t2)   = (bounds t1) `mappend` (bounds t2)
-bounds (Range _ t l u)      = (bounds t) `mappend` (Constrained l u)
+bounds (Includes t1 t2)   = (bounds t1) `mappend` (bounds t2)
+bounds (Range t l u)      = (bounds t) `mappend` (Constrained l u)
 bounds _                    = Constrained Nothing Nothing
 
 
@@ -190,8 +190,8 @@ bounds _                    = Constrained Nothing Nothing
 -- indicates no lower or upper bound.
 
 sizeLimit :: ConstrainedType a -> Constraint Integer
-sizeLimit (SIZE _ _ l u) = Constrained l u
-sizeLimit _              = Constrained Nothing Nothing
+sizeLimit (SIZE t l u) = sizeLimit t `mappend` Constrained l u
+sizeLimit _            = Constrained Nothing Nothing
 
 -- manageSize is a HOF used to manage the three size cases for a
 -- type amenable to a size constraint.
