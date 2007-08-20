@@ -601,19 +601,22 @@ getTags (Optional a xs)   = getTI a : getTags xs
 getTags (Default a d xs)  = getTI a : getTags xs
 
 getTI :: ConstrainedType a -> TagInfo
-getTI (INTEGER t)       = if null t then (Universal,2, Explicit) else head t
-getTI (Range t c _ _)   = if null t then getTI c else head t
-getTI (IA5STRING t)     = if null t then (Universal,22, Explicit) else head t
-getTI (BITSTRING t)     = if null t then (Universal, 3, Explicit) else head t
-getTI (PRINTABLESTRING t)
-                        = if null t then (Universal, 19, Explicit) else head t
-getTI (VISIBLESTRING t) = if null t then (Universal, 26, Explicit) else head t
-getTI (SEQUENCE t s)    = if null t then (Universal, 16, Explicit) else head t
-getTI (SEQUENCEOF t s)  = if null t then (Universal, 16, Explicit) else head t
-getTI (SET t s)         = if null t then (Universal, 17, Explicit) else head t
-getTI (SETOF t s)       = if null t then (Universal, 17, Explicit) else head t
-getTI (SIZE t c _ _)    = if null t then getTI c else head t
-getTI (CHOICE t c)      = if null t then (minimum . getCTags) c else head t
+getTI (TYPEASS _ (Just tg) _)   = tg
+getTI (TYPEASS _ _ t)           = getTI t
+getTI (NAMEDTYPE _ (Just tg) _) = tg
+getTI (NAMEDTYPE _ _ t)         = getTI t
+getTI INTEGER                   = (Universal,2, Explicit)
+getTI (Range c _ _)             = getTI c
+getTI IA5STRING                 = (Universal,22, Explicit)
+getTI BITSTRING                 = (Universal, 3, Explicit)
+getTI PRINTABLESTRING           = (Universal, 19, Explicit)
+getTI VISIBLESTRING             = (Universal, 26, Explicit)
+getTI (SEQUENCE s)              = (Universal, 16, Explicit)
+getTI (SEQUENCEOF s)            = (Universal, 16, Explicit)
+getTI (SET s)                   = (Universal, 17, Explicit)
+getTI (SETOF s)                 = (Universal, 17, Explicit)
+getTI (SIZE c _ _)              = getTI c
+getTI (CHOICE c)                = (minimum . getCTags) c
 
 
 
@@ -677,7 +680,7 @@ encodeVS :: ConstrainedType VisibleString -> VisibleString -> BitStream
 encodeVS = manageSize encodeVisSz encodeVis
 
 encodeVisSz :: ConstrainedType VisibleString -> Integer -> Integer -> VisibleString -> BitStream
-encodeVisSz t@(SIZE tgs ty _ _) l u x@(VisibleString xs)
+encodeVisSz t@(SIZE ty _ _) l u x@(VisibleString xs)
     = manageExtremes encS (encodeVis ty . VisibleString) l u xs
 
 encodeVis :: ConstrainedType VisibleString -> VisibleString -> BitStream
@@ -705,11 +708,11 @@ encodeVSF :: ConstrainedType VisibleString -> VisibleString -> BitStream
 encodeVSF = manageSize encodeVisSzF encodeVisF
 
 encodeVisSzF :: ConstrainedType VisibleString -> Integer -> Integer -> VisibleString -> BitStream
-encodeVisSzF t@(SIZE tgs ty@(FROM tgs2 cv pac)_ _) l u x@(VisibleString xs)
+encodeVisSzF t@(SIZE ty@(FROM cv pac)_ _) l u x@(VisibleString xs)
     = manageExtremes (encSF pac) (encodeVisF ty . VisibleString) l u xs
 
 encodeVisF :: ConstrainedType VisibleString -> VisibleString -> BitStream
-encodeVisF vs@(FROM tgs2 cv pac) (VisibleString s)
+encodeVisF vs@(FROM cv pac) (VisibleString s)
     = encodeInsert (insertLVSF pac) vs s
 
 insertLVSF :: VisibleString -> t -> [[String]] -> [BitStream]
@@ -820,10 +823,7 @@ mUntoPerInt t b =
       Constrained (Just lb) Nothing ->
          do o <- mDecodeWithLengthDeterminant 8 b
             return (lb + (fromNonNeg o))
-      -- 12.2.4 and 10.8 Encoding of an uncostrained whole number and 12.2.6 (b)
-      _ -> 
-         do o <- mDecodeWithLengthDeterminant 8 b
-            return (from2sComplement o)
+      _ -> undefined
    where
       p = bounds t
 
