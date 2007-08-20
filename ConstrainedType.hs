@@ -1131,7 +1131,8 @@ mUnUnLong3 = mDecodeEncode tInteger1 longUnIntegerPER3
 mUnUnLongTest3 = longIntegerVal3 == mUnUnLong3
 
 -- Tests for constrained INTEGERs
-mUncompTest1 = runState (runErrorT (mUntoPerInt (Range [] (INTEGER []) (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
+-- ** uncompTest1 = runState (runErrorT (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
+mUncompTest1 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
 
 -- These tests are wrong
 -- uncompTest2 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x18,0,1,1]))) 0
@@ -1140,7 +1141,8 @@ mUncompTest1 = runState (runErrorT (mUntoPerInt (Range [] (INTEGER []) (Just 3) 
 
 -- Tests for semi-constrained INTEGERs
 -- We need to replace decodeLengthDeterminant with untoPerInt
-mUnInteger5 = runState (runErrorT (mUntoPerInt (Range [] (INTEGER []) (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
+-- ** unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
+mUnInteger5 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
 
 mDecodeEncode :: ConstrainedType Integer -> BitStream -> Integer
 mDecodeEncode t x =
