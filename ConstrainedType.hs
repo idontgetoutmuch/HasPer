@@ -1144,6 +1144,7 @@ mUncompTest1 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just 3) (Just 6)
 -- ** unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
 mUnInteger5 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
 
+
 mDecodeEncode :: ConstrainedType Integer -> BitStream -> Integer
 mDecodeEncode t x =
    case runTest x 0 of
@@ -1160,6 +1161,7 @@ mIdem t x =
    where
       runTest = runState . runErrorT . fromPer t . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
 
+
 mUnSemi5 = mDecodeEncode tInteger5 integer5
 mSemiTest5 = vInteger5 == mUnSemi5
 
@@ -1169,7 +1171,7 @@ mSemiTest6 = vInteger6 == mUnSemi6
 mUnSemi7 = mDecodeEncode tInteger7 integer7
 mSemiTest7 = vInteger7 == mUnSemi7
 
-natural = Range [] (INTEGER []) (Just 0) Nothing
+natural = Range INTEGER (Just 0) Nothing
 
 longIntegerVal1 = 256^4
 longIntegerPER1 = toPer natural longIntegerVal1
@@ -1186,7 +1188,7 @@ longIntegerPER3 = toPer natural longIntegerVal3
 mUnLong3 = mDecodeEncode natural longIntegerPER3
 mUnLongTest3 = longIntegerVal3 == mUnLong3
 
-testType2 = SEQUENCE [] (Cons t1 (Cons t1 Nil))
+testType2 = SEQUENCE (Cons t1 (Cons t1 Nil))
 testVal2  = 29:*:(30:*:Empty)
 testToPer2 = toPer testType2 testVal2
 testFromPer2 = mIdem testType2 testToPer2
@@ -1194,7 +1196,7 @@ testFromPer2 = mIdem testType2 testToPer2
 foo =
    do h <- openFile "test" ReadMode
       b <- B.hGetContents h
-      let d =  runState (runErrorT (mUntoPerInt (Range []  (INTEGER []) (Just 25) (Just 30)) b)) 0
+      let d =  runState (runErrorT (mUntoPerInt (Range  INTEGER (Just 25) (Just 30)) b)) 0
       case d of
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
