@@ -212,22 +212,40 @@ manageSize fn1 fn2 t x
 -- toPer is the top-level PER encoding function.
 
 toPer :: ConstrainedType a -> a -> [Int]
-toPer t@(BOOLEAN tgs) x                         = encodeBool t x
-toPer t@(INTEGER tgs) x                         = encodeInt t x
-toPer r@(Range tgs1 (INTEGER tgs2) l u) x       = encodeInt r x
-toPer t@(BITSTRING tgs) x                       = encodeBS t x
-toPer t@(SIZE tgs1 (BITSTRING tgs) l u) x       = encodeBS t x
-toPer (SEQUENCE tgs s) x                        = encodeSeq s x
-toPer t@(SEQUENCEOF tgs s) x                    = encodeSO t x
-toPer t@(SIZE tgs1 (SEQUENCEOF tgs2 c) l u) x   = encodeSO t x
-toPer (SET tgs s) x                             = encodeSet s x
-toPer t@(SETOF tgs s) x                         = encodeSO t x
-toPer t@(CHOICE tgs c) x                        = encodeChoice c x
-toPer t@(VISIBLESTRING tgs) x                   = encodeVS t x
-toPer t@(SIZE tgs1 (VISIBLESTRING tgs) l u) x   = encodeVS t x
-toPer t@(FROM tgs1 (VISIBLESTRING tgs) pac) x   = encodeVSF t x
-toPer t@(SIZE tgs1 (FROM tgs2 (VISIBLESTRING tgs) pac) l u) x
-                                                = encodeVSF t x
+toPer (TYPEASS tr tg ct) v                      = toPer ct v
+toPer (NAMEDTYPE n tg ct) v                     = toPer ct v
+toPer t@BOOLEAN x                               = encodeBool t x
+toPer t@INTEGER x                               = encodeInt t x
+toPer r@(Range INTEGER l u) x                   = encodeInt r x
+toPer t@BITSTRING x                             = encodeBS t x
+toPer t@(SIZE BITSTRING l u) x                  = encodeBS t x
+toPer (SEQUENCE s) x                            = encodeSeq s x
+toPer t@(SEQUENCEOF s) x                        = encodeSO t x
+toPer t@(SIZE (SEQUENCEOF c) l u) x             = encodeSO t x
+toPer (SET s) x                                 = encodeSet s x
+toPer t@(SETOF s) x                             = encodeSO t x
+toPer t@(CHOICE c) x                            = encodeChoice c x
+toPer t@VISIBLESTRING x                         = encodeVS t x
+toPer t@(SIZE VISIBLESTRING l u) x              = encodeVS t x
+toPer t@(FROM VISIBLESTRING pac) x              = encodeVSF t x
+toPer t@(SIZE (FROM VISIBLESTRING pac) l u) x   = encodeVSF t x
+toPer (SIZE (SIZE t l1 u1) l2 u2) x             = let ml = maxB l1 l2
+                                                      mu = minB u1 u2
+                                                  in
+                                                      toPer (SIZE t ml mu) x
+toPer (SIZE (TYPEASS r tg t) l u) x             = toPer (SIZE t l u) x
+
+
+
+maxB Nothing (Just b)  = Just b
+maxB (Just b) Nothing  = Just b
+maxB (Just a) (Just b) = Just (max a b)
+maxB _ _               = Nothing
+
+minB Nothing (Just b)  = Just b
+minB (Just b) Nothing  = Just b
+minB (Just a) (Just b) = Just (min a b)
+minB _ _               = Nothing
 
 -- 11 ENCODING THE BOOLEAN TYPE
 
@@ -387,7 +405,7 @@ encodeBS = manageSize encodeBSSz encodeBSNoSz
 
 
 encodeBSSz :: ConstrainedType BitString -> Integer -> Integer -> BitString -> BitStream
-encodeBSSz t@(SIZE tgs ty _ _) l u x@(BitString xs)
+encodeBSSz t@(SIZE ty _ _) l u x@(BitString xs)
     = let exs = editBS l u xs
       in
         if u == 0
@@ -396,7 +414,7 @@ encodeBSSz t@(SIZE tgs ty _ _) l u x@(BitString xs)
                     then exs
                     else encodeBSWithLD exs
 
-encodeBSWithLD  = encodeInsert insertBSL (INTEGER [])
+encodeBSWithLD  = encodeInsert insertBSL INTEGER
 
 insertBSL s = unfoldr (bsLengths s)
 
@@ -440,9 +458,8 @@ encodeSeq s x
     =   let (p,es) = encodeSeqAux [] [] s x
         in  concat p ++ concat es
 
--- encodeSeqAux is the auxillary function for encodeSeq. 
--- 18.2
--- When encoding a sequence, one has to both encode each component and
+-- encodeSeqAux is the auxillary function for encodeSeq. When
+-- encoding a sequence, one has to both encode each component and
 -- produce a preamble which indicates the presence or absence of an
 -- optional or default value. The first list in the result is the
 -- preamble.
@@ -488,12 +505,12 @@ manageExtremes fn1 fn2 l u x
                    else minBits ((bigIntLength x-l),range-1) ++ fn1 x
 
 encodeSeqSz :: ConstrainedType [a] -> Integer -> Integer -> [a] -> BitStream
-encodeSeqSz (SIZE tgs ty _ _) l u x
+encodeSeqSz (SIZE ty _ _) l u x
         = manageExtremes (encodeNoL ty) (encodeSeqOf ty) l u x
 
 
 encodeSeqOf :: ConstrainedType a -> a -> BitStream
-encodeSeqOf (SEQUENCEOF tgs s) xs
+encodeSeqOf (SEQUENCEOF s) xs
     = encodeWithLD s xs
 
 -- encodeWithLD splits the components into 16K blocks, and then
@@ -523,7 +540,7 @@ ld2 n
 -- No length encoding of SEQUENCEOF
 
 encodeNoL :: ConstrainedType a -> a -> BitStream
-encodeNoL (SEQUENCEOF _ s) xs
+encodeNoL (SEQUENCEOF s) xs
     = (concat . map (toPer s)) xs
 
 
