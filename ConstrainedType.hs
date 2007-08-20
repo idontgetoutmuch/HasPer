@@ -116,27 +116,35 @@ data Choice :: * -> * where
 -- Type Aliases for Tag Information
 type TagInfo    = (TagType, TagValue, TagPlicity)
 type TagHistory = [TagInfo]
+type TypeRef    = String
+type Name       = String
+
+data Extensible = Extensible
 
 -- The major data structure itself
 
 data ConstrainedType :: * -> * where
-   BOOLEAN         :: TagHistory -> ConstrainedType Bool
-   INTEGER         :: TagHistory -> ConstrainedType Integer
---   ENUMERATED      :: TagHistory -> ConstrainedType Enumerated
-   BITSTRING       :: TagHistory -> ConstrainedType BitString
-   PRINTABLESTRING :: TagHistory -> ConstrainedType PrintableString
-   IA5STRING       :: TagHistory -> ConstrainedType IA5String
-   VISIBLESTRING   :: TagHistory -> ConstrainedType VisibleString
-   Single          :: SingleValue a => TagHistory -> ConstrainedType a -> a -> ConstrainedType a
-   Includes        :: ContainedSubtype a => TagHistory -> ConstrainedType a -> ConstrainedType a -> ConstrainedType a
-   Range           :: (Ord a, ValueRange a) => TagHistory -> ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
-   SEQUENCE        :: TagHistory -> Sequence a -> ConstrainedType a
-   SEQUENCEOF      :: TagHistory -> ConstrainedType a -> ConstrainedType [a]
-   SIZE            :: SizeConstraint a => TagHistory -> ConstrainedType a -> Lower -> Upper -> ConstrainedType a
-   SET             :: TagHistory -> Sequence a -> ConstrainedType a
-   SETOF           :: TagHistory -> ConstrainedType a -> ConstrainedType [a]
-   CHOICE          :: TagHistory -> Choice a -> ConstrainedType a
-   FROM            :: PermittedAlphabet a => TagHistory -> ConstrainedType a
+   TYPEASS         :: TypeRef -> Maybe TagInfo -> ConstrainedType a -> ConstrainedType a
+   NAMEDTYPE       :: Name -> Maybe TagInfo -> ConstrainedType a -> ConstrainedType a
+   EXTENSIBLE      :: ConstrainedType Extensible
+   BOOLEAN         :: ConstrainedType Bool
+   INTEGER         :: ConstrainedType Integer
+--   ENUMERATED      :: ConstrainedType Enumerated
+   BITSTRING       :: ConstrainedType BitString
+   PRINTABLESTRING :: ConstrainedType PrintableString
+   IA5STRING       :: ConstrainedType IA5String
+   VISIBLESTRING   :: ConstrainedType VisibleString
+   Single          :: SingleValue a => ConstrainedType a -> a -> ConstrainedType a
+   Includes        :: ContainedSubtype a => ConstrainedType a -> ConstrainedType a -> ConstrainedType a
+   Range           :: (Ord a, ValueRange a) => ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
+   SEQUENCE        :: Sequence a -> ConstrainedType a
+   SEQUENCEOF      :: ConstrainedType a -> ConstrainedType [a]
+   SIZE            :: ConstrainedType a -> Lower -> Upper -> ConstrainedType a
+-- REMOVED SizeConstraint a => from above
+   SET             :: Sequence a -> ConstrainedType a
+   SETOF           :: ConstrainedType a -> ConstrainedType [a]
+   CHOICE          :: Choice a -> ConstrainedType a
+   FROM            :: PermittedAlphabet a => ConstrainedType a
                         -> a -> ConstrainedType a
 {-
    -- Regular expression constraint - ignore for now but it would be cool to do them
