@@ -25,9 +25,9 @@ import Control.Monad.State
 import ConstrainedType
 
 prettyType :: Show a => ConstrainedType a -> Doc
-prettyType (INTEGER _) =
+prettyType INTEGER =
    text "INTEGER"
-prettyType(Range _ x l u) =
+prettyType(Range x l u) =
    let l' = 
          case l of
             Nothing -> text "MIN"
@@ -37,7 +37,7 @@ prettyType(Range _ x l u) =
             Nothing -> text "MAX"
             Just n  -> text (show n)
    in sep [prettyType x, parens (sep [l',text "..",u'])]
-prettyType (SEQUENCE _ x) =
+prettyType (SEQUENCE x) =
    text "SEQUENCE" <> space <> braces (prettySeq x)
 
 prettySeq :: Sequence a -> Doc
@@ -68,17 +68,17 @@ data RepType = forall t . Show t => RepType (ConstrainedType t)
 instance Arbitrary RepType where
    arbitrary =
       oneof [
-         return (RepType (INTEGER [])),
+         return (RepType INTEGER),
          do l <- arbitrary
             u <- suchThat arbitrary (f l)
-            return (RepType (Range [] (INTEGER []) l u)),
+            return (RepType (Range INTEGER l u)),
          do x <- arbitrary
             y <- arbitrary
             case x of
                RepType u -> 
                   case y of
                      RepSeq v -> 
-                        return (RepType (SEQUENCE [] (Cons u v)))
+                        return (RepType (SEQUENCE (Cons u v)))
          ]
       where f l u =
                case l of
