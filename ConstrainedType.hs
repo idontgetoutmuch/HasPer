@@ -485,11 +485,19 @@ encodeSeq s x
 -- encoding a sequence, one has to both encode each component and
 -- produce a preamble which indicates the presence or absence of an
 -- optional or default value. The first list in the result is the
--- preamble.
+-- preamble. The constructor EXTENSIBLE indicates the sequence is
+-- extensible, and the coding responsibility is passed to
+-- encodeExtSeqAux. Note that EXTENSIBLE is the last value in the
+-- sequence then there are no extension additions and a 0 is prefixed
+-- to the encoding.
 
 encodeSeqAux :: [BitStream] -> [BitStream] -> Sequence a -> a ->
     ([BitStream],[BitStream])
-encodeSeqAux preamble body Nil _ = ((reverse preamble),(reverse body))
+encodeSeqAux preamble body Nil _ = (reverse preamble, reverse body)
+encodeSeqAux preamble body (Cons EXTENSIBLE Nil) _
+    = ([0]:reverse preamble, reverse body)
+encodeSeqAux preamble body (Cons EXTENSIBLE as) (x:*:xs)
+    = encodeExtSeqAux [] (reverse preamble ++ reverse body) [] as xs
 encodeSeqAux preamble body (Cons a as) (x:*:xs) =
    encodeSeqAux ([]:preamble) ((toPer a x):body) as xs
 encodeSeqAux preamble body (Optional a as) (Nothing:*:xs) =
@@ -500,6 +508,33 @@ encodeSeqAux preamble body (Default a d as) (Nothing:*:xs) =
    encodeSeqAux ([0]:preamble) ([]:body) as xs
 encodeSeqAux preamble body (Default a d as) ((Just x):*:xs) =
    encodeSeqAux ([1]:preamble) ((toPer a x):body) as xs
+
+
+-- encodeExtSeqAux adds the encoding of any extension additions to
+-- the encoding of the extension root. If an addition is present a
+-- 1 is added to a bitstream prefix and the value is encoded as an
+-- open type (using toPerOpen). If an addition is not present then a
+-- 0 is added to the prefix.
+
+encodeExtSeqAux :: [BitStream] -> [BitStream] -> [BitStream] -> Sequence a -> a ->
+    ([BitStream],[BitStream])
+encodeExtSeqAux extAdds extRoot body Nil _
+    = if (length . filter (==[1])) extAdds > 0
+        then  ([1]:extRoot,reverse extAdds ++ reverse body)
+        else  ([0]:extRoot,reverse extAdds ++ reverse body)
+encodeExtSeqAux extAdds extRoot body (ConsM a as) (Nothing:*:xs) =
+   encodeExtSeqAux ([0]:extAdds) extRoot body as xs
+encodeSeqExtAux extAdds extRoot body (ConsM a as) (Just x:*:xs) =
+   encodeExtSeqAux ([1]:extAdds) extRoot ((toPerOpen a x):body) as xs
+encodeSeqExtAux extAdds extRoot body (Optional a as) (Nothing:*:xs) =
+   encodeExtSeqAux ([0]:extAdds) extRoot ([]:body) as xs
+encodeSeqExtAux extAdds extRoot body (Optional a as) ((Just x):*:xs) =
+   encodeExtSeqAux ([1]:extAdds) extRoot ((toPerOpen a x):body) as xs
+encodeSeqExtAux extAdds extRoot body (Default a d as) (Nothing:*:xs) =
+   encodeExtSeqAux ([0]:extAdds) extRoot ([]:body) as xs
+encodeSeqExtAux extAdds extRoot body (Default a d as) ((Just x):*:xs) =
+   encodeExtSeqAux ([1]:extAdds) extRoot ((toPerOpen a x):body) as xs
+
 
 
 -- 19. ENCODING THE SEQUENCE-OF TYPE
