@@ -335,7 +335,7 @@ encodeInsert :: (t -> [[[t1]]] -> [[a]]) -> t -> [t1] -> [a]
 encodeInsert f s = concat . f s . groupBy 4 . groupBy (16*(2^10))
 
 encodeWithLengthDeterminant :: [Int] -> [Int]
-encodeWithLengthDeterminant = concat . encodeInsert unfoldr intLengths . groupBy 8
+encodeWithLengthDeterminant = concat . encodeInsert unfoldr addLengths . groupBy 8
 
 groupBy :: Int -> [t] -> [[t]]
 groupBy n =
@@ -377,10 +377,12 @@ arg1 :: Integer -> Integer -> [Int]
 arg1 x y = (1:1:(minBits (x,y)))
 
 
--- intLengths adds length value to section of int value
+-- addLengths adds length encoding to a sectioned bitstream. Note
+-- that the input bits are unchanged as the first argument to ulWrapper is the
+-- identity function.
 
-intLengths :: [[[BitStream]]] -> Maybe ([BitStream], [[[BitStream]]])
-intLengths = ulWrapper id (:) arg1 ld
+addLengths :: [[[BitStream]]] -> Maybe ([BitStream], [[[BitStream]]])
+addLengths = ulWrapper id (:) arg1 ld
 
 ld :: Integer -> [BitStream]
 ld n
