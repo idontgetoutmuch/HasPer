@@ -247,6 +247,27 @@ minB (Just b) Nothing  = Just b
 minB (Just a) (Just b) = Just (min a b)
 minB _ _               = Nothing
 
+
+-- toPerOpen encodes an open type value. That is:
+--    i. the value is encoded as ususal;
+--   ii. it is padded at the end with 0s so that it has a octet-multiple length; and
+--  iii. its length is added as a prefix using the fragmentation rules (10.9)
+
+toPerOpen :: ConstrainedType a -> a -> [Int]
+toPerOpen t v
+    = let enc = toPer t v
+          le  = length enc
+          bts = le `mod` 8
+          oct = le `div` 8
+          n   = if bts == 0
+                    then oct
+                    else oct + 1
+          pad = if bts == 0
+                    then enc
+                    else enc ++ take (8-bts) [0,0..]
+      in
+        encodeWithLengthDeterminant pad
+
 -- 11 ENCODING THE BOOLEAN TYPE
 
 encodeBool :: ConstrainedType Bool -> Bool -> BitStream
