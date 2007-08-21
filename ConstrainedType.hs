@@ -100,6 +100,7 @@ instance (Show a, Show l) => Show (a:*:l) where
 data Sequence :: * -> * where
    Nil :: Sequence Nil
    Cons ::  Show a => ConstrainedType a -> Sequence l -> Sequence (a:*:l)
+   ConsM ::  ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
    Optional :: ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
    Default :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
 
@@ -125,6 +126,7 @@ data ConstrainedType :: * -> * where
    TYPEASS         :: TypeRef -> Maybe TagInfo -> ConstrainedType a -> ConstrainedType a
    NAMEDTYPE       :: Name -> Maybe TagInfo -> ConstrainedType a -> ConstrainedType a
    EXTENSIBLE      :: ConstrainedType Extensible
+   EXTADDGROUP     :: Sequence a -> ConstrainedType a
    BOOLEAN         :: ConstrainedType Bool
    INTEGER         :: ConstrainedType Integer
 --   ENUMERATED      :: ConstrainedType Enumerated
@@ -212,6 +214,8 @@ manageSize fn1 fn2 t x
 toPer :: ConstrainedType a -> a -> [Int]
 toPer (TYPEASS tr tg ct) v                      = toPer ct v
 toPer (NAMEDTYPE n tg ct) v                     = toPer ct v
+toPer EXTENSIBLE x                              = []
+toPer (EXTADDGROUP s) x                         = toPerOpen (SEQUENCE s) x
 toPer t@BOOLEAN x                               = encodeBool t x
 toPer t@INTEGER x                               = encodeInt t x
 toPer r@(Range INTEGER l u) x                   = encodeInt r x
@@ -232,8 +236,6 @@ toPer (SIZE (SIZE t l1 u1) l2 u2) x             = let ml = maxB l1 l2
                                                   in
                                                       toPer (SIZE t ml mu) x
 toPer (SIZE (TYPEASS r tg t) l u) x             = toPer (SIZE t l u) x
-
-
 
 maxB Nothing (Just b)  = Just b
 maxB (Just b) Nothing  = Just b
