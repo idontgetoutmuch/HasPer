@@ -700,7 +700,7 @@ getTI (TYPEASS _ _ t)           = getTI t
 getTI (NAMEDTYPE _ (Just tg) _) = tg
 getTI (NAMEDTYPE _ _ t)         = getTI t
 getTI INTEGER                   = (Universal,2, Explicit)
-getTI (Range c _ _)             = getTI c
+getTI (RANGE c _ _)             = getTI c
 getTI IA5STRING                 = (Universal,22, Explicit)
 getTI BITSTRING                 = (Universal, 3, Explicit)
 getTI PRINTABLESTRING           = (Universal, 19, Explicit)
@@ -850,7 +850,36 @@ findV m (a:rs)
                 then []
                 else a : findV m rs
 
+-- 27. Encoding the restricted character string types (NUMERICSTRING)
 
+encodeNS :: ConstrainedType NumericString -> NumericString -> BitStream
+encodeNS = manageSize encodeNumSz encodeNum
+
+encodeNumSz :: ConstrainedType NumericString -> Integer -> Integer -> NumericString -> BitStream
+encodeNumSz t@(SIZE ty _ _) l u x@(NumericString xs)
+    = manageExtremes encNS (encodeNum ty . NumericString) l u xs
+
+encodeNum :: ConstrainedType NumericString -> NumericString -> BitStream
+encodeNum ns (NumericString s)
+    = encodeInsert insertLNS ns s
+
+insertLNS :: ConstrainedType NumericString -> [[String]] -> [BitStream]
+insertLNS s = unfoldr (nsLengths s)
+
+
+-- vsLengths adds lengths values to encoding of sections of
+-- VISIBLESTRING.
+
+nsLengths :: ConstrainedType NumericString -> [[String]] -> Maybe (BitStream, [[String]])
+nsLengths s = ulWrapper encNS (++) arg1 ld2
+
+encNC c  = minBits ((toInteger . (posInStr 0 " 0123456789")) c, 10)
+encNS s  = (concat . map encNC) s
+
+posInStr n (a:r) c
+    = if a == c then n else posInStr (n+1) r c
+posIntStr n [] c
+    = error "Not in string"
 
 -- Decoding
 
@@ -946,7 +975,7 @@ mFromPerSeq (Cons t ts) bs =
 
 fromPer :: (MonadState Int64 m, MonadError [Char] m) => ConstrainedType a -> B.ByteString -> m a
 fromPer t@INTEGER x                 = mUntoPerInt t x
-fromPer r@(Range INTEGER l u) x     = mUntoPerInt r x
+fromPer r@(RANGE INTEGER l u) x     = mUntoPerInt r x
 fromPer (SEQUENCE s) x              = mFromPerSeq s x
 
 
@@ -974,12 +1003,12 @@ t01 = INTEGER
 t02 = INTEGER
 t03 = INTEGER
 t04 = INTEGER
-t1 = Range INTEGER (Just 25) (Just 30)
-t2 = Includes INTEGER t1
-t3 = Includes t1 t1
-t4 = Range INTEGER (Just (-256)) Nothing
-t41 = Range INTEGER (Just 0) (Just 18000)
-t42 = Range INTEGER (Just 3) (Just 3)
+t1 = RANGE INTEGER (Just 25) (Just 30)
+t2 = INCLUDES INTEGER t1
+t3 = INCLUDES t1 t1
+t4 = RANGE INTEGER (Just (-256)) Nothing
+t41 = RANGE INTEGER (Just 0) (Just 18000)
+t42 = RANGE INTEGER (Just 3) (Just 3)
 t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
 t6 = SEQUENCE (Cons t1 (Cons t1 Nil))
 t7 = SIZE (SEQUENCEOF t1) (Just 3) (Just 5)
@@ -993,41 +1022,41 @@ t12 = CHOICE (ChoiceOption t04 (ChoiceOption t03 NoChoice))
 tInteger1 = INTEGER
 vInteger1 = 4096
 integer1 = toPer INTEGER 4096
-integer2 = toPer (Range INTEGER Nothing (Just 65535)) 127
-tInteger2 = Range INTEGER Nothing (Just 65535)
+integer2 = toPer (RANGE INTEGER Nothing (Just 65535)) 127
+tInteger2 = RANGE INTEGER Nothing (Just 65535)
 vInteger2 = 127
-integer3 = toPer (Range INTEGER Nothing (Just 65535)) (-128)
-integer4 = toPer (Range INTEGER Nothing (Just 65535)) 128
+integer3 = toPer (RANGE INTEGER Nothing (Just 65535)) (-128)
+integer4 = toPer (RANGE INTEGER Nothing (Just 65535)) 128
 
 
 -- Semi-constrained INTEGER
 
-tInteger5 = Range INTEGER (Just (-1)) Nothing
+tInteger5 = RANGE INTEGER (Just (-1)) Nothing
 vInteger5 = 4096
-integer5  = toPer (Range INTEGER (Just (-1)) Nothing) 4096
-tInteger6 = Range INTEGER (Just 1) Nothing
+integer5  = toPer (RANGE INTEGER (Just (-1)) Nothing) 4096
+tInteger6 = RANGE INTEGER (Just 1) Nothing
 vInteger6 = 127
-integer6  = toPer (Range INTEGER (Just 1) Nothing) 127
-tInteger7 = Range INTEGER (Just 0) Nothing
+integer6  = toPer (RANGE INTEGER (Just 1) Nothing) 127
+tInteger7 = RANGE INTEGER (Just 0) Nothing
 vInteger7 = 128
-integer7  = toPer (Range INTEGER (Just 0) Nothing) 128
+integer7  = toPer (RANGE INTEGER (Just 0) Nothing) 128
 
 -- Constrained INTEGER
 
-integer8'1 = toPer (Range INTEGER (Just 3) (Just 6)) 3
-integer8'2 = toPer (Range INTEGER (Just 3) (Just 6)) 4
-integer8'3 = toPer (Range INTEGER (Just 3) (Just 6)) 5
-integer8'4 = toPer (Range INTEGER (Just 3) (Just 6)) 6
-integer9'1 = toPer (Range INTEGER (Just 4000) (Just 4254)) 4002
-integer9'2 = toPer (Range INTEGER (Just 4000) (Just 4254)) 4006
-integer10'1 = toPer (Range INTEGER (Just 4000) (Just 4255)) 4002
-integer10'2 = toPer (Range INTEGER (Just 4000) (Just 4255)) 4006
-integer11'1 = toPer (Range INTEGER (Just 0) (Just 32000)) 0
-integer11'2 = toPer (Range INTEGER (Just 0) (Just 32000)) 31000
-integer11'3 = toPer (Range INTEGER (Just 0) (Just 32000)) 32000
-integer12'1 = toPer (Range INTEGER (Just 1) (Just 65538)) 1
-integer12'2 = toPer (Range INTEGER (Just 1) (Just 65538)) 257
-integer12'3 = toPer (Range INTEGER (Just 1) (Just 65538)) 65538
+integer8'1 = toPer (RANGE INTEGER (Just 3) (Just 6)) 3
+integer8'2 = toPer (RANGE INTEGER (Just 3) (Just 6)) 4
+integer8'3 = toPer (RANGE INTEGER (Just 3) (Just 6)) 5
+integer8'4 = toPer (RANGE INTEGER (Just 3) (Just 6)) 6
+integer9'1 = toPer (RANGE INTEGER (Just 4000) (Just 4254)) 4002
+integer9'2 = toPer (RANGE INTEGER (Just 4000) (Just 4254)) 4006
+integer10'1 = toPer (RANGE INTEGER (Just 4000) (Just 4255)) 4002
+integer10'2 = toPer (RANGE INTEGER (Just 4000) (Just 4255)) 4006
+integer11'1 = toPer (RANGE INTEGER (Just 0) (Just 32000)) 0
+integer11'2 = toPer (RANGE INTEGER (Just 0) (Just 32000)) 31000
+integer11'3 = toPer (RANGE INTEGER (Just 0) (Just 32000)) 32000
+integer12'1 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 1
+integer12'2 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 257
+integer12'3 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 65538
 
 
 
@@ -1209,6 +1238,29 @@ empI = VisibleString "P"
 
 emp = (empGN :*: (empI :*: (empFN :*: Empty)))
 
+
+-- X691: A.4.1 Example Includes extensible type with extension addition groups.
+
+ax
+    = TYPEASS "Ax" Nothing
+        (SEQUENCE
+            (Cons (NAMEDTYPE "a" Nothing (RANGE INTEGER (Just 250) (Just 253)))
+                (Cons (NAMEDTYPE "b" Nothing BOOLEAN)
+                    (Cons EXTENSIBLE
+                        (ConsA (EXTADDGROUP
+                                 (Cons (NAMEDTYPE "g" Nothing (SIZE NUMERICSTRING (Just 3) (Just 3)))
+                                             (Optional (NAMEDTYPE "h" Nothing BOOLEAN) Nil)))
+                            (Cons EXTENSIBLE
+                                (Optional (NAMEDTYPE "i" Nothing VISIBLESTRING)
+                                    (Optional (NAMEDTYPE "j" Nothing VISIBLESTRING) Nil))))))))
+
+
+axVal
+    = (253 :*: (True :*: (Extensible :*:((Just (NumericString "123" :*:(Just True :*: Empty)))
+            :*: (Extensible :*: (Nothing :*: (Nothing :*: Empty)))))))
+
+axEx = toPer ax axVal
+
 -- Decoding
 
 -- Tests for unconstrained INTEGERs
@@ -1231,8 +1283,8 @@ mUnUnLong3 = mDecodeEncode tInteger1 longUnIntegerPER3
 mUnUnLongTest3 = longIntegerVal3 == mUnUnLong3
 
 -- Tests for constrained INTEGERs
--- ** uncompTest1 = runState (runErrorT (untoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
-mUncompTest1 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
+-- ** uncompTest1 = runState (runErrorT (untoPerInt (RANGE INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
+mUncompTest1 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
 
 -- These tests are wrong
 -- uncompTest2 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x18,0,1,1]))) 0
@@ -1242,7 +1294,7 @@ mUncompTest1 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just 3) (Just 6)
 -- Tests for semi-constrained INTEGERs
 -- We need to replace decodeLengthDeterminant with untoPerInt
 -- ** unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
-mUnInteger5 = runState (runErrorT (mUntoPerInt (Range INTEGER (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
+mUnInteger5 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
 
 
 mDecodeEncode :: ConstrainedType Integer -> BitStream -> Integer
@@ -1271,7 +1323,7 @@ mSemiTest6 = vInteger6 == mUnSemi6
 mUnSemi7 = mDecodeEncode tInteger7 integer7
 mSemiTest7 = vInteger7 == mUnSemi7
 
-natural = Range INTEGER (Just 0) Nothing
+natural = RANGE INTEGER (Just 0) Nothing
 
 longIntegerVal1 = 256^4
 longIntegerPER1 = toPer natural longIntegerVal1
@@ -1296,7 +1348,7 @@ testFromPer2 = mIdem testType2 testToPer2
 foo =
    do h <- openFile "test" ReadMode
       b <- B.hGetContents h
-      let d =  runState (runErrorT (mUntoPerInt (Range  INTEGER (Just 25) (Just 30)) b)) 0
+      let d =  runState (runErrorT (mUntoPerInt (RANGE  INTEGER (Just 25) (Just 30)) b)) 0
       case d of
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
