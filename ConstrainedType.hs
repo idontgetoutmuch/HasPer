@@ -108,9 +108,11 @@ instance (Show a, Show l) => Show (a:*:l) where
 data Sequence :: * -> * where
    Nil :: Sequence Nil
    Cons ::  Show a => ConstrainedType a -> Sequence l -> Sequence (a:*:l)
-   ConsM ::  ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
+   ConsA ::  ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
    Optional :: ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
+   OptionalA :: ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
    Default :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
+   DefaultA :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
 
 -- The Choice type is similar to a Sequence except that each value
 -- is optional and only one value can exist at a time. Note that
@@ -127,6 +129,7 @@ type TypeRef    = String
 type Name       = String
 
 data Extensible = Extensible
+    deriving Show
 
 -- The major data structure itself
 
