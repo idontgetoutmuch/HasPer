@@ -145,9 +145,10 @@ data ConstrainedType :: * -> * where
    PRINTABLESTRING :: ConstrainedType PrintableString
    IA5STRING       :: ConstrainedType IA5String
    VISIBLESTRING   :: ConstrainedType VisibleString
-   Single          :: SingleValue a => ConstrainedType a -> a -> ConstrainedType a
-   Includes        :: ContainedSubtype a => ConstrainedType a -> ConstrainedType a -> ConstrainedType a
-   Range           :: (Ord a, ValueRange a) => ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
+   NUMERICSTRING   :: ConstrainedType NumericString
+   SINGLE          :: SingleValue a => ConstrainedType a -> a -> ConstrainedType a
+   INCLUDES        :: ContainedSubtype a => ConstrainedType a -> ConstrainedType a -> ConstrainedType a
+   RANGE           :: (Ord a, ValueRange a) => ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
    SEQUENCE        :: Sequence a -> ConstrainedType a
    SEQUENCEOF      :: ConstrainedType a -> ConstrainedType [a]
    SIZE            :: ConstrainedType a -> Lower -> Upper -> ConstrainedType a
@@ -192,9 +193,9 @@ instance Ord a => Monoid (Constraint a) where
 -- no lower or upper bound.
 
 bounds :: Ord a => ConstrainedType a -> Constraint a
-bounds (Includes t1 t2)   = (bounds t1) `mappend` (bounds t2)
-bounds (Range t l u)      = (bounds t) `mappend` (Constrained l u)
-bounds _                    = Constrained Nothing Nothing
+bounds (INCLUDES t1 t2)   = (bounds t1) `mappend` (bounds t2)
+bounds (RANGE t l u)      = (bounds t) `mappend` (Constrained l u)
+bounds _                  = Constrained Nothing Nothing
 
 
 -- sizeLimit returns the size limits of a value. Nothing
@@ -229,7 +230,7 @@ toPer EXTENSIBLE x                              = []
 toPer (EXTADDGROUP s) x                         = toPerOpen (SEQUENCE s) x
 toPer t@BOOLEAN x                               = encodeBool t x
 toPer t@INTEGER x                               = encodeInt t x
-toPer r@(Range INTEGER l u) x                   = encodeInt r x
+toPer r@(RANGE INTEGER l u) x                   = encodeInt r x
 toPer t@BITSTRING x                             = encodeBS t x
 toPer t@(SIZE BITSTRING l u) x                  = encodeBS t x
 toPer (SEQUENCE s) x                            = encodeSeq s x
