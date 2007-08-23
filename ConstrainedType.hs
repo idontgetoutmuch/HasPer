@@ -22,6 +22,8 @@ type BitStream = [Int]
 newtype IA5String = IA5String {iA5String :: String}
 newtype BitString = BitString {bitString :: BitStream}
 
+
+
 instance Show IA5String where
    show (IA5String x) = show x
 
@@ -41,7 +43,8 @@ data AlphabetConstraint :: * -> * where
    UnionAlpha            :: AlphabetConstraint a -> AlphabetConstraint a -> AlphabetConstraint a
 
 newtype PrintableString = PrintableString {unPrintableString :: String}
-
+data NumericString = NumericString String
+    deriving Show
 
 
 -- X.680 (07/2002) Section 47.1 Table 9
@@ -51,6 +54,7 @@ class SingleValue a
 instance SingleValue BitString
 instance SingleValue IA5String
 instance SingleValue PrintableString
+
 instance SingleValue Integer
 
 class ContainedSubtype a
@@ -58,6 +62,7 @@ class ContainedSubtype a
 instance ContainedSubtype BitString
 instance ContainedSubtype IA5String
 instance ContainedSubtype PrintableString
+instance ContainedSubtype NumericString
 instance ContainedSubtype Integer
 
 class ValueRange a
@@ -65,6 +70,7 @@ class ValueRange a
 -- BIT STRING cannot be given value ranges
 instance ValueRange IA5String
 instance ValueRange PrintableString
+instance ValueRange NumericString
 instance ValueRange Integer
 
 
@@ -74,6 +80,7 @@ class PermittedAlphabet a
 instance PermittedAlphabet IA5String
 instance PermittedAlphabet PrintableString
 instance PermittedAlphabet VisibleString
+instance PermittedAlphabet NumericString
 -- INTEGER cannot be given permitted alphabet
 
 class SizeConstraint a
@@ -83,6 +90,7 @@ instance SizeConstraint IA5String
 instance SizeConstraint PrintableString
 instance SizeConstraint [a]
 instance SizeConstraint VisibleString
+instance SizeConstraint NumericString
 -- INTEGER cannot be given a size constraint
 
 
