@@ -266,8 +266,14 @@ minB _ _               = Nothing
 --    i. the value is encoded as ususal;
 --   ii. it is padded at the end with 0s so that it has a octet-multiple length; and
 --  iii. its length is added as a prefix using the fragmentation rules (10.9)
+-- The first case is required since an extension addition group is
+-- encoded as an open type sequence and toPerOpen is always called by
+-- toPer on an extension component (avoids encoding it as an open
+-- type open type sequence!)
 
 toPerOpen :: ConstrainedType a -> a -> [Int]
+toPerOpen (EXTADDGROUP s) v
+    = toPerOpen (SEQUENCE s) v
 toPerOpen t v
     = let enc = toPer t v
           le  = length enc
@@ -511,7 +517,7 @@ encodeSeqAux preamble body Nil _ = (reverse preamble, reverse body)
 encodeSeqAux preamble body (Cons EXTENSIBLE Nil) _
     = ([0]:reverse preamble, reverse body)
 encodeSeqAux preamble body (Cons EXTENSIBLE as) (x:*:xs)
-    = encodeExtSeqAux [] (reverse preamble ++ reverse body) [] as xs
+    = encodeExtSeqAux [] (preamble, body) [] as xs
 encodeSeqAux preamble body (Cons a as) (x:*:xs) =
    encodeSeqAux ([]:preamble) ((toPer a x):body) as xs
 encodeSeqAux preamble body (Optional a as) (Nothing:*:xs) =
@@ -530,23 +536,39 @@ encodeSeqAux preamble body (Default a d as) ((Just x):*:xs) =
 -- open type (using toPerOpen). If an addition is not present then a
 -- 0 is added to the prefix.
 
-encodeExtSeqAux :: [BitStream] -> [BitStream] -> [BitStream] -> Sequence a -> a ->
+encodeExtSeqAux :: [BitStream] -> ([BitStream], [BitStream]) -> [BitStream] -> Sequence a -> a ->
     ([BitStream],[BitStream])
 encodeExtSeqAux extAdds extRoot body Nil _
-    = if (length . filter (==[1])) extAdds > 0
-        then  ([1]:extRoot,reverse extAdds ++ reverse body)
-        else  ([0]:extRoot,reverse extAdds ++ reverse body)
-encodeExtSeqAux extAdds extRoot body (ConsM a as) (Nothing:*:xs) =
+    =   let er = (reverse . fst) extRoot ++ (reverse . snd) extRoot
+        in
+            if (length . filter (==[1])) extAdds > 0
+                then  ([1]:er,reverse extAdds ++ reverse body)
+                else  ([0]:er,reverse extAdds ++ reverse body)
+encodeExtSeqAux extAdds extRoot body (Cons EXTENSIBLE Nil) (x:*:xs) =
+   encodeExtSeqAux extAdds extRoot body Nil xs
+encodeExtSeqAux extAdds extRoot body (Cons EXTENSIBLE as) (x:*:xs) =
+   encodeExtSeqAux extAdds extRoot body as xs
+encodeExtSeqAux extAdds (p, b) body (Cons a as) (x:*:xs) =
+   encodeExtSeqAux extAdds  ([]:p, toPer a x:b) body as xs
+encodeExtSeqAux extAdds (p, b) body (Optional a as) (Nothing:*:xs) =
+   encodeExtSeqAux extAdds ([0]:p, []:b) body as xs
+encodeExtSeqAux extAdds (p, b) body (Optional a as) ((Just x):*:xs) =
+   encodeExtSeqAux extAdds ([1]:p, toPer a x:b) body as xs
+encodeExtSeqAux extAdds (p, b) body (Default a d as) (Nothing:*:xs) =
+   encodeExtSeqAux extAdds ([0]:p, []:b) body as xs
+encodeExtSeqAux extAdds (p, b) body (Default a d as) ((Just x):*:xs) =
+   encodeExtSeqAux extAdds ([1]:p, toPer a x:b) body as xs
+encodeExtSeqAux extAdds extRoot body (ConsA a as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:extAdds) extRoot body as xs
-encodeSeqExtAux extAdds extRoot body (ConsM a as) (Just x:*:xs) =
+encodeExtSeqAux extAdds extRoot body (ConsA a as) (Just x:*:xs) =
    encodeExtSeqAux ([1]:extAdds) extRoot ((toPerOpen a x):body) as xs
-encodeSeqExtAux extAdds extRoot body (Optional a as) (Nothing:*:xs) =
+encodeExtSeqAux extAdds extRoot body (OptionalA a as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:extAdds) extRoot ([]:body) as xs
-encodeSeqExtAux extAdds extRoot body (Optional a as) ((Just x):*:xs) =
+encodeExtSeqAux extAdds extRoot body (OptionalA a as) ((Just x):*:xs) =
    encodeExtSeqAux ([1]:extAdds) extRoot ((toPerOpen a x):body) as xs
-encodeSeqExtAux extAdds extRoot body (Default a d as) (Nothing:*:xs) =
+encodeExtSeqAux extAdds extRoot body (DefaultA a d as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:extAdds) extRoot ([]:body) as xs
-encodeSeqExtAux extAdds extRoot body (Default a d as) ((Just x):*:xs) =
+encodeExtSeqAux extAdds extRoot body (DefaultA a d as) ((Just x):*:xs) =
    encodeExtSeqAux ([1]:extAdds) extRoot ((toPerOpen a x):body) as xs
 
 
