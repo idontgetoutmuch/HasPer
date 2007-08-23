@@ -240,7 +240,9 @@ toPer (SET s) x                                 = encodeSet s x
 toPer t@(SETOF s) x                             = encodeSO t x
 toPer t@(CHOICE c) x                            = encodeChoice c x
 toPer t@VISIBLESTRING x                         = encodeVS t x
+toPer t@NUMERICSTRING x                         = encodeNS t x
 toPer t@(SIZE VISIBLESTRING l u) x              = encodeVS t x
+toPer t@(SIZE NUMERICSTRING l u) x              = encodeNS t x
 toPer t@(FROM VISIBLESTRING pac) x              = encodeVSF t x
 toPer t@(SIZE (FROM VISIBLESTRING pac) l u) x   = encodeVSF t x
 toPer (SIZE (SIZE t l1 u1) l2 u2) x             = let ml = maxB l1 l2
