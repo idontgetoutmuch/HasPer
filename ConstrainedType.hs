@@ -11,7 +11,7 @@ import Data.Char
 import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
-import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default))
+import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
 import Text.PrettyPrint
 import System
 import IO
@@ -114,6 +114,17 @@ data Sequence :: * -> * where
    Default :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
    DefaultA :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
 
+data DomSequence :: * -> * where
+   DomNil  :: DomSequence Nil
+   DomCons :: Show a => ElementType a -> DomSequence l -> DomSequence (a:*:l)
+{-
+   ConsA ::  ConstrainedType a -> DSSequence l -> DSSequence ((Maybe a):*:l)
+   Optional :: ConstrainedType a -> DSSequence l -> DSSequence ((Maybe a):*:l)
+   OptionalA :: ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
+   Default :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
+   DefaultA :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
+-}
+
 -- The Choice type is similar to a Sequence except that each value
 -- is optional and only one value can exist at a time. Note that
 -- the Choice type has no PER-visible constraints.
@@ -150,6 +161,7 @@ data ConstrainedType :: * -> * where
    INCLUDES        :: ContainedSubtype a => ConstrainedType a -> ConstrainedType a -> ConstrainedType a
    RANGE           :: (Ord a, ValueRange a) => ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
    SEQUENCE        :: Sequence a -> ConstrainedType a
+   SEQUENCE'       :: DomSequence a -> ConstrainedType a
    SEQUENCEOF      :: ConstrainedType a -> ConstrainedType [a]
    SIZE            :: ConstrainedType a -> Lower -> Upper -> ConstrainedType a
 -- REMOVED SizeConstraint a => from above
@@ -166,6 +178,13 @@ data ConstrainedType :: * -> * where
    Union        :: ConstrainedType a -> ConstrainedType a -> ConstrainedType a
 -}
 
+data NamedType :: * -> * where
+   NamedType :: Name -> Maybe TagInfo -> ConstrainedType a -> NamedType a
+
+data ElementType :: * -> * where
+   ETMandatory :: NamedType a -> ElementType a
+   ETOptional  :: NamedType a -> ElementType a
+   ETDefault   :: NamedType a -> a -> ElementType a
 
 -- dna = From PRINTABLESTRING (SingleValueAlpha (PrintableString "TAGC")) shouldn't typecheck
 
