@@ -29,7 +29,7 @@ import Data.Char
 prettyType :: Show a => ConstrainedType a -> Doc
 prettyType INTEGER =
    text "INTEGER"
-prettyType(Range x l u) =
+prettyType(RANGE x l u) =
    let l' = 
          case l of
             Nothing -> text "MIN"
@@ -123,7 +123,7 @@ instance Arbitrary RepType where
          return (RepType INTEGER),
          do l <- arbitrary
             u <- suchThat arbitrary (f l)
-            return (RepType (Range INTEGER l u)),
+            return (RepType (RANGE INTEGER l u)),
          do x <- arbitrary
             y <- arbitrary
             case x of
