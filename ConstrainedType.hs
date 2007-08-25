@@ -135,7 +135,6 @@ data Choice :: * -> * where
 
 -- Type Aliases for Tag Information
 type TagInfo    = (TagType, TagValue, TagPlicity)
-type TagHistory = [TagInfo]
 type TypeRef    = String
 type Name       = String
 
