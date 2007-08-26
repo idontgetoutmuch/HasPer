@@ -16,6 +16,7 @@ import Text.PrettyPrint
 import System
 import IO
 import Data.Int
+import Data.Word
 
 type BitStream = [Int]
 
@@ -903,6 +904,13 @@ posIntStr n [] c
 
 n16k = 16*(2^10)
 
+mmGetBit :: (MonadState (B.ByteString,Int64) m, MonadError String m) => m Word8
+mmGetBit =
+   do (ys,x) <- get
+      y <- mGetBit x ys
+      put (ys,x+1)
+      return y
+
 mGetBit o xs =
    if B.null ys
       then throwError ("Unable to decode " ++ show xs ++ " at bit " ++ show o)
@@ -911,6 +919,11 @@ mGetBit o xs =
          ys = B.drop nBytes xs
          z = B.head ys
          u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
+
+mmGetBits :: (MonadState (B.ByteString,Int64) m, MonadError String m, Integral n) => n -> m [Word8]
+mmGetBits n =
+   sequence (genericTake n (repeat mmGetBit))
+   
 
 -- Very inefficient
 mGetBits o n b = mapM (flip mGetBit b) [o..o+n-1]
@@ -945,6 +958,33 @@ mDecodeWithLengthDeterminant k b =
                                    rest <- mDecodeWithLengthDeterminant k b
                                    return (frag ++ rest)
 
+mmDecodeWithLengthDeterminant k =
+   do p <- mmGetBit
+      case p of
+         -- 10.9.3.6
+         0 ->
+            do j <- mmGetBits 7
+               let l = fromNonNeg j
+               mmGetBits (l*k)
+         1 ->
+            do q <- mmGetBit 
+               case q of
+                  -- 10.9.3.7
+                  0 ->
+                     do j <- mmGetBits 14
+                        let l = fromNonNeg j
+                        mmGetBits (l*k)
+                  1 ->
+                     do j <- mmGetBits 6
+                        let fragSize = fromNonNeg j
+                        if fragSize <= 0 || fragSize > 4
+                           -- For now - we should handle error positions generically inside the monad
+                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
+                           else do frag <- mmGetBits (fragSize*n16k*k)
+                                   -- This looks like it might be quadratic in efficiency!
+                                   rest <- mmDecodeWithLengthDeterminant k
+                                   return (frag ++ rest)
+
 mUntoPerInt t b =
    case p of
       -- 10.5 Encoding of a constrained whole number
@@ -963,6 +1003,27 @@ mUntoPerInt t b =
       -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
       Constrained (Just lb) Nothing ->
          do o <- mDecodeWithLengthDeterminant 8 b
+            return (lb + (fromNonNeg o))
+      _ -> undefined
+   where
+      p = bounds t
+
+mmUntoPerInt t =
+   case p of
+      -- 10.5 Encoding of a constrained whole number
+      Constrained (Just lb) (Just ub) ->
+         let range = ub - lb + 1
+             n     = genericLength (minBits ((ub-lb),range-1)) in
+            if range <= 1
+               -- 10.5.4
+               then return lb
+               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
+               else do j <- mmGetBits n
+                       return (lb + (fromNonNeg j))
+      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
+      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
+      Constrained (Just lb) Nothing ->
+         do o <- mmDecodeWithLengthDeterminant 8
             return (lb + (fromNonNeg o))
       _ -> undefined
    where
@@ -991,12 +1052,54 @@ mFromPerSeq (Cons t ts) bs =
       xs <- mFromPerSeq ts bs
       return (x:*:xs)
 
+mmFromPerSeq :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => BitStream -> Sequence a -> m a
+mmFromPerSeq _ Nil = return Empty
+mmFromPerSeq bitmap (Cons t ts) =
+   do x <- mFromPer t
+      xs <- mmFromPerSeq bitmap ts
+      return (x:*:xs)
+mmFromPerSeq bitmap (Optional t ts) =
+   -- The bitmap always matches the Sequence but we recurse the Sequence twice so this needs to be fixed
+   do if (head bitmap) == 0
+         then
+            do xs <- mmFromPerSeq (tail bitmap) ts
+               return (Nothing:*:xs)
+         else
+            do x <- mFromPer t
+               xs <- mmFromPerSeq (tail bitmap) ts
+               return ((Just x):*:xs)
+
+mmFromPerSeqAux :: [Bool] -> Sequence a -> [Bool]
+mmFromPerSeqAux preamble Nil = preamble
+mmFromPerSeqAux preamble (Cons t ts) = mmFromPerSeqAux preamble ts
+mmFromPerSeqAux preamble (Optional t ts) = True:(mmFromPerSeqAux preamble ts)
+
+{-
+xxx :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => m Integer
+xxx = mFromPer INTEGER
+
+mFoo :: (MonadState (B.ByteString, Int64) m, MonadError [Char] m) => m (Integer:*:Nil)
+mFoo = liftM2 (:*:) (mFromPer INTEGER) (mmFromPerSeq Nil)
+
+mmmFromPerSeq :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Sequence a -> m a
+mmmFromPerSeq Nil = return Empty
+mmmFromPerSeq (Cons t ts) =
+   liftM2 (:*:) (mFromPer t) (mmFromPerSeq ts)
+-}
+
 fromPer :: (MonadState Int64 m, MonadError [Char] m) => ConstrainedType a -> B.ByteString -> m a
 fromPer t@INTEGER x                 = mUntoPerInt t x
 fromPer r@(RANGE INTEGER l u) x     = mUntoPerInt r x
 fromPer (SEQUENCE s) x              = mFromPerSeq s x
 
-
+mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ConstrainedType a -> m a
+mFromPer t@INTEGER                 = mmUntoPerInt t
+mFromPer r@(RANGE INTEGER l u)     = mmUntoPerInt r
+mFromPer (SEQUENCE s)              = 
+   do let bitmap = mmFromPerSeqAux [] s
+      ps <- mmGetBits (genericLength bitmap)
+      -- fromIntegral for now until we sort out why there's a Word8 / Int clash
+      mmFromPerSeq (map fromIntegral ps) s
 
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
@@ -1362,6 +1465,38 @@ testType2 = SEQUENCE (Cons t1 (Cons t1 Nil))
 testVal2  = 29:*:(30:*:Empty)
 testToPer2 = toPer testType2 testVal2
 testFromPer2 = mIdem testType2 testToPer2
+
+mmIdem :: ConstrainedType a -> BitStream -> a
+mmIdem t x =
+   case runTest x 0 of
+      (Left _,_)   -> undefined
+      (Right xs,_) -> xs
+   where
+      runTest x y = runState (runErrorT (mFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
+
+testType3 = SEQUENCE (Optional t1 (Optional t1 Nil))
+testVal3  = (Just 29):*:((Just 30):*:Empty)
+testToPer3 = toPer testType3 testVal3
+testFromPer3 = mmIdem testType3 testToPer3
+
+seq1 = SEQUENCE (Cons t1 (Cons t1 Nil))
+
+seqTest1 =
+   case d of
+      (Left x,(u,v))   -> show x
+      (Right x,(u,v)) -> show x
+
+d = runState (runErrorT (mFromPer seq1)) (B.pack [0xb4],0)
+
+seq2 = SEQUENCE (Optional t1 (Optional t1 Nil))
+
+seqTest :: Show a => ConstrainedType a -> [Word8] -> String
+seqTest t xs =
+   case d of
+      (Left x,(u,v))   -> show x
+      (Right x,(u,v)) -> show x
+   where d = runState (runErrorT (mFromPer t)) (B.pack xs,0)
+
 
 foo =
    do h <- openFile "test" ReadMode
