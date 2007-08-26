@@ -101,10 +101,10 @@ data Nil = Empty
 data a:*:l = a:*:l
 
 instance Show Nil where
-   show _ = error "Don't try to show something of type Nil just yet"
+   show _ = "Empty" 
 
 instance (Show a, Show l) => Show (a:*:l) where
-   show _ = error "Don't try to show something of type a:*:l just yet"
+   show (x:*:xs) = show x ++ ":*:" ++ show xs
 
 data Sequence :: * -> * where
    Nil :: Sequence Nil
