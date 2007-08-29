@@ -751,12 +751,15 @@ getTI (CHOICE c)                = (minimum . getCTags) c
 -- encodeSet in that the possible choice components must be
 -- assigned an index based on their canonical ordering. This index,
 -- which starts from 0, prefixes the value encoding and is absent if
--- there is only a single choice.
+-- there is only a single choice. The auxillary function
+-- encodeChoiceAux deals with the possible cases, and
+-- encodeChoiceAux' is called once a value has been encoded to ensure
+-- that only one choice value is encoded.
 
 encodeChoice :: Choice a -> a -> BitStream
 encodeChoice c x
     =   let ts  = getCTags c
-            ec  = (encodeChoiceAux [] c x)
+            (ea, ec)  = (encodeChoiceAux [] [] c x)
         in
             if length ec == 1
                 then concat ec
@@ -767,53 +770,94 @@ encodeChoice c x
                     fr  = (head . filter (not . nullValue)) pps
                     ls  = genericLength os
                 in
-                     minBits (fst fr,ls-1) ++ (snd .snd) fr
+            if null ea
+              then minBits (fst fr,ls-1) ++ (snd .snd) fr
+                    else
+                if length ec <= 63
+                    then ea ++ 0:minBits (fst fr, 63) ++ (snd.snd) fr
+                    else ea ++ 1:encodeWithLengthDeterminant (minOctets (fst fr)) ++ (snd.snd) fr
+
+-- IS THE ELSE CASE ABOVE CORRECT???
 
 nullValue :: (Integer, (TagInfo, BitStream)) -> Bool
 nullValue (f,(s,t)) = null t
 
 getCTags :: Choice a -> [TagInfo]
-getCTags NoChoice              = []
-getCTags (ChoiceOption a xs)   = getTI a : getCTags xs
+getCTags NoChoice                     = []
+getCTags (ChoiceExt xs)               = getCTags xs
+getCTags (ChoiceEAG xs)               = getCTags xs
+getCTags (ChoiceOption (NamedType n t (EXTADDGROUP (Cons v rs))) xs)
+        = getETI v : getCTags (ChoiceOption (NamedType n t (EXTADDGROUP rs))xs)
+getCTags (ChoiceOption (NamedType n t (EXTADDGROUP Nil)) xs)
+        = getCTags xs
+getCTags (ChoiceOption (NamedType n Nothing a) xs)
+        = getTI a : getCTags xs
+getCTags (ChoiceOption (NamedType n (Just t) a) xs)
+        = t : getCTags xs
 
 choicePred :: (TagInfo, BitStream) -> (TagInfo, BitStream) -> Bool
 choicePred (t1,_) (t2,_) = t1 < t2
 
 
-encodeChoiceAux :: [BitStream] -> Choice a -> a -> [BitStream]
-encodeChoiceAux body NoChoice _ = reverse body
-encodeChoiceAux body (ChoiceOption a as) (Nothing:*:xs) =
-   encodeChoiceAux ([]:body) as xs
-encodeChoiceAux body (ChoiceOption a as) ((Just x):*:xs) =
-   encodeChoiceAux' ((toPer a x):body) as xs
+encodeChoiceAux :: [Int] -> [BitStream] -> Choice a -> a -> ([Int], [BitStream])
+encodeChoiceAux ext body NoChoice _ = (ext, reverse body)
+encodeChoiceAux ext body (ChoiceExt as) xs =
+   encodeChoiceExtAux [0] body as xs
+encodeChoiceAux ext body (ChoiceOption a as) (Nothing:*:xs) =
+   encodeChoiceAux ext ([]:body) as xs
+encodeChoiceAux ext body (ChoiceOption (NamedType n t a) as) ((Just x):*:xs) =
+   encodeChoiceAux' ext ((toPer a x):body) as xs
 
-encodeChoiceAux' :: [BitStream] -> Choice a -> a -> [BitStream]
-encodeChoiceAux' body NoChoice _ = reverse body
-encodeChoiceAux' body (ChoiceOption a as) (Nothing:*:xs) =
-   encodeChoiceAux' ([]:body) as xs
+
+encodeChoiceAux' :: [Int] -> [BitStream] -> Choice a -> a -> ([Int], [BitStream])
+encodeChoiceAux' ext body NoChoice _ = (ext, reverse body)
+encodeChoiceAux' ext body (ChoiceExt as) xs =
+   encodeChoiceExtAux' ext body as xs
+encodeChoiceAux' ext body (ChoiceOption a as) (x:*:xs) =
+   encodeChoiceAux' ext ([]:body) as xs
+
+encodeChoiceExtAux :: [Int] -> [BitStream] -> Choice a -> a -> ([Int], [BitStream])
+encodeChoiceExtAux ext body NoChoice _ = (ext,reverse body)
+encodeChoiceExtAux ext body (ChoiceExt as) xs =
+   encodeChoiceAux ext body as xs
+encodeChoiceExtAux ext body (ChoiceEAG as) xs =
+   encodeChoiceExtAux ext body as xs
+encodeChoiceExtAux ext body (ChoiceOption a as) (Nothing:*:xs) =
+   encodeChoiceExtAux ext ([]:body) as xs
+encodeChoiceExtAux ext body (ChoiceOption (NamedType n t a) as) ((Just x):*:xs) =
+   encodeChoiceExtAux' [1]((toPerOpen a x):body) as xs
+
+encodeChoiceExtAux' :: [Int] -> [BitStream] -> Choice a -> a -> ([Int], [BitStream])
+encodeChoiceExtAux' ext body NoChoice _ = (ext, reverse body)
+encodeChoiceExtAux' ext body (ChoiceExt as) xs =
+   encodeChoiceAux' ext body as xs
+encodeChoiceExtAux' ext body (ChoiceEAG as) xs =
+   encodeChoiceAux' ext body as xs
+encodeChoiceExtAux' ext body (ChoiceOption a as) (x:*:xs) =
+   encodeChoiceExtAux' ext body as xs
 
 
 -- 27. Encoding the restricted character string types (VISIBLESTRING)
 
-encodeVS :: ConstrainedType VisibleString -> VisibleString -> BitStream
+encodeVS :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVS = manageSize encodeVisSz encodeVis
 
-encodeVisSz :: ConstrainedType VisibleString -> Integer -> Integer -> VisibleString -> BitStream
+encodeVisSz :: ASNType VisibleString -> Integer -> Integer -> VisibleString -> BitStream
 encodeVisSz t@(SIZE ty _ _) l u x@(VisibleString xs)
     = manageExtremes encS (encodeVis ty . VisibleString) l u xs
 
-encodeVis :: ConstrainedType VisibleString -> VisibleString -> BitStream
+encodeVis :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVis vs (VisibleString s)
     = encodeInsert insertLVS vs s
 
-insertLVS :: ConstrainedType VisibleString -> [[String]] -> [BitStream]
+insertLVS :: ASNType VisibleString -> [[String]] -> [BitStream]
 insertLVS s = unfoldr (vsLengths s)
 
 
 -- vsLengths adds lengths values to encoding of sections of
 -- VISIBLESTRING.
 
-vsLengths :: ConstrainedType VisibleString -> [[String]] -> Maybe (BitStream, [[String]])
+vsLengths :: ASNType VisibleString -> [[String]] -> Maybe (BitStream, [[String]])
 vsLengths s = ulWrapper encS (++) arg1 ld2
 
 encC c  = minBits ((toInteger . ord) c, 94)
@@ -823,14 +867,14 @@ encS s  = (concat . map encC) s
 -- 27.5.4 Encoding of a VISIBLESTRING with a permitted alphabet
 -- constraint.
 
-encodeVSF :: ConstrainedType VisibleString -> VisibleString -> BitStream
+encodeVSF :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVSF = manageSize encodeVisSzF encodeVisF
 
-encodeVisSzF :: ConstrainedType VisibleString -> Integer -> Integer -> VisibleString -> BitStream
+encodeVisSzF :: ASNType VisibleString -> Integer -> Integer -> VisibleString -> BitStream
 encodeVisSzF t@(SIZE ty@(FROM cv pac)_ _) l u x@(VisibleString xs)
     = manageExtremes (encSF pac) (encodeVisF ty . VisibleString) l u xs
 
-encodeVisF :: ConstrainedType VisibleString -> VisibleString -> BitStream
+encodeVisF :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVisF vs@(FROM cv pac) (VisibleString s)
     = encodeInsert (insertLVSF pac) vs s
 
@@ -877,25 +921,25 @@ findV m (a:rs)
 
 -- 27. Encoding the restricted character string types (NUMERICSTRING)
 
-encodeNS :: ConstrainedType NumericString -> NumericString -> BitStream
+encodeNS :: ASNType NumericString -> NumericString -> BitStream
 encodeNS = manageSize encodeNumSz encodeNum
 
-encodeNumSz :: ConstrainedType NumericString -> Integer -> Integer -> NumericString -> BitStream
+encodeNumSz :: ASNType NumericString -> Integer -> Integer -> NumericString -> BitStream
 encodeNumSz t@(SIZE ty _ _) l u x@(NumericString xs)
     = manageExtremes encNS (encodeNum ty . NumericString) l u xs
 
-encodeNum :: ConstrainedType NumericString -> NumericString -> BitStream
+encodeNum :: ASNType NumericString -> NumericString -> BitStream
 encodeNum ns (NumericString s)
     = encodeInsert insertLNS ns s
 
-insertLNS :: ConstrainedType NumericString -> [[String]] -> [BitStream]
+insertLNS :: ASNType NumericString -> [[String]] -> [BitStream]
 insertLNS s = unfoldr (nsLengths s)
 
 
 -- vsLengths adds lengths values to encoding of sections of
 -- VISIBLESTRING.
 
-nsLengths :: ConstrainedType NumericString -> [[String]] -> Maybe (BitStream, [[String]])
+nsLengths :: ASNType NumericString -> [[String]] -> Maybe (BitStream, [[String]])
 nsLengths s = ulWrapper encNS (++) arg1 ld2
 
 encNC c  = minBits ((toInteger . (posInStr 0 " 0123456789")) c, 10)
@@ -929,7 +973,7 @@ mGetBit o xs =
 mmGetBits :: (MonadState (B.ByteString,Int64) m, MonadError String m, Integral n) => n -> m [Word8]
 mmGetBits n =
    sequence (genericTake n (repeat mmGetBit))
-   
+
 
 -- Very inefficient
 mGetBits o n b = mapM (flip mGetBit b) [o..o+n-1]
