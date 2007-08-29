@@ -497,36 +497,58 @@ strip0s [] = []
 
 encodeSeq :: Sequence a -> a -> BitStream
 encodeSeq s x
-    =   let (p,es) = encodeSeqAux [] [] s x
-        in  concat p ++ concat es
+    =   let ((rp,rb),(ap,ab)) = encodeSeqAux ([],[]) ([],[]) s x
+        in  if null ap
+          then
+             concat rp ++ concat rb ++ concat ap ++ concat ab
+          else
+             concat rp ++ concat rb ++ lengthAdds ap ++ concat ab
+
+-- I DON'T THINK THAT THE ELSE CASE IS FRAGMENTING CORRECTLY
+
+-- 18.8 A length determinant of the number of extension additions is added if
+-- the sequence has any extension additions declared. This is encoded as a normally
+-- small length (10.9.3.4)
+
+lengthAdds ap
+    = let la = genericLength ap
+       in if la <= 63
+        then 0:minBits (la-1, 63) ++ concat ap
+        else 1:encodeWithLengthDeterminant (minOctets la) ++ concat ap
 
 -- encodeSeqAux is the auxillary function for encodeSeq. When
 -- encoding a sequence, one has to both encode each component and
 -- produce a preamble which indicates the presence or absence of an
 -- optional or default value. The first list in the result is the
--- preamble. The constructor EXTENSIBLE indicates the sequence is
+-- preamble. The constructor Extens indicates the sequence is
 -- extensible, and the coding responsibility is passed to
--- encodeExtSeqAux. Note that EXTENSIBLE is the last value in the
--- sequence then there are no extension additions and a 0 is prefixed
--- to the encoding.
+-- encodeExtSeqAux (where the values are encoded as an open type).
+-- Note that if another Extens occurs then reponsibility returns
+-- to encodeSeqAux since this is the 2 extension marker case
+-- (and what follows is in the extension root).
 
-encodeSeqAux :: [BitStream] -> [BitStream] -> Sequence a -> a ->
-    ([BitStream],[BitStream])
-encodeSeqAux preamble body Nil _ = (reverse preamble, reverse body)
-encodeSeqAux preamble body (Cons EXTENSIBLE Nil) _
-    = ([0]:reverse preamble, reverse body)
-encodeSeqAux preamble body (Cons EXTENSIBLE as) (x:*:xs)
-    = encodeExtSeqAux [] (preamble, body) [] as xs
-encodeSeqAux preamble body (Cons a as) (x:*:xs) =
-   encodeSeqAux ([]:preamble) ((toPer a x):body) as xs
-encodeSeqAux preamble body (Optional a as) (Nothing:*:xs) =
-   encodeSeqAux ([0]:preamble)([]:body) as xs
-encodeSeqAux preamble body (Optional a as) ((Just x):*:xs) =
-   encodeSeqAux ([1]:preamble) ((toPer a x):body) as xs
-encodeSeqAux preamble body (Default a d as) (Nothing:*:xs) =
-   encodeSeqAux ([0]:preamble) ([]:body) as xs
-encodeSeqAux preamble body (Default a d as) ((Just x):*:xs) =
-   encodeSeqAux ([1]:preamble) ((toPer a x):body) as xs
+encodeSeqAux :: ([BitStream],[BitStream]) -> ([BitStream],[BitStream]) -> Sequence a -> a ->
+    (([BitStream],[BitStream]),([BitStream],[BitStream]))
+encodeSeqAux (ap,ab) (rp,rb) Nil _
+    = if ((not.null) (concat ab))
+        then (([1]:reverse rp,reverse rb),(reverse ap,reverse ab))
+        else ((reverse rp,reverse rb),(reverse ap, reverse ab))
+encodeSeqAux (ap,ab) (rp,rb) (Extens as) xs
+    = encodeExtSeqAux (ap,ab) (rp,rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (ETMandatory (NamedType n t a)) as) (x:*:xs) =
+   encodeSeqAux (ap,ab) ([]:rp,toPer a x:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (ETExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeSeqAux (ap,ab) ([]:rp,[]:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (ETExtMand (NamedType n t a)) as) (Just x:*:xs) =
+   encodeSeqAux (ap,ab) ([]:rp,toPer a x:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (ETOptional (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (ETOptional (NamedType n t a)) as) (Just x:*:xs) =
+   encodeSeqAux (ap,ab) ([1]:rp,toPer a x:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (ETDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+   encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (ETDefault (NamedType n t a) d) as) (Just x:*:xs) =
+   encodeSeqAux (ap,ab) ([1]:rp,toPer a x:rb) as xs
 
 
 -- encodeExtSeqAux adds the encoding of any extension additions to
@@ -535,40 +557,26 @@ encodeSeqAux preamble body (Default a d as) ((Just x):*:xs) =
 -- open type (using toPerOpen). If an addition is not present then a
 -- 0 is added to the prefix.
 
-encodeExtSeqAux :: [BitStream] -> ([BitStream], [BitStream]) -> [BitStream] -> Sequence a -> a ->
-    ([BitStream],[BitStream])
-encodeExtSeqAux extAdds extRoot body Nil _
-    =   let er = (reverse . fst) extRoot ++ (reverse . snd) extRoot
-        in
-            if (length . filter (==[1])) extAdds > 0
-                then  ([1]:er,reverse extAdds ++ reverse body)
-                else  ([0]:er,reverse extAdds ++ reverse body)
-encodeExtSeqAux extAdds extRoot body (Cons EXTENSIBLE Nil) (x:*:xs) =
-   encodeExtSeqAux extAdds extRoot body Nil xs
-encodeExtSeqAux extAdds extRoot body (Cons EXTENSIBLE as) (x:*:xs) =
-   encodeExtSeqAux extAdds extRoot body as xs
-encodeExtSeqAux extAdds (p, b) body (Cons a as) (x:*:xs) =
-   encodeExtSeqAux extAdds  ([]:p, toPer a x:b) body as xs
-encodeExtSeqAux extAdds (p, b) body (Optional a as) (Nothing:*:xs) =
-   encodeExtSeqAux extAdds ([0]:p, []:b) body as xs
-encodeExtSeqAux extAdds (p, b) body (Optional a as) ((Just x):*:xs) =
-   encodeExtSeqAux extAdds ([1]:p, toPer a x:b) body as xs
-encodeExtSeqAux extAdds (p, b) body (Default a d as) (Nothing:*:xs) =
-   encodeExtSeqAux extAdds ([0]:p, []:b) body as xs
-encodeExtSeqAux extAdds (p, b) body (Default a d as) ((Just x):*:xs) =
-   encodeExtSeqAux extAdds ([1]:p, toPer a x:b) body as xs
-encodeExtSeqAux extAdds extRoot body (ConsA a as) (Nothing:*:xs) =
-   encodeExtSeqAux ([0]:extAdds) extRoot body as xs
-encodeExtSeqAux extAdds extRoot body (ConsA a as) (Just x:*:xs) =
-   encodeExtSeqAux ([1]:extAdds) extRoot ((toPerOpen a x):body) as xs
-encodeExtSeqAux extAdds extRoot body (OptionalA a as) (Nothing:*:xs) =
-   encodeExtSeqAux ([0]:extAdds) extRoot ([]:body) as xs
-encodeExtSeqAux extAdds extRoot body (OptionalA a as) ((Just x):*:xs) =
-   encodeExtSeqAux ([1]:extAdds) extRoot ((toPerOpen a x):body) as xs
-encodeExtSeqAux extAdds extRoot body (DefaultA a d as) (Nothing:*:xs) =
-   encodeExtSeqAux ([0]:extAdds) extRoot ([]:body) as xs
-encodeExtSeqAux extAdds extRoot body (DefaultA a d as) ((Just x):*:xs) =
-   encodeExtSeqAux ([1]:extAdds) extRoot ((toPerOpen a x):body) as xs
+encodeExtSeqAux :: ([BitStream],[BitStream]) -> ([BitStream], [BitStream]) -> Sequence a -> a ->
+    (([BitStream],[BitStream]),([BitStream],[BitStream]))
+encodeExtSeqAux (ap,ab) (rp,rb) Nil _
+    = if (length . filter (==[1])) ap > 0
+                then  (([1]:reverse rp,reverse rb),(reverse ap,reverse ab))
+                else  (([0]:reverse rp,reverse ab),(reverse ap,reverse ab))
+encodeExtSeqAux extAdds extRoot (Extens as) xs =
+   encodeSeqAux extAdds extRoot as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETExtMand (NamedType n t a)) as) (Just x:*:xs) =
+   encodeExtSeqAux ([1]:ap,toPerOpen a x:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETOptional (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETOptional (NamedType n t a)) as) (Just x:*:xs) =
+   encodeExtSeqAux ([1]:ap,toPerOpen a x:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETDefault (NamedType n t a) d) as) (Just x:*:xs) =
+   encodeExtSeqAux ([1]:ap,toPerOpen a x:ab) (rp,rb) as xs
 
 
 
@@ -581,7 +589,7 @@ encodeExtSeqAux extAdds extRoot body (DefaultA a d as) ((Just x):*:xs) =
 -- fragmentation into 64K blocks). It uses the function manageSize
 -- which manages the 3 possible size cases.
 
-encodeSO :: ConstrainedType [a] -> [a] -> BitStream
+encodeSO :: ASNType [a] -> [a] -> BitStream
 encodeSO  = manageSize encodeSeqSz encodeSeqOf
 
 -- encodeSeqSz encodes a size-constrained SEQUENCEOF. It uses the
@@ -597,12 +605,12 @@ manageExtremes fn1 fn2 l u x
                    then fn2 x
                    else minBits ((genericLength x-l),range-1) ++ fn1 x
 
-encodeSeqSz :: ConstrainedType [a] -> Integer -> Integer -> [a] -> BitStream
+encodeSeqSz :: ASNType [a] -> Integer -> Integer -> [a] -> BitStream
 encodeSeqSz (SIZE ty _ _) l u x
         = manageExtremes (encodeNoL ty) (encodeSeqOf ty) l u x
 
 
-encodeSeqOf :: ConstrainedType a -> a -> BitStream
+encodeSeqOf :: ASNType a -> a -> BitStream
 encodeSeqOf (SEQUENCEOF s) xs
     = encodeWithLD s xs
 
@@ -611,18 +619,18 @@ encodeSeqOf (SEQUENCEOF s) xs
 -- block). insertL then manages the interleaving of the length-value
 -- encoding of the components.
 
-encodeWithLD :: ConstrainedType a -> [a] -> BitStream
+encodeWithLD :: ASNType a -> [a] -> BitStream
 encodeWithLD s
     = encodeInsert insertL s
 
-insertL :: ConstrainedType a -> [[[a]]] -> [BitStream]
+insertL :: ASNType a -> [[[a]]] -> [BitStream]
 insertL s = unfoldr (soLengths s)
 
 
 -- soLengths adds length values to encodings of SEQUENCEOF
 -- components.
 
-soLengths :: ConstrainedType a -> [[[a]]] -> Maybe (BitStream, [[[a]]])
+soLengths :: ASNType a -> [[[a]]] -> Maybe (BitStream, [[[a]]])
 soLengths t = ulWrapper (concat . map (toPer t)) (++) arg1 ld2
 
 ld2 n
@@ -632,7 +640,7 @@ ld2 n
 
 -- No length encoding of SEQUENCEOF
 
-encodeNoL :: ConstrainedType a -> a -> BitStream
+encodeNoL :: ASNType a -> a -> BitStream
 encodeNoL (SEQUENCEOF s) xs
     = (concat . map (toPer s)) xs
 
@@ -642,6 +650,7 @@ encodeNoL (SEQUENCEOF s) xs
 -- The ordering is based on the component's tags. Note, the
 -- preamble must be reordered to match the ordering of the
 -- components.
+
 
 encodeSet :: Sequence a -> a -> BitStream
 encodeSet s x
