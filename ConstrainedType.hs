@@ -654,15 +654,15 @@ encodeNoL (SEQUENCEOF s) xs
 
 encodeSet :: Sequence a -> a -> BitStream
 encodeSet s x
-    =   let ts     = getTags s
-            (p,es) = (encodeSeqAux [] [] s x)
-            ps     = zip ts es
-            pps    = zip p ps
-            os     = mergesort setPred pps
-            pr     = concat (map fst os)
-            en     = concat (map (snd . snd) os)
+    =   let ts                = getTags s
+            ((rp,rb),(ap,ab)) = encodeSeqAux ([],[]) ([],[]) s x
+            ps                = zip ts rb
+            pps               = zip rp ps
+            os                = mergesort setPred pps
+            pr                = concat (map fst os)
+            en                = concat (map (snd . snd) os)
         in
-            pr ++ en
+            pr ++ en ++ concat ap ++ concat ab
 
 
 
@@ -693,26 +693,43 @@ merge pred (x:xs) (y:ys)
 setPred :: (BitStream,(TagInfo, BitStream)) -> (BitStream,(TagInfo, BitStream)) -> Bool
 setPred (_,(t1,_)) (_,(t2,_)) = t1 < t2
 
-tagOrder :: ConstrainedType a -> ConstrainedType a -> Bool
+tagOrder :: ASNType a -> ASNType a -> Bool
 tagOrder x y = getTI x < getTI y
+
 
 getTags :: Sequence a -> [TagInfo]
 getTags Nil               = []
-getTags (Cons a xs)       = getTI a : getTags xs
-getTags (Optional a xs)   = getTI a : getTags xs
-getTags (Default a d xs)  = getTI a : getTags xs
+getTags (Extens xs)       = getTags' xs
+getTags (Cons a xs)       = getETI a : getTags xs
 
-getTI :: ConstrainedType a -> TagInfo
+
+getTags' :: Sequence a -> [TagInfo]
+getTags' Nil         = []
+getTags' (Extens xs) = getTags xs
+getTags' (Cons a xs) = getTags' xs
+
+
+getETI :: ElementType a -> TagInfo
+getETI (ETMandatory (NamedType _ Nothing ct))   = getTI ct
+getETI (ETMandatory (NamedType _ (Just t) ct))  = t
+getETI (ETExtMand (NamedType _ Nothing ct))     = getTI ct
+getETI (ETExtMand (NamedType _ (Just t) ct))    = t
+getETI (ETOptional (NamedType _ Nothing ct))   = getTI ct
+getETI (ETOptional (NamedType _ (Just t) ct))  = t
+getETI (ETDefault (NamedType _ Nothing ct) d)  = getTI ct
+getETI (ETDefault (NamedType _ (Just t) ct) d) = t
+
+getTI :: ASNType a -> TagInfo
 getTI (TYPEASS _ (Just tg) _)   = tg
 getTI (TYPEASS _ _ t)           = getTI t
-getTI (NAMEDTYPE _ (Just tg) _) = tg
-getTI (NAMEDTYPE _ _ t)         = getTI t
+getTI BOOLEAN                   = (Universal, 1, Explicit)
 getTI INTEGER                   = (Universal,2, Explicit)
 getTI (RANGE c _ _)             = getTI c
 getTI IA5STRING                 = (Universal,22, Explicit)
 getTI BITSTRING                 = (Universal, 3, Explicit)
 getTI PRINTABLESTRING           = (Universal, 19, Explicit)
 getTI VISIBLESTRING             = (Universal, 26, Explicit)
+getTI NUMERICSTRING             = (Universal, 18, Explicit)
 getTI (SEQUENCE s)              = (Universal, 16, Explicit)
 getTI (SEQUENCEOF s)            = (Universal, 16, Explicit)
 getTI (SET s)                   = (Universal, 17, Explicit)
