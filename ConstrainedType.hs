@@ -1017,7 +1017,7 @@ mmDecodeWithLengthDeterminant k =
                let l = fromNonNeg j
                mmGetBits (l*k)
          1 ->
-            do q <- mmGetBit 
+            do q <- mmGetBit
                case q of
                   -- 10.9.3.7
                   0 ->
@@ -1094,7 +1094,7 @@ fromNonNeg xs =
       ys = map (2^) (f (l-1))
       f 0 = [0]
       f x = x:(f (x-1))
-
+{-
 mFromPerSeq :: (MonadState Int64 m, MonadError [Char] m) => Sequence a -> B.ByteString -> m a
 mFromPerSeq Nil _ = return Empty
 mFromPerSeq (Cons t ts) bs =
@@ -1124,7 +1124,7 @@ mmFromPerSeqAux preamble Nil = preamble
 mmFromPerSeqAux preamble (Cons t ts) = mmFromPerSeqAux preamble ts
 mmFromPerSeqAux preamble (Optional t ts) = True:(mmFromPerSeqAux preamble ts)
 
-{-
+
 xxx :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => m Integer
 xxx = mFromPer INTEGER
 
@@ -1135,22 +1135,23 @@ mmmFromPerSeq :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Seq
 mmmFromPerSeq Nil = return Empty
 mmmFromPerSeq (Cons t ts) =
    liftM2 (:*:) (mFromPer t) (mmFromPerSeq ts)
--}
 
-fromPer :: (MonadState Int64 m, MonadError [Char] m) => ConstrainedType a -> B.ByteString -> m a
+
+fromPer :: (MonadState Int64 m, MonadError [Char] m) => ASNType a -> B.ByteString -> m a
 fromPer t@INTEGER x                 = mUntoPerInt t x
 fromPer r@(RANGE INTEGER l u) x     = mUntoPerInt r x
 fromPer (SEQUENCE s) x              = mFromPerSeq s x
 
-mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ConstrainedType a -> m a
+
+mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
 mFromPer t@INTEGER                 = mmUntoPerInt t
 mFromPer r@(RANGE INTEGER l u)     = mmUntoPerInt r
-mFromPer (SEQUENCE s)              = 
+mFromPer (SEQUENCE s)              =
    do let bitmap = mmFromPerSeqAux [] s
       ps <- mmGetBits (genericLength bitmap)
       -- fromIntegral for now until we sort out why there's a Word8 / Int clash
       mmFromPerSeq (map fromIntegral ps) s
-
+-}
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
@@ -1174,20 +1175,22 @@ t01 = INTEGER
 t02 = INTEGER
 t03 = INTEGER
 t04 = INTEGER
-t1 = RANGE INTEGER (Just 25) (Just 30)
-t2 = INCLUDES INTEGER t1
-t3 = INCLUDES t1 t1
-t4 = RANGE INTEGER (Just (-256)) Nothing
+t1' = RANGE INTEGER (Just 25) (Just 30)
+t1 = ETMandatory (NamedType "" Nothing (RANGE INTEGER (Just 25) (Just 30)))
+--t2 = INCLUDES INTEGER t1
+--t3 = INCLUDES t1 t1
+t4 = ETMandatory (NamedType "" Nothing (RANGE INTEGER (Just (-256)) Nothing))
+t4' = ETOptional (NamedType "" Nothing (RANGE INTEGER (Just (-256)) Nothing))
 t41 = RANGE INTEGER (Just 0) (Just 18000)
 t42 = RANGE INTEGER (Just 3) (Just 3)
 t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
 t6 = SEQUENCE (Cons t1 (Cons t1 Nil))
-t7 = SIZE (SEQUENCEOF t1) (Just 3) (Just 5)
+t7 = SIZE (SEQUENCEOF t1') (Just 3) (Just 5)
 t8 = SIZE (SEQUENCEOF t5) (Just 2) (Just 2)
-t9 = SEQUENCE (Optional t4 (Cons t4 Nil))
+t9 = SEQUENCE (Cons t4' (Cons t4 Nil))
 t10 = SIZE (SEQUENCEOF t9) (Just 1) (Just 3)
-t11 = CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice))))
-t12 = CHOICE (ChoiceOption t04 (ChoiceOption t03 NoChoice))
+--t11 = CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice))))
+--t12 = CHOICE (ChoiceOption t04 (ChoiceOption t03 NoChoice))
 
 -- Unconstrained INTEGER
 tInteger1 = INTEGER
@@ -1231,7 +1234,7 @@ integer12'3 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 65538
 
 
 
-test0 = toPer t1 27
+test0 = toPer t1' 27
 
 -- BITSTRING
 
@@ -1244,7 +1247,11 @@ bsTest3 = toPer (SIZE BITSTRING (Just 12) (Just 15)) (BitString [1,1,0,0,0,1,0,0
 
 
 -- SEQUENCE
-test1 = toPer (SEQUENCE (Cons (SEQUENCE (Cons t1 Nil)) Nil)) ((27:*:Empty):*:Empty)
+
+test1 = toPer (SEQUENCE (Cons (ETMandatory (NamedType "" Nothing
+                (SEQUENCE (Cons (ETMandatory (NamedType "" Nothing t1'))
+            Nil)))) Nil)) ((27:*:Empty):*:Empty)
+{-
 test2 = toPer (SEQUENCE (Cons t1 (Cons t1 Nil))) (29:*:(30:*:Empty))
 test2a = encodeSeqAux [] [] (Cons t1 (Cons t1 Nil)) (29:*:(30:*:Empty))
 test20 = toPer (SEQUENCE (Cons t1 (Cons t1 (Cons t1 Nil)))) (29:*:(30:*:(26:*:Empty)))
@@ -1256,9 +1263,9 @@ test4 = petest2 ((Just 29):*:((Just 30):*:Empty))
 test5 = petest2 (Nothing:*:((Just 30):*:Empty))
 test6 = petest2 ((Just 29):*:(Nothing:*:Empty))
 test7 = petest2 (Nothing:*:(Nothing:*:Empty))
-
+-}
 -- SEQUENCEOF
-test8 = toPer (SEQUENCEOF t1) [26,27,28,25]
+test8 = toPer (SEQUENCEOF t1') [26,27,28,25]
 test9 = toPer (SEQUENCEOF t6) [29:*:(30:*:Empty),28:*:(28:*:Empty)]
 test10
     = do
@@ -1285,7 +1292,13 @@ test16 = toPer t10 [(Just (-10):*:(2:*:Empty))]
 
 -- SET tests
 
-test17  = toPer (SET (Cons t1 (Cons t0 Nil))) (27 :*: (5 :*: Empty))
+test17
+    = toPer (SET
+              (Cons (ETMandatory (NamedType "" Nothing t1'))
+                (Cons (ETMandatory (NamedType "" Nothing t0)) Nil)))
+            (27 :*: (5 :*: Empty))
+
+{-
 test17a = toPer (SEQUENCE (Cons t1 (Cons t0 Nil))) (27 :*: (5 :*: Empty))
 test17b = encodeSeqAux [] [] (Cons t1 (Cons t0 Nil)) (27 :*: (5 :*: Empty))
 
@@ -1299,9 +1312,9 @@ test19a = toPer (SEQUENCE (Optional t1 (Optional t0 (Optional t01 Nil))))
                 ((Just 29):*: ((Just 19):*:(Nothing:*:Empty)))
 test19b = encodeSeqAux [] [] (Optional t1 (Optional t0 (Optional t01 Nil)))
                 ((Just 29):*: ((Just 19):*:(Nothing:*:Empty)))
-
+-}
 -- CHOICE tests
-
+{-
 test20c  = toPer (CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice)))))
             (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
 
@@ -1315,7 +1328,7 @@ test23c
     = toPer (CHOICE (ChoiceOption t11 (ChoiceOption t12 NoChoice)))
         (Just (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
             :*: (Nothing :*: Empty))
-
+-}
 -- VISIBLESTRING tests
 
 testvs1 = toPer VISIBLESTRING (VisibleString "Director")
@@ -1332,23 +1345,24 @@ prTest = toPer personnelRecord pr
 
 pr = (emp :*: (t :*: (num :*: (hiredate :*: (sp :*: (Just cs :*: Empty))))))
 
+
 personnelRecord
     = TYPEASS "PersonnelRecord" (Just (Application, 0, Implicit))
-        (SET
-          (Cons (NAMEDTYPE "name" Nothing name)
-            (Cons (NAMEDTYPE "title" (Just (Context, 0, Explicit)) VISIBLESTRING)
-              (Cons (NAMEDTYPE "number" Nothing empNumber)
-                (Cons (NAMEDTYPE "dateOfHire" (Just (Context, 1, Explicit)) date)
-                  (Cons (NAMEDTYPE "nameOfSpouse" (Just (Context, 2, Explicit)) name)
-                    (Default (NAMEDTYPE "children" (Just (Context, 3, Implicit))
-                                                             (SEQUENCEOF childInfo)) [] Nil)))))))
+       (SET
+         (Cons (ETMandatory (NamedType "name" Nothing name))
+           (Cons (ETMandatory (NamedType "title" (Just (Context, 0, Explicit)) VISIBLESTRING))
+             (Cons (ETMandatory (NamedType "number" Nothing empNumber))
+               (Cons (ETMandatory (NamedType "dateOfHire" (Just (Context, 1, Explicit)) date))
+                 (Cons (ETMandatory (NamedType "nameOfSpouse" (Just (Context, 2, Explicit)) name))
+                   (Cons (ETDefault (NamedType "children" (Just (Context, 3,Implicit))
+                                                             (SEQUENCEOF childInfo)) []) Nil)))))))
 
 name
     = TYPEASS "Name" (Just (Application, 1, Implicit))
         (SEQUENCE
-          (Cons (NAMEDTYPE "givenName" Nothing nameString)
-            (Cons (NAMEDTYPE "initial" Nothing (SIZE nameString (Just 1) (Just 1)))
-              (Cons (NAMEDTYPE "familyName" Nothing nameString) Nil))))
+          (Cons (ETMandatory (NamedType "givenName" Nothing nameString))
+            (Cons (ETMandatory (NamedType "initial" Nothing (SIZE nameString (Just 1) (Just 1))))
+              (Cons (ETMandatory (NamedType "familyName" Nothing nameString)) Nil))))
 
 
 t = VisibleString "Director"
@@ -1388,11 +1402,12 @@ c2 = ((c2GN :*: (c2I :*: (c2FN :*: Empty))) :*: (c2BD :*: Empty))
 
 cs = [c1,c2]
 
+
 childInfo
     = TYPEASS "ChildInformation" Nothing
         (SET
-            (Cons (NAMEDTYPE "name" Nothing name)
-                (Cons (NAMEDTYPE "dateOfBirth" (Just (Context, 0, Explicit)) date) Nil)))
+            (Cons (ETMandatory (NamedType "name" Nothing name))
+                (Cons (ETMandatory (NamedType "dateOfBirth" (Just (Context, 0, Explicit)) date)) Nil)))
 
 
 
@@ -1415,20 +1430,35 @@ emp = (empGN :*: (empI :*: (empFN :*: Empty)))
 ax
     = TYPEASS "Ax" Nothing
         (SEQUENCE
-            (Cons (NAMEDTYPE "a" Nothing (RANGE INTEGER (Just 250) (Just 253)))
-                (Cons (NAMEDTYPE "b" Nothing BOOLEAN)
-                    (Cons EXTENSIBLE
-                        (ConsA (EXTADDGROUP
-                                 (Cons (NAMEDTYPE "g" Nothing (SIZE NUMERICSTRING (Just 3) (Just 3)))
-                                             (Optional (NAMEDTYPE "h" Nothing BOOLEAN) Nil)))
-                            (Cons EXTENSIBLE
-                                (Optional (NAMEDTYPE "i" Nothing VISIBLESTRING)
-                                    (Optional (NAMEDTYPE "j" Nothing VISIBLESTRING) Nil))))))))
+            (Cons (ETMandatory (NamedType "a" Nothing (RANGE INTEGER (Just 250) (Just 253))))
+                (Cons (ETMandatory (NamedType "b" Nothing BOOLEAN))
+                  (Cons (ETMandatory (NamedType "c" Nothing
+                         (CHOICE
+                          (ChoiceOption (NamedType "d" Nothing INTEGER)
+                            (ChoiceExt
+                              (ChoiceEAG
+                                (ChoiceOption (NamedType "e" Nothing BOOLEAN)
+                                  (ChoiceOption (NamedType "f" Nothing IA5STRING)
+                                     (ChoiceEAG
+                                       (ChoiceExt NoChoice))))))))))
+                    (Extens
+                        (Cons (ETExtMand (NamedType "" Nothing
+                               (EXTADDGROUP
+                                (Cons (ETExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (Just 3) (Just 3))))
+                                     (Cons (ETOptional (NamedType "h" Nothing BOOLEAN)) Nil)))))
+                            (Extens
+                                (Cons (ETOptional (NamedType "i" Nothing VISIBLESTRING))
+                                  (Cons (ETOptional (NamedType "j" Nothing VISIBLESTRING)) Nil)))))))))
 
 
 axVal
-    = (253 :*: (True :*: (Extensible :*:((Just (NumericString "123" :*:(Just True :*: Empty)))
-            :*: (Extensible :*: (Nothing :*: (Nothing :*: Empty)))))))
+    = (253 :*:
+       (True :*:
+         ((Nothing:*:
+            ((Just True):*:(Nothing:*:Empty))) :*:
+               ((Just (Just (NumericString "123") :*:(Just True :*: Empty))):*:
+                 (Nothing :*:
+                  (Nothing :*:Empty))))))
 
 axEx = toPer ax axVal
 
@@ -1468,22 +1498,22 @@ mUncompTest1 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just 3) (Just 6)
 mUnInteger5 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
 
 
-mDecodeEncode :: ConstrainedType Integer -> BitStream -> Integer
+mDecodeEncode :: ASNType Integer -> BitStream -> Integer
 mDecodeEncode t x =
    case runTest x 0 of
       (Left _,_)   -> undefined
       (Right xs,_) -> xs
    where
       runTest = runState . runErrorT . mUntoPerInt t . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
-
-mIdem :: ConstrainedType a -> BitStream -> a
+{-
+mIdem :: ASNType a -> BitStream -> a
 mIdem t x =
    case runTest x 0 of
       (Left _,_)   -> undefined
       (Right xs,_) -> xs
    where
       runTest = runState . runErrorT . fromPer t . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
-
+-}
 
 mUnSemi5 = mDecodeEncode tInteger5 integer5
 mSemiTest5 = vInteger5 == mUnSemi5
@@ -1510,13 +1540,13 @@ longIntegerVal3 = 256^(2^11)
 longIntegerPER3 = toPer natural longIntegerVal3
 mUnLong3 = mDecodeEncode natural longIntegerPER3
 mUnLongTest3 = longIntegerVal3 == mUnLong3
-
+{-
 testType2 = SEQUENCE (Cons t1 (Cons t1 Nil))
 testVal2  = 29:*:(30:*:Empty)
 testToPer2 = toPer testType2 testVal2
 testFromPer2 = mIdem testType2 testToPer2
 
-mmIdem :: ConstrainedType a -> BitStream -> a
+mmIdem :: ASNType a -> BitStream -> a
 mmIdem t x =
    case runTest x 0 of
       (Left _,_)   -> undefined
@@ -1540,7 +1570,7 @@ d = runState (runErrorT (mFromPer seq1)) (B.pack [0xb4],0)
 
 seq2 = SEQUENCE (Optional t1 (Optional t1 Nil))
 
-seqTest :: Show a => ConstrainedType a -> [Word8] -> String
+seqTest :: Show a => ASNType a -> [Word8] -> String
 seqTest t xs =
    case d of
       (Left x,(u,v))   -> show x
@@ -1555,3 +1585,4 @@ foo =
       case d of
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
+-}
