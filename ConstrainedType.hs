@@ -93,84 +93,70 @@ instance (Show a, Show l) => Show (a:*:l) where
 -- A sequence is a collection of element types
 
 data Sequence :: * -> * where
-   Nil :: Sequence Nil
-   Cons ::  Show a => ConstrainedType a -> Sequence l -> Sequence (a:*:l)
-   ConsA ::  ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
-   Optional :: ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
-   OptionalA :: ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
-   Default :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
-   DefaultA :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
+   Nil  :: Sequence Nil
+   Extens  :: Sequence l -> Sequence l
+   Cons :: Show a => ElementType a -> Sequence l -> Sequence (a:*:l)
 
-data DomSequence :: * -> * where
-   DomNil  :: DomSequence Nil
-   DomCons :: Show a => ElementType a -> DomSequence l -> DomSequence (a:*:l)
-{-
-   ConsA ::  ConstrainedType a -> DSSequence l -> DSSequence ((Maybe a):*:l)
-   Optional :: ConstrainedType a -> DSSequence l -> DSSequence ((Maybe a):*:l)
-   OptionalA :: ConstrainedType a -> Sequence l -> Sequence ((Maybe a):*:l)
-   Default :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
-   DefaultA :: ConstrainedType a -> a -> Sequence l -> Sequence ((Maybe a):*:l)
--}
+-- An element type is either mandatory, optional, or default.
+-- The second constructor ETExtMand deals with an extension
+-- addition which is neither optional nor default.
 
--- The Choice type is similar to a Sequence except that each value
--- is optional and only one value can exist at a time. Note that
--- the Choice type has no PER-visible constraints.
+data ElementType :: * -> * where
+   ETMandatory :: NamedType a -> ElementType a
+   ETExtMand   :: NamedType a -> ElementType (Maybe a)
+   ETOptional  :: NamedType a -> ElementType (Maybe a)
+   ETDefault   :: NamedType a -> a -> ElementType (Maybe a)
+
+-- A named type associates a type with a name and (possibly)
+-- a tag.
+
+data NamedType :: * -> * where
+   NamedType :: Name -> Maybe TagInfo -> ASNType a -> NamedType a
+
+-- A choice is a collection of named types. The Choice type
+-- is similar to a Sequence except that each value
+-- is optional and only one value can exist at a time. Note
+-- that the Choice type has no PER-visible constraints.
+-- The constructors ChoiceExt and ChoiceEAG deal with
+-- extension markers and extension addition groups respectively.
 
 data Choice :: * -> * where
     NoChoice     :: Choice Nil
-    ChoiceOption :: ConstrainedType a -> Choice l -> Choice ((Maybe a):*:l)
+    ChoiceExt    :: Choice l -> Choice l
+    ChoiceEAG    :: Choice l -> Choice l
+    ChoiceOption :: NamedType a -> Choice l -> Choice ((Maybe a):*:l)
 
 -- Type Aliases for Tag Information
+
 type TagInfo    = (TagType, TagValue, TagPlicity)
 type TypeRef    = String
 type Name       = String
 
-data Extensible = Extensible
-    deriving Show
 
--- The major data structure itself
+-- ASNType
 
-data ConstrainedType :: * -> * where
-   TYPEASS         :: TypeRef -> Maybe TagInfo -> ConstrainedType a -> ConstrainedType a
-   NAMEDTYPE       :: Name -> Maybe TagInfo -> ConstrainedType a -> ConstrainedType a
-   EXTENSIBLE      :: ConstrainedType Extensible
-   EXTADDGROUP     :: Sequence a -> ConstrainedType a
-   BOOLEAN         :: ConstrainedType Bool
-   INTEGER         :: ConstrainedType Integer
---   ENUMERATED      :: ConstrainedType Enumerated
-   BITSTRING       :: ConstrainedType BitString
-   PRINTABLESTRING :: ConstrainedType PrintableString
-   IA5STRING       :: ConstrainedType IA5String
-   VISIBLESTRING   :: ConstrainedType VisibleString
-   NUMERICSTRING   :: ConstrainedType NumericString
-   SINGLE          :: SingleValue a => ConstrainedType a -> a -> ConstrainedType a
-   INCLUDES        :: ContainedSubtype a => ConstrainedType a -> ConstrainedType a -> ConstrainedType a
-   RANGE           :: (Ord a, ValueRange a) => ConstrainedType a -> Maybe a -> Maybe a -> ConstrainedType a
-   SEQUENCE        :: Sequence a -> ConstrainedType a
-   SEQUENCE'       :: DomSequence a -> ConstrainedType a
-   SEQUENCEOF      :: ConstrainedType a -> ConstrainedType [a]
-   SIZE            :: ConstrainedType a -> Lower -> Upper -> ConstrainedType a
+data ASNType :: * -> * where
+   TYPEASS         :: TypeRef -> Maybe TagInfo -> ASNType a -> ASNType a
+   EXTADDGROUP     :: Sequence a -> ASNType a
+   BOOLEAN         :: ASNType Bool
+   INTEGER         :: ASNType Integer
+--   ENUMERATED      :: ASNType Enumerated
+   BITSTRING       :: ASNType BitString
+   PRINTABLESTRING :: ASNType PrintableString
+   IA5STRING       :: ASNType IA5String
+   VISIBLESTRING   :: ASNType VisibleString
+   NUMERICSTRING   :: ASNType NumericString
+   SINGLE          :: SingleValue a => ASNType a -> a -> ASNType a
+   INCLUDES        :: ContainedSubtype a => ASNType a -> ASNType a -> ASNType a
+   RANGE           :: (Ord a, ValueRange a) => ASNType a -> Maybe a -> Maybe a -> ASNType a
+   SEQUENCE        :: Sequence a -> ASNType a
+   SEQUENCEOF      :: ASNType a -> ASNType [a]
+   SIZE            :: ASNType a -> Lower -> Upper -> ASNType a
 -- REMOVED SizeConstraint a => from above
-   SET             :: Sequence a -> ConstrainedType a
-   SETOF           :: ConstrainedType a -> ConstrainedType [a]
-   CHOICE          :: Choice a -> ConstrainedType a
-   FROM            :: PermittedAlphabet a => ConstrainedType a
-                        -> a -> ConstrainedType a
-{-
-   -- Regular expression constraint - ignore for now but it would be cool to do them
-   -- Subtyping the content of an OCTET STRING - ignore for now
-   -- Constraint combinations
-   -- Note that we don't need intersections - we need a longer explanation for this
-   Union        :: ConstrainedType a -> ConstrainedType a -> ConstrainedType a
--}
-
-data NamedType :: * -> * where
-   NamedType :: Name -> Maybe TagInfo -> ConstrainedType a -> NamedType a
-
-data ElementType :: * -> * where
-   ETMandatory :: NamedType a -> ElementType a
-   ETOptional  :: NamedType a -> ElementType a
-   ETDefault   :: NamedType a -> a -> ElementType a
+   SET             :: Sequence a -> ASNType a
+   SETOF           :: ASNType a -> ASNType [a]
+   CHOICE          :: Choice a -> ASNType a
+   FROM            :: PermittedAlphabet a => ASNType a -> a -> ASNType a
 
 -- dna = From PRINTABLESTRING (SingleValueAlpha (PrintableString "TAGC")) shouldn't typecheck
 
