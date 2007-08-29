@@ -158,11 +158,14 @@ data ASNType :: * -> * where
    CHOICE          :: Choice a -> ASNType a
    FROM            :: PermittedAlphabet a => ASNType a -> a -> ASNType a
 
--- dna = From PRINTABLESTRING (SingleValueAlpha (PrintableString "TAGC")) shouldn't typecheck
 
+-- Type aliases used when defining a size-constrained value.
 
 type Upper = Maybe Integer
 type Lower = Maybe Integer
+
+-- Type used to represent the lower and upper bounds of a range or
+-- size-constrained value.
 
 data Constraint a = Constrained (Maybe a) (Maybe a)
    deriving Show
@@ -183,7 +186,7 @@ instance Ord a => Monoid (Constraint a) where
 -- bounds returns the range of a value. Nothing indicates
 -- no lower or upper bound.
 
-bounds :: Ord a => ConstrainedType a -> Constraint a
+bounds :: Ord a => ASNType a -> Constraint a
 bounds (INCLUDES t1 t2)   = (bounds t1) `mappend` (bounds t2)
 bounds (RANGE t l u)      = (bounds t) `mappend` (Constrained l u)
 bounds _                  = Constrained Nothing Nothing
@@ -192,15 +195,15 @@ bounds _                  = Constrained Nothing Nothing
 -- sizeLimit returns the size limits of a value. Nothing
 -- indicates no lower or upper bound.
 
-sizeLimit :: ConstrainedType a -> Constraint Integer
+sizeLimit :: ASNType a -> Constraint Integer
 sizeLimit (SIZE t l u) = sizeLimit t `mappend` Constrained l u
 sizeLimit _            = Constrained Nothing Nothing
 
 -- manageSize is a HOF used to manage the three size cases for a
 -- type amenable to a size constraint.
 
-manageSize :: (ConstrainedType a -> Integer -> Integer -> t -> t1) -> (ConstrainedType a -> t -> t1)
-                -> ConstrainedType a -> t -> t1
+manageSize :: (ASNType a -> Integer -> Integer -> t -> t1) -> (ASNType a -> t -> t1)
+                -> ASNType a -> t -> t1
 manageSize fn1 fn2 t x
     = case p of
        Constrained (Just lb) (Just ub) ->
@@ -214,10 +217,8 @@ manageSize fn1 fn2 t x
 
 -- toPer is the top-level PER encoding function.
 
-toPer :: ConstrainedType a -> a -> [Int]
+toPer :: ASNType a -> a -> [Int]
 toPer (TYPEASS tr tg ct) v                      = toPer ct v
-toPer (NAMEDTYPE n tg ct) v                     = toPer ct v
-toPer EXTENSIBLE x                              = []
 toPer (EXTADDGROUP s) x                         = toPerOpen (SEQUENCE s) x
 toPer t@BOOLEAN x                               = encodeBool t x
 toPer t@INTEGER x                               = encodeInt t x
@@ -232,6 +233,8 @@ toPer t@(SETOF s) x                             = encodeSO t x
 toPer t@(CHOICE c) x                            = encodeChoice c x
 toPer t@VISIBLESTRING x                         = encodeVS t x
 toPer t@NUMERICSTRING x                         = encodeNS t x
+toPer IA5STRING x                               = []
+-- IA5STRING to be encoded
 toPer t@(SIZE VISIBLESTRING l u) x              = encodeVS t x
 toPer t@(SIZE NUMERICSTRING l u) x              = encodeNS t x
 toPer t@(FROM VISIBLESTRING pac) x              = encodeVSF t x
@@ -241,6 +244,9 @@ toPer (SIZE (SIZE t l1 u1) l2 u2) x             = let ml = maxB l1 l2
                                                   in
                                                       toPer (SIZE t ml mu) x
 toPer (SIZE (TYPEASS r tg t) l u) x             = toPer (SIZE t l u) x
+
+-- maxB and minB are used when one has a nested size-constrained
+-- value.
 
 maxB Nothing (Just b)  = Just b
 maxB (Just b) Nothing  = Just b
@@ -262,7 +268,7 @@ minB _ _               = Nothing
 -- toPer on an extension component (avoids encoding it as an open
 -- type open type sequence!)
 
-toPerOpen :: ConstrainedType a -> a -> [Int]
+toPerOpen :: ASNType a -> a -> [Int]
 toPerOpen (EXTADDGROUP s) v
     = toPerOpen (SEQUENCE s) v
 toPerOpen t v
@@ -281,13 +287,13 @@ toPerOpen t v
 
 -- 11 ENCODING THE BOOLEAN TYPE
 
-encodeBool :: ConstrainedType Bool -> Bool -> BitStream
+encodeBool :: ASNType Bool -> Bool -> BitStream
 encodeBool t True = [1]
 encodeBool t _    = [0]
 
 -- 10.3 - 10.8 ENCODING THE INTEGER TYPE
 
-encodeInt :: ConstrainedType Integer -> Integer -> BitStream
+encodeInt :: ASNType Integer -> Integer -> BitStream
 encodeInt t x =
    case p of
       -- 10.5 Encoding of a constrained whole number
@@ -434,11 +440,11 @@ h n = (reverse . map fromInteger) (flip (curry (unfoldr g)) 7 n)
 
 --
 
-encodeBS :: ConstrainedType BitString -> BitString -> BitStream
+encodeBS :: ASNType BitString -> BitString -> BitStream
 encodeBS = manageSize encodeBSSz encodeBSNoSz
 
 
-encodeBSSz :: ConstrainedType BitString -> Integer -> Integer -> BitString -> BitStream
+encodeBSSz :: ASNType BitString -> Integer -> Integer -> BitString -> BitStream
 encodeBSSz t@(SIZE ty _ _) l u x@(BitString xs)
     = let exs = editBS l u xs
       in
@@ -473,7 +479,7 @@ rem0s (n+1) xs
            else error "Last value is not 0"
 rem0s 0 xs = xs
 
-encodeBSNoSz :: ConstrainedType BitString -> BitString -> BitStream
+encodeBSNoSz :: ASNType BitString -> BitString -> BitStream
 encodeBSNoSz t (BitString bs)
     = let rbs = reverse bs
           rem0 = strip0s rbs
@@ -485,7 +491,9 @@ strip0s (a:r)
         else (a:r)
 strip0s [] = []
 
+
 -- 18 ENCODING THE SEQUENCE TYPE
+
 
 encodeSeq :: Sequence a -> a -> BitStream
 encodeSeq s x
