@@ -1,4 +1,4 @@
-module ConstrainedType where
+module ASNType where
 
 {-
 The encoding is for UNALIGNED PER
@@ -18,35 +18,21 @@ import IO
 import Data.Int
 import Data.Word
 
+-- Some type aliases and newtype declarations
+
 type BitStream = [Int]
 
 newtype IA5String = IA5String {iA5String :: String}
-newtype BitString = BitString {bitString :: BitStream}
-
-
 
 instance Show IA5String where
-   show (IA5String x) = show x
+   show s = iA5String s
 
-newtype IA5Char = IA5Char {iA5Char :: Char}
+newtype BitString = BitString {bitString :: BitStream}
+newtype PrintableString = PrintableString {printableString :: String}
+newtype NumericString = NumericString {numericString :: String}
 
-class List a b | a -> b where
-   nil  :: b
-   cons :: a -> b -> b
-
-instance List IA5Char IA5String where
-   nil = IA5String []
-   cons x y = IA5String ((iA5Char x):(iA5String y))
-
-data AlphabetConstraint :: * -> * where
-   SingleValueAlpha      :: List a b => a -> AlphabetConstraint b
-   RangeAlpha            :: List a b => a -> a -> AlphabetConstraint b
-   UnionAlpha            :: AlphabetConstraint a -> AlphabetConstraint a -> AlphabetConstraint a
-
-newtype PrintableString = PrintableString {unPrintableString :: String}
-data NumericString = NumericString String
-    deriving Show
-
+instance Show NumericString where
+   show s = numericString s
 
 -- X.680 (07/2002) Section 47.1 Table 9
 
@@ -55,7 +41,6 @@ class SingleValue a
 instance SingleValue BitString
 instance SingleValue IA5String
 instance SingleValue PrintableString
-
 instance SingleValue Integer
 
 class ContainedSubtype a
@@ -92,19 +77,20 @@ instance SizeConstraint PrintableString
 instance SizeConstraint [a]
 instance SizeConstraint VisibleString
 instance SizeConstraint NumericString
--- INTEGER cannot be given a size constraint
 
 
--- Heterogeneous lists of constrained types
+-- Heterogeneous lists and GADTs for Sequence / Choice
 
 data Nil = Empty
 data a:*:l = a:*:l
 
 instance Show Nil where
-   show _ = "Empty" 
+   show _ = "Empty"
 
 instance (Show a, Show l) => Show (a:*:l) where
    show (x:*:xs) = show x ++ ":*:" ++ show xs
+
+-- A sequence is a collection of element types
 
 data Sequence :: * -> * where
    Nil :: Sequence Nil
