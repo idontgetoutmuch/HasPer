@@ -1018,7 +1018,11 @@ mmUntoPerInt t =
       Constrained (Just lb) Nothing ->
          do o <- mmDecodeWithLengthDeterminant 8
             return (lb + (fromNonNeg o))
-      _ -> undefined
+      -- 12.2.4, 10.8 Encoding of an unconstrained whole number, 10.8.3 and
+      -- 10.4 Encoding as a 2's-complement-binary-integer
+      Constrained Nothing _ ->
+         do o <- mmDecodeWithLengthDeterminant 8
+            return (from2sComplement o)
    where
       p = bounds t
 
