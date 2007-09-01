@@ -2,6 +2,7 @@ import ConstrainedType
 import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
+import IO
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
 
 {-
@@ -12,7 +13,7 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
          SEQUENCE {
             first  T1,
             second T1
-         }
+         
       Test2 ::=
          SEQUENCE {
             first  T1 OPTIONAL,
@@ -443,13 +444,21 @@ seqTest t xs =
       (Left x,(u,v))   -> show x
       (Right x,(u,v)) -> show x
    where d = runState (runErrorT (mFromPer t)) (B.pack xs,0)
+-}
 
+type1 = NamedType "T1" Nothing (RANGE INTEGER (Just 25) (Just 30))
 
-foo =
+type2 = NamedType "T2" Nothing (SEQUENCE (Cons (ETMandatory (NamedType "first" Nothing INTEGER)) Nil))
+
+type3 = 
+   NamedType "T3" Nothing (SEQUENCE (
+      Cons (ETMandatory (NamedType "first" Nothing INTEGER)) (
+         Cons (ETMandatory (NamedType "second" Nothing INTEGER)) Nil)))
+
+foo (NamedType _ _ t) =
    do h <- openFile "test" ReadMode
       b <- B.hGetContents h
-      let d =  runState (runErrorT (mUntoPerInt (RANGE  INTEGER (Just 25) (Just 30)) b)) 0
+      let d = runState (runErrorT (mFromPer t)) (b,0)
       case d of
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
--}
