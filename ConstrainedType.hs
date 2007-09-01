@@ -1,4 +1,4 @@
-module ASNType where
+module ConstrainedType where
 
 {-
 The encoding is for UNALIGNED PER
