@@ -1094,21 +1094,28 @@ fromNonNeg xs =
       ys = map (2^) (f (l-1))
       f 0 = [0]
       f x = x:(f (x-1))
-{-
-mFromPerSeq :: (MonadState Int64 m, MonadError [Char] m) => Sequence a -> B.ByteString -> m a
-mFromPerSeq Nil _ = return Empty
-mFromPerSeq (Cons t ts) bs =
-   do x  <- fromPer t bs
-      xs <- mFromPerSeq ts bs
-      return (x:*:xs)
+
+mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
+mFromPer t@INTEGER                 = mmUntoPerInt t
+mFromPer r@(RANGE INTEGER l u)     = mmUntoPerInt r
+mFromPer (SEQUENCE s)              =
+   do ps <- mmGetBits (l s)
+      -- fromIntegral for now until we sort out why there's a Word8 / Int clash
+      mmFromPerSeq (map fromIntegral ps) s
+   where
+      l :: Integral n => Sequence a -> n
+      l Nil = 0
+      l (Cons (ETMandatory _) ts) = l ts
+      -- This is a space leak waiting to happen
+      l (Cons (ETOptional _ ) ts) = 1+(l ts)
 
 mmFromPerSeq :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => BitStream -> Sequence a -> m a
 mmFromPerSeq _ Nil = return Empty
-mmFromPerSeq bitmap (Cons t ts) =
+mmFromPerSeq bitmap (Cons (ETMandatory (NamedType _ _ t)) ts) =
    do x <- mFromPer t
       xs <- mmFromPerSeq bitmap ts
       return (x:*:xs)
-mmFromPerSeq bitmap (Optional t ts) =
+mmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
    -- The bitmap always matches the Sequence but we recurse the Sequence twice so this needs to be fixed
    do if (head bitmap) == 0
          then
@@ -1119,10 +1126,13 @@ mmFromPerSeq bitmap (Optional t ts) =
                xs <- mmFromPerSeq (tail bitmap) ts
                return ((Just x):*:xs)
 
-mmFromPerSeqAux :: [Bool] -> Sequence a -> [Bool]
-mmFromPerSeqAux preamble Nil = preamble
-mmFromPerSeqAux preamble (Cons t ts) = mmFromPerSeqAux preamble ts
-mmFromPerSeqAux preamble (Optional t ts) = True:(mmFromPerSeqAux preamble ts)
+{-
+mFromPerSeq :: (MonadState Int64 m, MonadError [Char] m) => Sequence a -> B.ByteString -> m a
+mFromPerSeq Nil _ = return Empty
+mFromPerSeq (Cons t ts) bs =
+   do x  <- fromPer t bs
+      xs <- mFromPerSeq ts bs
+      return (x:*:xs)
 
 
 xxx :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => m Integer
@@ -1142,15 +1152,11 @@ fromPer t@INTEGER x                 = mUntoPerInt t x
 fromPer r@(RANGE INTEGER l u) x     = mUntoPerInt r x
 fromPer (SEQUENCE s) x              = mFromPerSeq s x
 
+mmFromPerSeqAux :: [Bool] -> Sequence a -> [Bool]
+mmFromPerSeqAux preamble Nil = preamble
+mmFromPerSeqAux preamble (Cons t ts) = mmFromPerSeqAux preamble ts
+mmFromPerSeqAux preamble (Optional t ts) = True:(mmFromPerSeqAux preamble ts)
 
-mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
-mFromPer t@INTEGER                 = mmUntoPerInt t
-mFromPer r@(RANGE INTEGER l u)     = mmUntoPerInt r
-mFromPer (SEQUENCE s)              =
-   do let bitmap = mmFromPerSeqAux [] s
-      ps <- mmGetBits (genericLength bitmap)
-      -- fromIntegral for now until we sort out why there's a Word8 / Int clash
-      mmFromPerSeq (map fromIntegral ps) s
 -}
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
@@ -1540,11 +1546,6 @@ longIntegerVal3 = 256^(2^11)
 longIntegerPER3 = toPer natural longIntegerVal3
 mUnLong3 = mDecodeEncode natural longIntegerPER3
 mUnLongTest3 = longIntegerVal3 == mUnLong3
-{-
-testType2 = SEQUENCE (Cons t1 (Cons t1 Nil))
-testVal2  = 29:*:(30:*:Empty)
-testToPer2 = toPer testType2 testVal2
-testFromPer2 = mIdem testType2 testToPer2
 
 mmIdem :: ASNType a -> BitStream -> a
 mmIdem t x =
@@ -1554,10 +1555,27 @@ mmIdem t x =
    where
       runTest x y = runState (runErrorT (mFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
 
-testType3 = SEQUENCE (Optional t1 (Optional t1 Nil))
+testType3 = SEQUENCE (Cons (ETOptional (NamedType "l1" Nothing t1')) (Cons (ETOptional (NamedType "l1" Nothing t1')) Nil))
 testVal3  = (Just 29):*:((Just 30):*:Empty)
 testToPer3 = toPer testType3 testVal3
 testFromPer3 = mmIdem testType3 testToPer3
+
+testVal3'  = (Just 29):*:(Nothing:*:Empty)
+testToPer3' = toPer testType3 testVal3'
+testFromPer3' = mmIdem testType3 testToPer3'
+
+
+
+{-
+testType2 = SEQUENCE (Cons t1 (Cons t1 Nil))
+testVal2  = 29:*:(30:*:Empty)
+testToPer2 = toPer testType2 testVal2
+testFromPer2 = mIdem testType2 testToPer2
+
+testType3 = SEQUENCE (Optional t1 (Optional t1 Nil))
+
+
+
 
 seq1 = SEQUENCE (Cons t1 (Cons t1 Nil))
 
