@@ -1035,29 +1035,6 @@ mmDecodeWithLengthDeterminant k =
                                    rest <- mmDecodeWithLengthDeterminant k
                                    return (frag ++ rest)
 
-mUntoPerInt t b =
-   case p of
-      -- 10.5 Encoding of a constrained whole number
-      Constrained (Just lb) (Just ub) ->
-         let range = ub - lb + 1
-             n     = genericLength (minBits ((ub-lb),range-1)) in
-            if range <= 1
-               -- 10.5.4
-               then return lb
-               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
-               else do offset <- get
-                       put (offset + n)
-                       j <- mGetBits offset (fromIntegral n) b
-                       return (lb + (fromNonNeg j))
-      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
-      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
-      Constrained (Just lb) Nothing ->
-         do o <- mDecodeWithLengthDeterminant 8 b
-            return (lb + (fromNonNeg o))
-      _ -> undefined
-   where
-      p = bounds t
-
 mmUntoPerInt t =
    case p of
       -- 10.5 Encoding of a constrained whole number
@@ -1489,6 +1466,7 @@ longUnIntegerPER3 = toPer tInteger1 longIntegerVal3
 mUnUnLong3 = mDecodeEncode tInteger1 longUnIntegerPER3
 mUnUnLongTest3 = longIntegerVal3 == mUnUnLong3
 
+{-
 -- Tests for constrained INTEGERs
 -- ** uncompTest1 = runState (runErrorT (untoPerInt (RANGE INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
 mUncompTest1 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
@@ -1502,7 +1480,7 @@ mUncompTest1 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just 3) (Just 6)
 -- We need to replace decodeLengthDeterminant with untoPerInt
 -- ** unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
 mUnInteger5 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
-
+-}
 
 mDecodeEncode :: ASNType Integer -> BitStream -> Integer
 mDecodeEncode t x =
@@ -1510,7 +1488,7 @@ mDecodeEncode t x =
       (Left _,_)   -> undefined
       (Right xs,_) -> xs
    where
-      runTest = runState . runErrorT . mUntoPerInt t . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
+      runTest x y = runState (runErrorT (mFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
 {-
 mIdem :: ASNType a -> BitStream -> a
 mIdem t x =
