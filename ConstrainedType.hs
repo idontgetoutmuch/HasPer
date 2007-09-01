@@ -974,10 +974,6 @@ mmGetBits :: (MonadState (B.ByteString,Int64) m, MonadError String m, Integral n
 mmGetBits n =
    sequence (genericTake n (repeat mmGetBit))
 
-
--- Very inefficient
-mGetBits o n b = mapM (flip mGetBit b) [o..o+n-1]
-
 mmDecodeWithLengthDeterminant k =
    do p <- mmGetBit
       case p of
