@@ -978,36 +978,6 @@ mmGetBits n =
 -- Very inefficient
 mGetBits o n b = mapM (flip mGetBit b) [o..o+n-1]
 
-mDecodeWithLengthDeterminant k b =
-   do n <- get
-      p <- mGetBit n b
-      case p of
-         -- 10.9.3.6
-         0 ->
-            do j <- mGetBits (n+1) 7 b
-               let l = fromNonNeg j
-               put (n + 8 + l*k)
-               mGetBits (n+8) (l*k) b
-         1 ->
-            do q <- mGetBit (n+1) b
-               case q of
-                  -- 10.9.3.7
-                  0 ->
-                     do j <- mGetBits (n+2) 14 b
-                        let l = fromNonNeg j
-                        put (n + 16 + l*k)
-                        mGetBits (n+16) (l*k) b
-                  1 ->
-                     do j <- mGetBits (n+2) 6 b
-                        let fragSize = fromNonNeg j
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError ("Unable to decode " ++ show b ++ " at bit " ++ show n)
-                           else do frag <- mGetBits (n+8) (fragSize*n16k*k) b
-                                   put (n + 8 + fragSize*n16k*k)
-                                   -- This looks like it might be quadratic in efficiency!
-                                   rest <- mDecodeWithLengthDeterminant k b
-                                   return (frag ++ rest)
-
 mmDecodeWithLengthDeterminant k =
    do p <- mmGetBit
       case p of
