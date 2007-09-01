@@ -1070,38 +1070,6 @@ mmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
                return ((Just x):*:xs)
 
 {-
-mFromPerSeq :: (MonadState Int64 m, MonadError [Char] m) => Sequence a -> B.ByteString -> m a
-mFromPerSeq Nil _ = return Empty
-mFromPerSeq (Cons t ts) bs =
-   do x  <- fromPer t bs
-      xs <- mFromPerSeq ts bs
-      return (x:*:xs)
-
-
-xxx :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => m Integer
-xxx = mFromPer INTEGER
-
-mFoo :: (MonadState (B.ByteString, Int64) m, MonadError [Char] m) => m (Integer:*:Nil)
-mFoo = liftM2 (:*:) (mFromPer INTEGER) (mmFromPerSeq Nil)
-
-mmmFromPerSeq :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Sequence a -> m a
-mmmFromPerSeq Nil = return Empty
-mmmFromPerSeq (Cons t ts) =
-   liftM2 (:*:) (mFromPer t) (mmFromPerSeq ts)
-
-
-fromPer :: (MonadState Int64 m, MonadError [Char] m) => ASNType a -> B.ByteString -> m a
-fromPer t@INTEGER x                 = mUntoPerInt t x
-fromPer r@(RANGE INTEGER l u) x     = mUntoPerInt r x
-fromPer (SEQUENCE s) x              = mFromPerSeq s x
-
-mmFromPerSeqAux :: [Bool] -> Sequence a -> [Bool]
-mmFromPerSeqAux preamble Nil = preamble
-mmFromPerSeqAux preamble (Cons t ts) = mmFromPerSeqAux preamble ts
-mmFromPerSeqAux preamble (Optional t ts) = True:(mmFromPerSeqAux preamble ts)
-
--}
-{-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
       T1 ::= INTEGER (25..30)
