@@ -46,6 +46,7 @@ import Control.Monad.State
 import ConstrainedType
 import Language.ASN1 hiding (NamedType)
 import Data.Char
+import Data.Maybe
 
 prettyType :: Show a => ASNType a -> Doc
 prettyType INTEGER =
@@ -142,6 +143,41 @@ instance Show RepType where
       case x of
          RepType y ->
             render (prettyType y)
+
+data RepValue = forall t . Show t => RepValue (ASNType t) t
+
+instance Arbitrary RepValue where
+   arbitrary =
+      oneof [
+         do x <- arbitrary
+            return (RepValue INTEGER x),
+         do l <- arbitrary
+            u <- suchThat arbitrary (fromMaybe True . (f l))
+            x <- suchThat (suchThat arbitrary (fromMaybe True . (h1 l))) (fromMaybe True . (h2 u))
+            return (RepValue (RANGE INTEGER l u) x)
+{-
+         do x <- arbitrary
+            y <- arbitrary
+            case x of
+               RepElementType u -> 
+                  case y of
+                     RepSeq v -> 
+                        return (RepType (SEQUENCE (Cons u v)))
+-}
+         ]
+      where f l u =
+               do m <- l
+                  n <- u
+                  return (n >= m)
+            h1 l x = l >>= \m -> return (x >= m)
+            h2 u x = u >>= \n -> return (x <= n)
+               
+
+instance Show RepValue where
+   show x =
+      case x of
+         RepValue t x ->
+            render (prettyType t) ++ ": " ++ show x
 
 instance Arbitrary TagType where
    arbitrary = 
