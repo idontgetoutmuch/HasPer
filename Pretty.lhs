@@ -84,17 +84,16 @@ data RepType = forall t . RepType (ASNType t)
 instance Arbitrary RepType where
    arbitrary =
       oneof [
-         return (RepType INTEGER),
-         do l <- arbitrary
-            u <- suchThat arbitrary (f l)
-            return (RepType (RANGE INTEGER l u)){-,
+         do r <- arbitrary
+            let (OnlyINTEGER t) = r
+            return (RepType t),
          do x <- arbitrary
             y <- arbitrary
             case x of
                RepElementType u -> 
                   case y of
                      RepSeq v -> 
-                        return (RepType (SEQUENCE (Cons u v)))-}
+                        return (RepType (SEQUENCE (Cons u v)))
          ]
       where f l u =
                case l of
@@ -109,10 +108,16 @@ instance Show RepType where
          RepType y ->
             render (prettyType y)
 
+data RepElementType = forall t . RepElementType (ElementType t)
 
+instance Arbitrary RepElementType where
+   arbitrary =
+      do rnt <- arbitrary
+         case rnt of
+            RepNamedType nt ->
+               return (RepElementType (ETMandatory nt)) 
 
-{-
-data RepNamedType = forall t . Show t => RepNamedType (NamedType t)
+data RepNamedType = forall t . RepNamedType (NamedType t)
 
 instance Arbitrary RepNamedType where
    arbitrary =
@@ -122,14 +127,62 @@ instance Arbitrary RepNamedType where
             RepType ct ->
                return (RepNamedType (NamedType (elementName name) Nothing ct))
 
-data RepElementType = forall t . Show t => RepElementType (ElementType t)
+newtype ElementName = ElementName {elementName :: String}
+   deriving Show
 
-instance Arbitrary RepElementType where
+instance Arbitrary ElementName where
    arbitrary =
-      do rnt <- arbitrary
-         case rnt of
-            RepNamedType nt ->
-               return (RepElementType (ETMandatory nt)) 
+      do first <- suchThat arbitrary isAsciiLower
+         rest  <- suchThat arbitrary (and . (map isAsciiLower))
+         return (ElementName (first:rest))
+
+data RepSeq = forall t . RepSeq (Sequence t)
+
+instance Arbitrary RepSeq where
+   arbitrary =
+      oneof [
+         return (RepSeq Nil),
+         do x  <- arbitrary
+            xs <- arbitrary
+            case x of
+               RepElementType u ->
+                  case xs of
+                     RepSeq us ->
+                        return (RepSeq (Cons u us))
+         ]
+
+data OnlyINTEGER = OnlyINTEGER (ASNType Integer)
+
+instance Arbitrary OnlyINTEGER where
+   arbitrary = 
+      oneof [
+         return (OnlyINTEGER INTEGER),
+         sized onlyINTEGER
+         ] 
+      where
+         onlyINTEGER 0 = return (OnlyINTEGER INTEGER)
+         onlyINTEGER n | n > 0 =
+            do l <- arbitrary
+               u <- suchThat arbitrary (fromMaybe True . (g l))
+               t <- subOnlyINTEGER
+               return (f t l u) 
+            where
+               subOnlyINTEGER = onlyINTEGER (n `div` 2)
+         f (OnlyINTEGER x) l u = OnlyINTEGER (RANGE x l u)
+         g l u =
+            do m <- l
+               n <- u
+               return (n >= m)
+
+instance Show OnlyINTEGER where
+   show r =
+      case r of
+         OnlyINTEGER n ->
+            render (prettyType n)
+
+main = sample (arbitrary::Gen RepType)
+
+{-
 
 data RepSeqVal = forall t . Show t => RepSeqVal (Sequence t) t
 
@@ -210,16 +263,6 @@ instance Arbitrary TagType where
          return Application
          ]
 
-newtype ElementName = ElementName {elementName :: String}
-   deriving Show
-
-instance Arbitrary ElementName where
-   arbitrary =
-      do first <- suchThat arbitrary isAsciiLower
-         rest  <- suchThat arbitrary (and . (map isAsciiLower))
-         return (ElementName (first:rest))
-
-main = sample (arbitrary::Gen RepType)
 -}
 
 \end{code}
