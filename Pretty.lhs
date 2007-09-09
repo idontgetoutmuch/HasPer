@@ -35,6 +35,8 @@ Run Test.lhs with the ASN.1 types to decode the values encoded with the C progra
 These should be the values you first thought of.
 \end{enumerate}
 
+\section{The Code}
+
 \begin{code}
 module Pretty(
    prettyType
@@ -62,7 +64,9 @@ outer INTEGER Nothing (Just y)  = parens (text "MIN"    <> text ".." <> text (sh
 outer INTEGER (Just x) Nothing  = parens (text (show x) <> text ".." <> text "MAX")
 outer INTEGER (Just x) (Just y) = parens (text (show x) <> text ".." <> text (show y))
 outer (RANGE t l u) x y = outer t x y
+\end{code}
 
+\begin{code}
 prettySeq :: Sequence a -> Doc
 prettySeq Nil =
    empty
@@ -95,12 +99,6 @@ instance Arbitrary RepType where
                      RepSeq v -> 
                         return (RepType (SEQUENCE (Cons u v)))
          ]
-      where f l u =
-               case l of
-                  Nothing -> True
-                  Just m  -> case u of
-                                Nothing -> True
-                                Just n  -> n >= m
 
 instance Show RepType where
    show x =
@@ -181,12 +179,10 @@ instance Show OnlyINTEGER where
             render (prettyType n)
 
 main = sample (arbitrary::Gen RepType)
-
-{-
+\end{code}
 
 data RepSeqVal = forall t . Show t => RepSeqVal (Sequence t) t
 
-{-
 instance Show RepSeqVal
 
 instance Arbitrary (Sequence Nil)
@@ -196,7 +192,6 @@ instance (Show a, Arbitrary (ASNType a), Arbitrary (Sequence l)) => Arbitrary (S
       do x <- arbitrary
          xs <- arbitrary
          return (Cons (ETMandatory (NamedType "" Nothing x)) xs)
--}
 
 instance Arbitrary RepSeqVal where
    arbitrary =
@@ -208,7 +203,6 @@ instance Arbitrary RepSeqVal where
                  RepSeq us ->
                     return (RepSeqVal (Cons (ETMandatory (NamedType "" Nothing u)) us) undefined)
 
-{-
 arbitrarySeq :: RepSeq -> Gen RepSeqVal
 arbitrarySeq x =
    case x of
@@ -219,7 +213,6 @@ arbitrarySeq x =
             Cons t ts -> 
                do u <- arbitrary
                   return (RepSeqVal (Cons t Nil) (u:*:Empty))
--}
 
 data RepValue = forall t . Show t => RepValue (ASNType t) t
 
@@ -232,7 +225,6 @@ instance Arbitrary RepValue where
             u <- suchThat arbitrary (fromMaybe True . (f l))
             x <- suchThat (suchThat arbitrary (fromMaybe True . (h1 l))) (fromMaybe True . (h2 u))
             return (RepValue (RANGE INTEGER l u) x)
-{-
          do x <- arbitrary
             y <- arbitrary
             case x of
@@ -240,7 +232,6 @@ instance Arbitrary RepValue where
                   case y of
                      RepSeq v -> 
                         return (RepType (SEQUENCE (Cons u v)))
--}
          ]
       where f l u =
                do m <- l
@@ -263,7 +254,4 @@ instance Arbitrary TagType where
          return Application
          ]
 
--}
-
-\end{code}
 \end{document}
