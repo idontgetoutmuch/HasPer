@@ -34,6 +34,9 @@ newtype NumericString = NumericString {numericString :: String}
 instance Show NumericString where
    show s = numericString s
 
+instance Show PrintableString where
+   show s = printableString s
+
 -- X.680 (07/2002) Section 47.1 Table 9
 
 class SingleValue a
@@ -84,18 +87,12 @@ instance SizeConstraint NumericString
 data Nil = Empty
 data a:*:l = a:*:l
 
-instance Show Nil where
-   show _ = "Empty"
-
-instance (Show a, Show l) => Show (a:*:l) where
-   show (x:*:xs) = show x ++ ":*:" ++ show xs
-
 -- A sequence is a collection of element types
 
 data Sequence :: * -> * where
-   Nil  :: Sequence Nil
-   Extens  :: Sequence l -> Sequence l
-   Cons :: Show a => ElementType a -> Sequence l -> Sequence (a:*:l)
+   Nil     :: Sequence Nil
+   Extens  :: Sequence l    -> Sequence l
+   Cons    :: ElementType a -> Sequence l -> Sequence (a:*:l)
 
 -- An element type is either mandatory, optional, or default.
 -- The second constructor ETExtMand deals with an extension

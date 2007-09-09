@@ -48,21 +48,20 @@ import Language.ASN1 hiding (NamedType)
 import Data.Char
 import Data.Maybe
 
-prettyType :: Show a => ASNType a -> Doc
+prettyType :: ASNType a -> Doc
 prettyType INTEGER =
    text "INTEGER"
 prettyType(RANGE x l u) =
-   let l' = 
-         case l of
-            Nothing -> text "MIN"
-            Just m  -> text (show m)
-       u' =
-         case u of
-            Nothing -> text "MAX"
-            Just n  -> text (show n)
-   in sep [prettyType x, parens (sep [l',text "..",u'])]
+   prettyType x <+> outer x l u
 prettyType (SEQUENCE x) =
    text "SEQUENCE" <> space <> braces (prettySeq x)
+
+outer :: ASNType a -> Maybe a -> Maybe a -> Doc
+outer INTEGER Nothing  Nothing  = parens (text "MIN"    <> text ".." <> text "MAX")
+outer INTEGER Nothing (Just y)  = parens (text "MIN"    <> text ".." <> text (show y))
+outer INTEGER (Just x) Nothing  = parens (text (show x) <> text ".." <> text "MAX")
+outer INTEGER (Just x) (Just y) = parens (text (show x) <> text ".." <> text (show y))
+outer (RANGE t l u) x y = outer t x y
 
 prettySeq :: Sequence a -> Doc
 prettySeq Nil =
@@ -72,13 +71,47 @@ prettySeq (Cons x Nil) =
 prettySeq (Cons x xs) =
    vcat [prettyElem x <> comma, prettySeq xs]
 
-prettyElem :: Show a => ElementType a -> Doc
+prettyElem :: ElementType a -> Doc
 prettyElem (ETMandatory nt) = prettyNamedType nt
 
-prettyNamedType :: Show a => NamedType a -> Doc
+prettyNamedType :: NamedType a -> Doc
 prettyNamedType (NamedType n _ ct) =
-   text n <> space <> prettyType ct
+   text n <+> prettyType ct
 
+
+data RepType = forall t . RepType (ASNType t)
+
+instance Arbitrary RepType where
+   arbitrary =
+      oneof [
+         return (RepType INTEGER),
+         do l <- arbitrary
+            u <- suchThat arbitrary (f l)
+            return (RepType (RANGE INTEGER l u)){-,
+         do x <- arbitrary
+            y <- arbitrary
+            case x of
+               RepElementType u -> 
+                  case y of
+                     RepSeq v -> 
+                        return (RepType (SEQUENCE (Cons u v)))-}
+         ]
+      where f l u =
+               case l of
+                  Nothing -> True
+                  Just m  -> case u of
+                                Nothing -> True
+                                Just n  -> n >= m
+
+instance Show RepType where
+   show x =
+      case x of
+         RepType y ->
+            render (prettyType y)
+
+
+
+{-
 data RepNamedType = forall t . Show t => RepNamedType (NamedType t)
 
 instance Arbitrary RepNamedType where
@@ -98,51 +131,42 @@ instance Arbitrary RepElementType where
             RepNamedType nt ->
                return (RepElementType (ETMandatory nt)) 
 
-data RepSeq = forall t . Show t => RepSeq (Sequence t)
+data RepSeqVal = forall t . Show t => RepSeqVal (Sequence t) t
 
-instance Arbitrary RepSeq where
+{-
+instance Show RepSeqVal
+
+instance Arbitrary (Sequence Nil)
+
+instance (Show a, Arbitrary (ASNType a), Arbitrary (Sequence l)) => Arbitrary (Sequence (a:*:l)) where
    arbitrary =
-      oneof [
-         return (RepSeq Nil),
-         do x <- arbitrary
-            y <- arbitrary
-            e <- arbitrary
-            case x of
-               RepType u ->
-                  case y of
-                     RepSeq v ->
-                        return (RepSeq (Cons (ETMandatory (NamedType (elementName e) Nothing u)) v))
-         ]
+      do x <- arbitrary
+         xs <- arbitrary
+         return (Cons (ETMandatory (NamedType "" Nothing x)) xs)
+-}
 
-data RepType = forall t . Show t => RepType (ASNType t)
-
-instance Arbitrary RepType where
+instance Arbitrary RepSeqVal where
    arbitrary =
-      oneof [
-         return (RepType INTEGER),
-         do l <- arbitrary
-            u <- suchThat arbitrary (f l)
-            return (RepType (RANGE INTEGER l u)),
-         do x <- arbitrary
-            y <- arbitrary
-            case x of
-               RepElementType u -> 
-                  case y of
-                     RepSeq v -> 
-                        return (RepType (SEQUENCE (Cons u v)))
-         ]
-      where f l u =
-               case l of
-                  Nothing -> True
-                  Just m  -> case u of
-                                Nothing -> True
-                                Just n  -> n >= m
+      do t <- arbitrary
+         ts <- arbitrary
+         case t of 
+           RepType u ->
+              case ts of
+                 RepSeq us ->
+                    return (RepSeqVal (Cons (ETMandatory (NamedType "" Nothing u)) us) undefined)
 
-instance Show RepType where
-   show x =
-      case x of
-         RepType y ->
-            render (prettyType y)
+{-
+arbitrarySeq :: RepSeq -> Gen RepSeqVal
+arbitrarySeq x =
+   case x of
+      (RepSeq y) ->
+         case y of
+            Nil -> 
+               return (RepSeqVal y Empty)
+            Cons t ts -> 
+               do u <- arbitrary
+                  return (RepSeqVal (Cons t Nil) (u:*:Empty))
+-}
 
 data RepValue = forall t . Show t => RepValue (ASNType t) t
 
@@ -196,5 +220,7 @@ instance Arbitrary ElementName where
          return (ElementName (first:rest))
 
 main = sample (arbitrary::Gen RepType)
+-}
+
 \end{code}
 \end{document}
