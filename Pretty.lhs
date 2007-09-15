@@ -149,6 +149,29 @@ instance Arbitrary RepSeq where
                         return (RepSeq (Cons u us))
          ]
 
+
+range :: ASNType Integer -> Maybe (Maybe Integer,Maybe Integer)
+range INTEGER = return (Nothing,Nothing)
+range (RANGE t l u) = 
+   do (m,v) <- range t
+      h1 (f1 l m) (g1 u v)
+
+f1 Nothing  Nothing = Nothing
+f1 Nothing  (Just y) = Just y
+f1 (Just x) Nothing  = Just x
+f1 (Just x) (Just y) = Just (max x y)
+g1 Nothing  Nothing  = Nothing
+g1 Nothing  (Just y) = Just y
+g1 (Just x) Nothing  = Just x
+g1 (Just x) (Just y) = Just (min x y)
+h1 Nothing  Nothing  = Just (Nothing,Nothing)
+h1 Nothing  (Just y) = Just (Nothing,Just y)
+h1 (Just x) Nothing  = Just (Just x, Nothing)
+h1 (Just x) (Just y) 
+   | x > y = Nothing
+   | otherwise = Just (Just x,Just y)
+     
+
 data OnlyINTEGER = OnlyINTEGER (ASNType Integer)
 
 instance Arbitrary OnlyINTEGER where
@@ -178,80 +201,126 @@ instance Show OnlyINTEGER where
          OnlyINTEGER n ->
             render (prettyType n)
 
-main = sample (arbitrary::Gen RepType)
-\end{code}
-
-data RepSeqVal = forall t . Show t => RepSeqVal (Sequence t) t
-
-instance Show RepSeqVal
-
-instance Arbitrary (Sequence Nil)
-
-instance (Show a, Arbitrary (ASNType a), Arbitrary (Sequence l)) => Arbitrary (Sequence (a:*:l)) where
-   arbitrary =
-      do x <- arbitrary
-         xs <- arbitrary
-         return (Cons (ETMandatory (NamedType "" Nothing x)) xs)
-
-instance Arbitrary RepSeqVal where
-   arbitrary =
-      do t <- arbitrary
-         ts <- arbitrary
-         case t of 
-           RepType u ->
-              case ts of
-                 RepSeq us ->
-                    return (RepSeqVal (Cons (ETMandatory (NamedType "" Nothing u)) us) undefined)
-
-arbitrarySeq :: RepSeq -> Gen RepSeqVal
-arbitrarySeq x =
+arbitraryINTEGER :: OnlyINTEGER -> Gen (Maybe Integer)
+arbitraryINTEGER x =
    case x of
-      (RepSeq y) ->
+      OnlyINTEGER y ->
          case y of
-            Nil -> 
-               return (RepSeqVal y Empty)
-            Cons t ts -> 
-               do u <- arbitrary
-                  return (RepSeqVal (Cons t Nil) (u:*:Empty))
+            INTEGER ->
+               do n <- arbitrary
+                  return (Just n)
+            RANGE t l u ->
+               do let r = range y
+                  case r of
+                     Nothing ->
+                        return Nothing
+                     Just (x,y) ->
+                        suchThat (arbitraryINTEGER (OnlyINTEGER t)) (g x y)
+   where
+      f :: Maybe Integer -> Maybe Integer -> Integer -> Bool
+      f Nothing Nothing   _ = True
+      f Nothing (Just u)  x = x <= u
+      f (Just l) Nothing  x = x >= l
+      f (Just l) (Just u) x = (x >= l) && (x <= u)
+      g _ _ Nothing  = False
+      g x y (Just z) = f x y z
 
-data RepValue = forall t . Show t => RepValue (ASNType t) t
+data RepSeqVal = forall a . RepSeqVal (Sequence a) a
 
-instance Arbitrary RepValue where
+prettySeqVal :: Sequence a -> a -> Doc
+prettySeqVal Nil _ = empty
+prettySeqVal (Cons e Nil) (x:*:Empty) =
+   prettyElementTypeVal e x
+prettySeqVal (Cons e l) (x:*:xs) =
+   prettyElementTypeVal e x <> comma $$ prettySeqVal l xs
+
+
+prettyElementTypeVal :: ElementType a -> a -> Doc
+prettyElementTypeVal (ETMandatory (NamedType n _ t)) x =
+   text n <+> prettyTypeVal t x 
+
+arbitrarySeq :: Sequence a -> Gen RepSeqVal
+arbitrarySeq Nil =
+   return (RepSeqVal Nil Empty)
+arbitrarySeq (Cons (ETMandatory (NamedType n i t)) ts) =
+   do u <- arbitraryType t
+      us <- arbitrarySeq ts
+      case u of
+         RepTypeVal a v ->
+            case us of
+               RepSeqVal bs vs ->
+                  return (RepSeqVal (Cons (ETMandatory (NamedType n i a)) bs) (v:*:vs))
+
+data RepTypeVal = forall a . RepTypeVal (ASNType a) a
+
+prettyTypeVal :: ASNType a -> a -> Doc
+prettyTypeVal INTEGER x = text (show x)
+prettyTypeVal (SEQUENCE s) x = brackets (prettySeqVal s x)
+
+instance Show RepTypeVal where
+   show r =
+      case r of
+         RepTypeVal t x ->
+            render (prettyTypeVal t x)
+
+arbitraryType :: ASNType a -> Gen RepTypeVal
+arbitraryType INTEGER =
+   do n <- arbitrary
+      return (RepTypeVal INTEGER n)
+arbitraryType (RANGE x l u) =
+   do y <- arbitraryType x
+      case y of
+         RepTypeVal INTEGER n ->
+            undefined
+   where
+      g l u =
+         do m <- l
+            n <- u
+            return (n >= m)
+arbitraryType (SEQUENCE s) =
+   do r <- arbitrarySeq s
+      case r of
+         RepSeqVal as vs ->
+            return (RepTypeVal (SEQUENCE as) vs)
+
+data INTEGERVal = INTEGERVal (ASNType Integer) (Maybe Integer)
+
+instance Show INTEGERVal where
+   show (INTEGERVal t x) =
+      show (prettyType t) ++ ": " ++ show x
+
+instance Arbitrary INTEGERVal where
    arbitrary =
-      oneof [
-         do x <- arbitrary
-            return (RepValue INTEGER x),
-         do l <- arbitrary
-            u <- suchThat arbitrary (fromMaybe True . (f l))
-            x <- suchThat (suchThat arbitrary (fromMaybe True . (h1 l))) (fromMaybe True . (h2 u))
-            return (RepValue (RANGE INTEGER l u) x)
-         do x <- arbitrary
-            y <- arbitrary
-            case x of
-               RepElementType u -> 
-                  case y of
-                     RepSeq v -> 
-                        return (RepType (SEQUENCE (Cons u v)))
-         ]
-      where f l u =
-               do m <- l
-                  n <- u
-                  return (n >= m)
-            h1 l x = l >>= \m -> return (x >= m)
-            h2 u x = u >>= \n -> return (x <= n)
-               
+      do r <- arbitrary
+         x <- arbitraryINTEGER r
+         case r of
+            OnlyINTEGER t ->
+               return (INTEGERVal t x)
 
-instance Show RepValue where
-   show x =
-      case x of
-         RepValue t x ->
-            render (prettyType t) ++ ": " ++ show x
+f2 :: Maybe Integer -> Maybe Integer -> Integer -> Bool
+f2 Nothing Nothing   _ = True
+f2 Nothing (Just u)  x = x <= u
+f2 (Just l) Nothing  x = x >= l
+f2 (Just l) (Just u) x = (x >= l) && (x <= u)
 
-instance Arbitrary TagType where
-   arbitrary = 
-      oneof [
-         return Context,
-         return Application
-         ]
+-- The generated Integer should be within the lower and upper bound of the constraints
+
+prop_WithinRange (INTEGERVal t Nothing) =
+   case range t of
+      Nothing ->
+         True
+      Just (x,y) ->
+         False
+prop_WithinRange (INTEGERVal t (Just n)) =
+   case range t of
+      Nothing ->
+         False
+      Just (x,y) ->
+         f2 x y n
+
+main =
+   do quickCheck prop_WithinRange
+
+\end{code}
 
 \end{document}
