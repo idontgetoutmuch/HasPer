@@ -49,6 +49,9 @@ import ConstrainedType
 import Language.ASN1 hiding (NamedType)
 import Data.Char
 import Data.Maybe
+import Data.Monoid
+import Control.Monad.Error
+import qualified Data.ByteString.Lazy as B
 
 prettyType :: ASNType a -> Doc
 prettyType INTEGER =
@@ -81,7 +84,6 @@ prettyElem (ETMandatory nt) = prettyNamedType nt
 prettyNamedType :: NamedType a -> Doc
 prettyNamedType (NamedType n _ ct) =
    text n <+> prettyType ct
-
 
 data RepType = forall t . RepType (ASNType t)
 
@@ -225,7 +227,14 @@ arbitraryINTEGER x =
       g _ _ Nothing  = False
       g x y (Just z) = f x y z
 
-data RepSeqVal = forall a . RepSeqVal (Sequence a) a
+instance Eq Nil where
+  _ == _ = True
+
+instance (Eq a, Eq b) => Eq (a:*:b) where
+   x:*:xs == y:*:ys =
+      x == y && xs == ys
+
+data RepSeqVal = forall a . Eq a => RepSeqVal (Sequence a) a
 
 prettySeqVal :: Sequence a -> a -> Doc
 prettySeqVal Nil _ = empty
@@ -266,15 +275,26 @@ instance Arbitrary RepSeqVal where
                   do us <- arbitrary
                      case us of
                         RepSeqVal t xs ->
-                           return (RepSeqVal (Cons (ETMandatory (NamedType "" Nothing s)) t) (x:*:xs))
+                           do e <- arbitrary
+                              return (RepSeqVal (Cons (ETMandatory (NamedType (elementName e) Nothing s)) t) (x:*:xs))
          ]
 
-data RepTypeVal = forall a . RepTypeVal (ASNType a) a
+data RepTypeVal = forall a . Eq a => RepTypeVal (ASNType a) a
 
 prettyTypeVal :: ASNType a -> a -> Doc
 prettyTypeVal INTEGER x = text (show x)
 prettyTypeVal (RANGE t l u) x = prettyTypeVal t x
-prettyTypeVal (SEQUENCE s) x = brackets (prettySeqVal s x)
+prettyTypeVal (SEQUENCE s) x = braces (prettySeqVal s x)
+
+{-
+instance Eq RepTypeVal where
+   r == s =
+      case r of
+         RepTypeVal t x ->
+            case s of
+               RepTypeVal u y ->
+                  True
+-}
 
 instance Show RepTypeVal where
    show r =
@@ -354,8 +374,29 @@ prop_WithinRange (INTEGERVal t (Just n)) =
       Just (x,y) ->
          f2 x y n
 
+prop_2scomplement1 x =
+   x == from2sComplement (to2sComplement x)
+
+prop_2scomplement2 x =
+   x == to2sComplement (from2sComplement x)
+
+prop_fromPerToPer x =
+   case x of
+      RepTypeVal t y ->
+         y == runFromPer t (toPer t y)
+   where
+      runFromPer :: ASNType a -> BitStream -> a
+      runFromPer t x =
+         case runTest t x 0 of
+            (Left _,_)   -> undefined
+            (Right xs,_) -> xs
+      runTest t x y = runState (runErrorT (mFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
+
 main =
-   do quickCheck prop_WithinRange
+   do quickCheck prop_fromPerToPer
+      quickCheck prop_WithinRange
+      quickCheck prop_2scomplement1
+      quickCheck prop_2scomplement2
 
 \end{code}
 
