@@ -234,6 +234,11 @@ prettySeqVal (Cons e Nil) (x:*:Empty) =
 prettySeqVal (Cons e l) (x:*:xs) =
    prettyElementTypeVal e x <> comma $$ prettySeqVal l xs
 
+instance Show RepSeqVal where
+   show r =
+      case r of
+         RepSeqVal t x ->
+            render (prettySeqVal t x)
 
 prettyElementTypeVal :: ElementType a -> a -> Doc
 prettyElementTypeVal (ETMandatory (NamedType n _ t)) x =
@@ -251,10 +256,24 @@ arbitrarySeq (Cons (ETMandatory (NamedType n i t)) ts) =
                RepSeqVal bs vs ->
                   return (RepSeqVal (Cons (ETMandatory (NamedType n i a)) bs) (v:*:vs))
 
+instance Arbitrary RepSeqVal where
+   arbitrary =
+      oneof [
+         return (RepSeqVal Nil Empty),
+         do u <- arbitrary
+            case u of
+               RepTypeVal s x ->
+                  do us <- arbitrary
+                     case us of
+                        RepSeqVal t xs ->
+                           return (RepSeqVal (Cons (ETMandatory (NamedType "" Nothing s)) t) (x:*:xs))
+         ]
+
 data RepTypeVal = forall a . RepTypeVal (ASNType a) a
 
 prettyTypeVal :: ASNType a -> a -> Doc
 prettyTypeVal INTEGER x = text (show x)
+prettyTypeVal (RANGE t l u) x = prettyTypeVal t x
 prettyTypeVal (SEQUENCE s) x = brackets (prettySeqVal s x)
 
 instance Show RepTypeVal where
@@ -262,6 +281,21 @@ instance Show RepTypeVal where
       case r of
          RepTypeVal t x ->
             render (prettyTypeVal t x)
+
+instance Arbitrary RepTypeVal where
+   arbitrary =
+      oneof [
+         do (INTEGERVal t mn) <- arbitrary
+            case mn of
+               Nothing ->
+                  return (RepTypeVal t (-17))
+               Just n ->
+                  return (RepTypeVal t n),
+            do r <- arbitrary
+               case r of
+                  RepSeqVal s xs ->
+                     return (RepTypeVal (SEQUENCE s) xs)
+         ]
 
 arbitraryType :: ASNType a -> Gen RepTypeVal
 arbitraryType INTEGER =
@@ -302,9 +336,11 @@ f2 Nothing Nothing   _ = True
 f2 Nothing (Just u)  x = x <= u
 f2 (Just l) Nothing  x = x >= l
 f2 (Just l) (Just u) x = (x >= l) && (x <= u)
+\end{code}
 
--- The generated Integer should be within the lower and upper bound of the constraints
+The generated Integer should be within the lower and upper bound of the constraints.
 
+\begin{code}
 prop_WithinRange (INTEGERVal t Nothing) =
    case range t of
       Nothing ->
