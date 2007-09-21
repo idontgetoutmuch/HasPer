@@ -13,7 +13,7 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
          SEQUENCE {
             first  T1,
             second T1
-         
+
       Test2 ::=
          SEQUENCE {
             first  T1 OPTIONAL,
@@ -89,6 +89,24 @@ integer12'3 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 65538
 
 test0 = toPer t1' 27
 
+-- ENUMERATED TYPE
+
+testEnum = toPer et ev
+
+et = ENUMERATED (EnumOption (Identifier "A")
+                    (EnumOption (NamedNumber "B" 5)
+                        (EnumOption (Identifier "C")
+                            (EnumOption (NamedNumber "D" 1)
+                                (EnumExt
+                                    (EnumOption (Identifier "E")
+                                        (EnumOption (NamedNumber "F" 6) NoEnum)))))))
+
+ev = (Nothing :*:
+        (Nothing :*:
+            (Nothing :*:
+                (Nothing :*:
+                    (Nothing :*:
+                        (Just "F" :*: Empty))))))
 -- BITSTRING
 
 bsTest1 = toPer BITSTRING (BitString [1,1,0,0,0,1,0,0,0,0])
@@ -450,7 +468,7 @@ type1 = NamedType "T1" Nothing (RANGE INTEGER (Just 25) (Just 30))
 
 type2 = NamedType "T2" Nothing (SEQUENCE (Cons (ETMandatory (NamedType "first" Nothing INTEGER)) Nil))
 
-type3 = 
+type3 =
    NamedType "T3" Nothing (SEQUENCE (
       Cons (ETMandatory (NamedType "first" Nothing INTEGER)) (
          Cons (ETMandatory (NamedType "second" Nothing INTEGER)) Nil)))

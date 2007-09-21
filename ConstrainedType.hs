@@ -473,6 +473,92 @@ h n = (reverse . map fromInteger) (flip (curry (unfoldr g)) 7 n)
 
 -- 13 ENCODING THE ENUMERATED TYPE
 
+-- There are three cases to deal with:
+-- i.   There is no extension marker. The enumerations are indexed
+--      based on their (explicit or implicit) values. Thus each
+--      enumeration without an explcit value, is given a value that is not
+--      already explcitly assigned (assignNumber) on a first come/first
+--      serve basis. The indexes are then assigned in ascending
+--      order where the first index is 0 (assignIndex). The total number of
+--      enumerations is required since the encoding is of a constrained
+--      integer i.e. in the minimum number of bits. (13.2 and 10.5.6)
+--      encodeEnumAux simply encodes the existing enumeration.
+-- ii.  There is an extension marker but the value is in the
+--      enumeration root. 0 prefixes the encoding of the value
+--      which is completed as in (i). assignIndex returns a
+--      Boolean which indicates the presence or absence of an extension
+--      marker. (13.3 and 10.5.6)
+-- iii. The value is in the extension. 1 prefixes the encoding,
+--      the enumerations in the extension are indexed in order of
+--      appearance and are encoded as a normally small non-negative whole
+--      number. (13.3 and 10.6) The function encodeEnumExtAux manages this
+--      encoding.
+
+encodeEnum :: Enumerate a -> a -> BitStream
+encodeEnum e x
+    = let (b,inds) = assignIndex e
+          no = genericLength inds
+      in encodeEnumAux b no inds e x
+
+encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> a -> BitStream
+encodeEnumAux b no (f:r) (EnumOption _ es) (Just n :*:rest)
+    = if not b
+        then encodeNNBIntBits (f, no-1)
+        else 0: encodeNNBIntBits (f, no-1)
+encodeEnumAux b no (f:r) (EnumOption _ es) (Nothing :*: rest)
+    = encodeEnumAux b no r es rest
+encodeEnumAux b no inds (EnumExt ex) x
+    = let el = noEnums ex
+      in encodeEnumExtAux 0 el ex x
+encodeEnumAux _ _ _ _ _ = error "No enumerated value!"
+
+encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> a -> BitStream
+encodeEnumExtAux i l (EnumOption _ es) (Just n :*:rest)
+    = 1:encodeNSNNInt i 0
+encodeEnumExtAux i l (EnumOption _ es) (Nothing :*:rest)
+    = encodeEnumExtAux (i+1) l es rest
+encodeEnumExtAux i l _ _ = error "No enumerated extension value!"
+
+assignIndex :: Enumerate a -> (Bool, [Integer])
+assignIndex en
+    = let (b,ns) = assignNumber en False []
+          sls = sort ns
+      in
+        (b, positions ns sls)
+
+assignNumber :: Enumerate a -> Bool -> [Integer] -> (Bool, [Integer])
+assignNumber en b ls
+    = let nn = getNamedNumbers en
+      in
+        assignN ([0..] \\ nn) en b ls
+
+assignN :: [Integer] -> Enumerate a -> Bool -> [Integer] -> (Bool, [Integer])
+assignN (f:xs) NoEnum b ls = (b,reverse ls)
+assignN (f:xs) (EnumOption (NamedNumber _ i) r)b ls = assignN (f:xs) r b (i:ls)
+assignN (f:xs) (EnumOption _ r) b ls = assignN xs r b (f:ls)
+assignN (f:xs) (EnumExt r) b ls = (True, reverse ls)
+
+
+getNamedNumbers :: Enumerate a -> [Integer]
+getNamedNumbers NoEnum = []
+getNamedNumbers (EnumOption (NamedNumber _ i) r) = i:getNamedNumbers r
+getNamedNumbers (EnumOption _ r) = getNamedNumbers r
+getNamedNumbers (EnumExt r)  = []
+
+noEnums :: Enumerate a -> Integer
+noEnums NoEnum = 0
+noEnums (EnumOption _ r) = 1 + noEnums r
+noEnums (EnumExt r)  = 0
+
+positions [] sls = []
+positions (f:r) sls
+    = findN f sls : positions r sls
+
+findN i (f:r)
+    = if i == f then 0
+        else 1 + findN i r
+findN i []
+    = error "Impossible case!"
 
 
 -- 15 ENCODING THE BITSTRING TYPE

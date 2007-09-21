@@ -149,6 +149,22 @@ data Choice :: * -> * where
 
 \end{code}
 
+An enumeration is a collection of identifiers (implicitly or explicitly) associated
+with an integer.
+
+\begin{code}
+
+data EnumerationItem :: * -> * where
+    Identifier :: Name -> EnumerationItem Name
+    NamedNumber :: Name -> Integer -> EnumerationItem Name
+
+data Enumerate :: * -> * where
+    NoEnum      :: Enumerate Nil
+    EnumOption  :: EnumerationItem a -> Enumerate l -> Enumerate (Maybe a:*:l)
+    EnumExt     :: Enumerate l -> Enumerate l
+
+\end{code}
+
 Type Aliases for Tag Information
 
 \begin{code}
@@ -168,7 +184,7 @@ data ASNType :: * -> * where
    EXTADDGROUP     :: Sequence a -> ASNType a
    BOOLEAN         :: ASNType Bool
    INTEGER         :: ASNType Integer
---   ENUMERATED      :: ASNType Enumerated
+   ENUMERATED      :: Enumerate a -> ASNType a
    BITSTRING       :: ASNType BitString
    PRINTABLESTRING :: ASNType PrintableString
    IA5STRING       :: ASNType IA5String
@@ -357,34 +373,59 @@ encodeBool t _    = [0]
 encodeInt :: ASNType Integer -> Integer -> BitStream
 encodeInt t x =
    case p of
-      -- 10.5 Encoding of a constrained whole number
+\end{code}
+       10.5 Encoding of a constrained whole number
+\begin{code}
       Constrained (Just lb) (Just ub) ->
          let range = ub - lb + 1 in
             if range <= 1
-               -- 10.5.4
+\end{code}
+                10.5.4
+\begin{code}
                then []
-               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
-               else minBits ((x-lb),range-1)
-      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
-      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
+\end{code}
+                10.5.6 and 10.3 Encoding as a non-negative-binary-integer
+\begin{code}
+               else encodeNNBIntBits ((x-lb),range-1)
+\end{code}
+       12.2.3, 10.7 Encoding of a semi-constrained whole number,
+       10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
+\begin{code}
       Constrained (Just lb) Nothing ->
-         encodeWithLengthDeterminant (minOctets (x-lb))
-      -- 12.2.4, 10.8 Encoding of an unconstrained whole number, 10.8.3 and
-      -- 10.4 Encoding as a 2's-complement-binary-integer
+                encodeSCInt x lb
+\end{code}
+       12.2.4, 10.8 Encoding of an unconstrained whole number, 10.8.3 and
+       10.4 Encoding as a 2's-complement-binary-integer
+\begin{code}
       Constrained Nothing _ ->
-        encodeWithLengthDeterminant (to2sComplement x)
+                encodeUInt x
    where
       p = bounds t
 
 \end{code}
 
-minBits encodes a constrained whole number (10.5.6) in the minimum
-number of bits required for the range (assuming the range is at least 2).
+ 10.6 Encoding as a normally small non-negative whole number
 
 \begin{code}
 
-minBits :: (Integer, Integer) -> BitStream
-minBits
+encodeNSNNInt :: Integer -> Integer -> BitStream
+encodeNSNNInt n lb
+    = if n <= 63
+        then 0:encodeNNBIntBits (n,63)
+        else 1:encodeSCInt n lb
+
+\end{code}
+
+
+ 10.3 Encoding as a non-negative-binary-integer
+
+ encodeNNBIntBits encodes an integer in the minimum
+ number of bits required for the range (assuming the range is at least 2).
+
+\begin{code}
+
+encodeNNBIntBits :: (Integer, Integer) -> BitStream
+encodeNNBIntBits
     = reverse . (map fromInteger) . unfoldr h
       where
         h (_,0) = Nothing
@@ -393,21 +434,43 @@ minBits
 
 \end{code}
 
-minOctets is used in the encoding of a semi-constrained integer (10.7). It is encoded
-as a non-negative-binary-integer (10.3, 10.3.6) where the offset
-from the lower bound is encoded in the minimum number of octets, preceded by
-(or interspersed with) the encoding of the length (using encodeWithLengthDeterminant)
-of the octet representation of the offset. (10.7.4)
+ encodeNNBIntOctets encodes an integer in the minimum number of
+ octets.
 
 \begin{code}
 
-minOctets :: Integer -> BitStream
-minOctets =
+encodeNNBIntOctets :: Integer -> BitStream
+encodeNNBIntOctets =
    reverse . (map fromInteger) . flip (curry (unfoldr (uncurry g))) 8 where
       g 0 0 = Nothing
       g 0 p = Just (0,(0,p-1))
       g n 0 = Just (n `mod` 2,(n `div` 2,7))
       g n p = Just (n `mod` 2,(n `div` 2,p-1))
+
+\end{code}
+
+ 10.7 Encoding of a semi-constrained whole number. The integer
+ is encoded in the minimum number of octets with an explicit
+ length encoding. In the larger cases there may be fragmentation
+ of the number encoding.
+
+\begin{code}
+
+encodeSCInt :: Integer -> Integer -> BitStream
+encodeSCInt v lb
+    = encodeWithLengthDeterminant (encodeNNBIntOctets (v-lb))
+
+\end{code}
+
+ 10.8 Encoding of an unconstrained integer. The integer is
+ encoded as a 2's-complement-binary-integer with an explicit
+ length encoding. In the larger cases there may be fragmentation
+ of the number encoding.
+
+\begin{code}
+
+encodeUInt :: Integer -> BitStream
+encodeUInt x = encodeWithLengthDeterminant (to2sComplement x)
 
 \end{code}
 
@@ -465,7 +528,7 @@ abs1 f op x y
     = x `op` (concat . map f) y
 
 arg1 :: Integer -> Integer -> [Int]
-arg1 x y = (1:1:(minBits (x,y)))
+arg1 x y = (1:1:(encodeNNBIntBits (x,y)))
 
 \end{code}
 
@@ -483,11 +546,11 @@ addLengths = ulWrapper id (:) arg1 ld
 \begin{enumerate}
 
 \item
-The first guard implements 10.9.4.2, 10.9.3.5, 10.9.3.6. Note this is 
+The first guard implements 10.9.4.2, 10.9.3.5, 10.9.3.6. Note this is
 not very efficient since we know $log_2 128 = 7$
 
 \item
-The second guard implements 10.9.3.7. Note this is 
+The second guard implements 10.9.3.7. Note this is
 not very efficient since we know $log_2 16*(2^{10}) = 14$
 
 \item
@@ -499,8 +562,8 @@ Note there is no clause for $>= 16*(2^10)$ as we have groupBy $16*(2^10)$
 
 ld :: Integer -> [BitStream]
 ld n
-   | n <= 127       = [0:(minBits (n, 127))]
-   | n < 16*(2^10)  = [1:0:(minBits (n, (16*(2^10)-1)))]
+   | n <= 127       = [0:(encodeNNBIntBits (n, 127))]
+   | n < 16*(2^10)  = [1:0:(encodeNNBIntBits (n, (16*(2^10)-1)))]
 
 \end{code}
 
@@ -517,7 +580,7 @@ by the encoding of its length using encodeWithLengthDeterminant
 to2sComplement :: Integer -> BitStream
 to2sComplement n
    | n >= 0 = 0:(h n)
-   | otherwise = minOctets (2^p + n)
+   | otherwise = encodeNNBIntOctets (2^p + n)
    where
       p = length (h (-n-1)) + 1
 
@@ -532,13 +595,13 @@ h n = (reverse . map fromInteger) (flip (curry (unfoldr g)) 7 n)
 
 \end{code}
 
--- 13 ENCODING THE ENUMERATED TYPE
+ 13 ENCODING THE ENUMERATED TYPE
 
 
 
--- 15 ENCODING THE BITSTRING TYPE
+ 15 ENCODING THE BITSTRING TYPE
 
---
+
 
 \begin{code}
 
@@ -624,8 +687,8 @@ small length (10.9.3.4)
 lengthAdds ap
     = let la = genericLength ap
        in if la <= 63
-        then 0:minBits (la-1, 63) ++ concat ap
-        else 1:encodeWithLengthDeterminant (minOctets la) ++ concat ap
+        then 0:encodeNNBIntBits (la-1, 63) ++ concat ap
+        else 1:encodeWithLengthDeterminant (encodeNNBIntOctets la) ++ concat ap
 
 \end{code}
 
@@ -728,7 +791,7 @@ manageExtremes fn1 fn2 l u x
                then fn1 x
                else if u >= 65536
                    then fn2 x
-                   else minBits ((genericLength x-l),range-1) ++ fn1 x
+                   else encodeNNBIntBits ((genericLength x-l),range-1) ++ fn1 x
 
 encodeSeqSz :: ASNType [a] -> Integer -> Integer -> [a] -> BitStream
 encodeSeqSz (SIZE ty _ _) l u x
@@ -766,8 +829,8 @@ soLengths :: ASNType a -> [[[a]]] -> Maybe (BitStream, [[[a]]])
 soLengths t = ulWrapper (concat . map (toPer t)) (++) arg1 ld2
 
 ld2 n
-   | n <= 127       = 0:(minBits (n, 127))
-   | n < 16*(2^10)  = 1:0:(minBits (n, (16*(2^10)-1)))
+   | n <= 127       = 0:(encodeNNBIntBits (n, 127))
+   | n < 16*(2^10)  = 1:0:(encodeNNBIntBits (n, (16*(2^10)-1)))
 
 \end{code}
 
@@ -801,9 +864,12 @@ encodeSet s x
         in
             pr ++ en ++ concat ap ++ concat ab
 
+\end{code}
 
 
--- Sorting
+Sorting
+
+\begin{code}
 
 mergesort :: (a -> a -> Bool) -> [a] -> [a]
 mergesort pred [] = []
@@ -827,7 +893,7 @@ merge pred (x:xs) (y:ys)
 
 \end{code}
 
--- Sorting predicate and tag selector
+ Sorting predicate and tag selector
 
 \begin{code}
 
@@ -881,13 +947,13 @@ getTI (CHOICE c)                = (minimum . getCTags) c
 \end{code}
 
 
--- 21. Encoding the set-of type.
+ 21. Encoding the set-of type.
 
--- Since we are implementing BASIC-PER (and not CANONICAL-PER) the
--- encoding is as for a sequence-of.
+ Since we are implementing BASIC-PER (and not CANONICAL-PER) the
+ encoding is as for a sequence-of.
 
 
--- 22. Encoding the choice type.
+ 22. Encoding the choice type.
 
 encodeChoice encodes CHOICE values. It is not dissimilar to
 encodeSet in that the possible choice components must be
@@ -915,15 +981,15 @@ encodeChoice c x
                     ls  = genericLength os
                 in
             if null ea
-              then minBits (fst fr,ls-1) ++ (snd .snd) fr
+              then encodeNNBIntBits (fst fr,ls-1) ++ (snd .snd) fr
                     else
                 if length ec <= 63
-                    then ea ++ 0:minBits (fst fr, 63) ++ (snd.snd) fr
-                    else ea ++ 1:encodeWithLengthDeterminant (minOctets (fst fr)) ++ (snd.snd) fr
+                    then ea ++ 0:encodeNNBIntBits (fst fr, 63) ++ (snd.snd) fr
+                    else ea ++ 1:encodeWithLengthDeterminant (encodeNNBIntOctets (fst fr)) ++ (snd.snd) fr
 
 \end{code}
 
--- IS THE ELSE CASE ABOVE CORRECT???
+ IS THE ELSE CASE ABOVE CORRECT???
 
 \begin{code}
 
@@ -986,7 +1052,7 @@ encodeChoiceExtAux' ext body (ChoiceOption a as) (x:*:xs) =
 
 \end{code}
 
--- 27. Encoding the restricted character string types (VISIBLESTRING)
+ 27. Encoding the restricted character string types (VISIBLESTRING)
 
 \begin{code}
 encodeVS :: ASNType VisibleString -> VisibleString -> BitStream
@@ -1005,21 +1071,21 @@ insertLVS s = unfoldr (vsLengths s)
 
 \end{code}
 
--- vsLengths adds lengths values to encoding of sections of
--- VISIBLESTRING.
+ vsLengths adds lengths values to encoding of sections of
+ VISIBLESTRING.
 
 \begin{code}
 
 vsLengths :: ASNType VisibleString -> [[String]] -> Maybe (BitStream, [[String]])
 vsLengths s = ulWrapper encS (++) arg1 ld2
 
-encC c  = minBits ((toInteger . ord) c, 94)
+encC c  = encodeNNBIntBits ((toInteger . ord) c, 94)
 encS s  = (concat . map encC) s
 
 \end{code}
 
--- 27.5.4 Encoding of a VISIBLESTRING with a permitted alphabet
--- constraint.
+ 27.5.4 Encoding of a VISIBLESTRING with a permitted alphabet
+ constraint.
 
 \begin{code}
 
@@ -1074,7 +1140,7 @@ Clause 38.8 in X680 (Canonical ordering of VisibleString characters)
 canEnc b sp [] = []
 canEnc b sp (f:r)
         = let v = (toInteger . length . findV f) sp
-           in minBits (v,b) : canEnc b sp r
+           in encodeNNBIntBits (v,b) : canEnc b sp r
 
 findV m []  = []
 findV m (a:rs)
@@ -1084,7 +1150,7 @@ findV m (a:rs)
 
 \end{code}
 
--- 27. Encoding the restricted character string types (NUMERICSTRING)
+ 27. Encoding the restricted character string types (NUMERICSTRING)
 
 \begin{code}
 
@@ -1102,14 +1168,17 @@ encodeNum ns (NumericString s)
 insertLNS :: ASNType NumericString -> [[String]] -> [BitStream]
 insertLNS s = unfoldr (nsLengths s)
 
+\end{code}
 
--- vsLengths adds lengths values to encoding of sections of
--- VISIBLESTRING.
+ vsLengths adds lengths values to encoding of sections of
+ VISIBLESTRING.
+
+\begin{code}
 
 nsLengths :: ASNType NumericString -> [[String]] -> Maybe (BitStream, [[String]])
 nsLengths s = ulWrapper encNS (++) arg1 ld2
 
-encNC c  = minBits ((toInteger . (posInStr 0 " 0123456789")) c, 10)
+encNC c  = encodeNNBIntBits ((toInteger . (posInStr 0 " 0123456789")) c, 10)
 encNS s  = (concat . map encNC) s
 
 posInStr n (a:r) c
