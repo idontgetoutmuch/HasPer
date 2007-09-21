@@ -123,6 +123,21 @@ data Choice :: * -> * where
     ChoiceEAG    :: Choice l -> Choice l
     ChoiceOption :: NamedType a -> Choice l -> Choice ((Maybe a):*:l)
 
+-- An enumeration is a collection of identifiers (implicitly or explicitly) associated
+-- with an integer.
+
+data EnumerationItem :: * -> * where
+    Identifier :: Name -> EnumerationItem Name
+    NamedNumber :: Name -> Integer -> EnumerationItem Name
+
+
+data Enumerate :: * -> * where
+    NoEnum      :: Enumerate Nil
+    EnumOption  :: EnumerationItem a -> Enumerate l -> Enumerate ((Maybe a):*:l)
+    EnumExt     :: Enumerate l -> Enumerate l
+
+
+
 -- Type Aliases for Tag Information
 
 type TagInfo    = (TagType, TagValue, TagPlicity)
@@ -137,7 +152,7 @@ data ASNType :: * -> * where
    EXTADDGROUP     :: Sequence a -> ASNType a
    BOOLEAN         :: ASNType Bool
    INTEGER         :: ASNType Integer
---   ENUMERATED      :: ASNType Enumerated
+   ENUMERATED      :: Enumerate a -> ASNType a
    BITSTRING       :: ASNType BitString
    PRINTABLESTRING :: ASNType PrintableString
    IA5STRING       :: ASNType IA5String
@@ -220,6 +235,7 @@ toPer (EXTADDGROUP s) x                         = toPerOpen (SEQUENCE s) x
 toPer t@BOOLEAN x                               = encodeBool t x
 toPer t@INTEGER x                               = encodeInt t x
 toPer r@(RANGE INTEGER l u) x                   = encodeInt r x
+toPer (ENUMERATED e) x                          = encodeEnum e x
 toPer t@BITSTRING x                             = encodeBS t x
 toPer t@(SIZE BITSTRING l u) x                  = encodeBS t x
 toPer (SEQUENCE s) x                            = encodeSeq s x
