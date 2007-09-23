@@ -64,7 +64,7 @@ instance ContainedSubtype PrintableString
 instance ContainedSubtype NumericString
 instance ContainedSubtype Integer
 
-class Show a => ValueRange a
+class ValueRange a
 
 -- BIT STRING cannot be given value ranges
 instance ValueRange IA5String
@@ -160,7 +160,7 @@ data EnumerationItem :: * -> * where
 
 data Enumerate :: * -> * where
     NoEnum      :: Enumerate Nil
-    EnumOption  :: EnumerationItem a -> Enumerate l -> Enumerate (Maybe a:*:l)
+    EnumOption  :: EnumerationItem a -> Enumerate l -> Enumerate ((Maybe a):*:l)
     EnumExt     :: Enumerate l -> Enumerate l
 
 \end{code}
@@ -285,6 +285,7 @@ toPer (EXTADDGROUP s) x                         = toPerOpen (SEQUENCE s) x
 toPer t@BOOLEAN x                               = encodeBool t x
 toPer t@INTEGER x                               = encodeInt t x
 toPer r@(RANGE INTEGER l u) x                   = encodeInt r x
+toPer (ENUMERATED e) x                          = encodeEnum e x
 toPer t@BITSTRING x                             = encodeBS t x
 toPer t@(SIZE BITSTRING l u) x                  = encodeBS t x
 toPer (SEQUENCE s) x                            = encodeSeq s x
@@ -597,10 +598,110 @@ h n = (reverse . map fromInteger) (flip (curry (unfoldr g)) 7 n)
 
  13 ENCODING THE ENUMERATED TYPE
 
+There are three cases to deal with:
+
+\begin{enumerate}
+
+\item 
+There is no extension marker. The enumerations are indexed
+based on their (explicit or implicit) values. Thus each
+enumeration without an explcit value, is given a value that is not
+already explcitly assigned (assignNumber) on a first come/first
+serve basis. The indexes are then assigned in ascending
+order where the first index is 0 (assignIndex). The total number of
+enumerations is required since the encoding is of a constrained
+integer i.e. in the minimum number of bits. (13.2 and 10.5.6)
+encodeEnumAux simply encodes the existing enumeration.
+
+\item
+
+There is an extension marker but the value is in the
+enumeration root. 0 prefixes the encoding of the value
+which is completed as in (i). assignIndex returns a
+Boolean which indicates the presence or absence of an extension
+marker. (13.3 and 10.5.6)
+
+\item
+The value is in the extension. 1 prefixes the encoding,
+the enumerations in the extension are indexed in order of
+appearance and are encoded as a normally small non-negative whole
+number. (13.3 and 10.6) The function encodeEnumExtAux manages this
+encoding.
+
+\end{enumerate}
+
+\begin{code}
+
+encodeEnum :: Enumerate a -> a -> BitStream
+encodeEnum e x
+    = let (b,inds) = assignIndex e
+          no = genericLength inds
+      in encodeEnumAux b no inds e x
+
+encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> a -> BitStream
+encodeEnumAux b no (f:r) (EnumOption _ es) (Just n :*:rest)
+    = if not b
+        then encodeNNBIntBits (f, no-1)
+        else 0: encodeNNBIntBits (f, no-1)
+encodeEnumAux b no (f:r) (EnumOption _ es) (Nothing :*: rest)
+    = encodeEnumAux b no r es rest
+encodeEnumAux b no inds (EnumExt ex) x
+    = let el = noEnums ex
+      in encodeEnumExtAux 0 el ex x
+encodeEnumAux _ _ _ _ _ = error "No enumerated value!"
+
+encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> a -> BitStream
+encodeEnumExtAux i l (EnumOption _ es) (Just n :*:rest)
+    = 1:encodeNSNNInt i 0
+encodeEnumExtAux i l (EnumOption _ es) (Nothing :*:rest)
+    = encodeEnumExtAux (i+1) l es rest
+encodeEnumExtAux i l _ _ = error "No enumerated extension value!"
+
+assignIndex :: Enumerate a -> (Bool, [Integer])
+assignIndex en
+    = let (b,ns) = assignNumber en False []
+          sls = sort ns
+      in
+        (b, positions ns sls)
+
+assignNumber :: Enumerate a -> Bool -> [Integer] -> (Bool, [Integer])
+assignNumber en b ls
+    = let nn = getNamedNumbers en
+      in
+        assignN ([0..] \\ nn) en b ls
+
+assignN :: [Integer] -> Enumerate a -> Bool -> [Integer] -> (Bool, [Integer])
+assignN (f:xs) NoEnum b ls = (b,reverse ls)
+assignN (f:xs) (EnumOption (NamedNumber _ i) r)b ls = assignN (f:xs) r b (i:ls)
+assignN (f:xs) (EnumOption _ r) b ls = assignN xs r b (f:ls)
+assignN (f:xs) (EnumExt r) b ls = (True, reverse ls)
 
 
- 15 ENCODING THE BITSTRING TYPE
+getNamedNumbers :: Enumerate a -> [Integer]
+getNamedNumbers NoEnum = []
+getNamedNumbers (EnumOption (NamedNumber _ i) r) = i:getNamedNumbers r
+getNamedNumbers (EnumOption _ r) = getNamedNumbers r
+getNamedNumbers (EnumExt r)  = []
 
+noEnums :: Enumerate a -> Integer
+noEnums NoEnum = 0
+noEnums (EnumOption _ r) = 1 + noEnums r
+noEnums (EnumExt r)  = 0
+
+positions [] sls = []
+positions (f:r) sls
+    = findN f sls : positions r sls
+
+findN i (f:r)
+    = if i == f then 0
+        else 1 + findN i r
+findN i []
+    = error "Impossible case!"
+
+\end{code}
+
+
+\section{ENCODING THE BITSTRING TYPE}
 
 
 \begin{code}
@@ -1189,5 +1290,168 @@ posIntStr n [] c
 \end{code}
 
 \section{Decoding}
+
+
+\begin{code}
+
+n16k = 16*(2^10)
+
+mmGetBit :: (MonadState (B.ByteString,Int64) m, MonadError String m) => m Word8
+mmGetBit =
+   do (ys,x) <- get
+      y <- mGetBit x ys
+      put (ys,x+1)
+      return y
+
+mGetBit o xs =
+   if B.null ys
+      then throwError ("Unable to decode " ++ show xs ++ " at bit " ++ show o)
+      else return u
+   where (nBytes,nBits) = o `divMod` 8
+         ys = B.drop nBytes xs
+         z = B.head ys
+         u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
+
+mmGetBits :: (MonadState (B.ByteString,Int64) m, MonadError String m, Integral n) => n -> m [Word8]
+mmGetBits n =
+   sequence (genericTake n (repeat mmGetBit))
+
+\end{code}
+
+\begin{enumerate}
+\item
+         -- 10.9.3.6
+\item
+                  -- 10.9.3.7
+\item
+                           -- For now - we should handle error positions generically inside the monad
+
+\item
+                                   -- This looks like it might be quadratic in efficiency!
+\end{enumerate}
+
+\begin{code}
+
+mmDecodeWithLengthDeterminant k =
+   do p <- mmGetBit
+      case p of
+         0 ->
+            do j <- mmGetBits 7
+               let l = fromNonNeg j
+               mmGetBits (l*k)
+         1 ->
+            do q <- mmGetBit
+               case q of
+                  0 ->
+                     do j <- mmGetBits 14
+                        let l = fromNonNeg j
+                        mmGetBits (l*k)
+                  1 ->
+                     do j <- mmGetBits 6
+                        let fragSize = fromNonNeg j
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
+                           else do frag <- mmGetBits (fragSize*n16k*k)
+                                   rest <- mmDecodeWithLengthDeterminant k
+                                   return (frag ++ rest)
+
+\end{code}
+
+\begin{enumerate}
+\item
+      -- 10.5 Encoding of a constrained whole number
+\item
+               -- 10.5.4
+\item
+               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
+\item
+      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
+      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
+\item
+      -- 12.2.4, 10.8 Encoding of an unconstrained whole number, 10.8.3 and
+      -- 10.4 Encoding as a 2's-complement-binary-integer
+\end{enumerate}
+
+\begin{code}
+
+mmUntoPerInt t =
+   case p of
+      Constrained (Just lb) (Just ub) ->
+         let range = ub - lb + 1
+             n     = genericLength (encodeNNBIntBits ((ub-lb),range-1)) in
+            if range <= 1
+               then return lb
+               else do j <- mmGetBits n
+                       return (lb + (fromNonNeg j))
+      Constrained (Just lb) Nothing ->
+         do o <- mmDecodeWithLengthDeterminant 8
+            return (lb + (fromNonNeg o))
+      Constrained Nothing _ ->
+         do o <- mmDecodeWithLengthDeterminant 8
+            return (from2sComplement o)
+   where
+      p = bounds t
+
+from2sComplement a@(x:xs) =
+   -((fromIntegral x)*(2^(l-1))) + sum (zipWith (*) (map fromIntegral xs) ys)
+   where
+      l = genericLength a
+      ys = map (2^) (f (l-2))
+      f 0 = [0]
+      f x = x:(f (x-1))
+
+fromNonNeg xs =
+   sum (zipWith (*) (map fromIntegral xs) ys)
+   where
+      l = genericLength xs
+      ys = map (2^) (f (l-1))
+      f 0 = [0]
+      f x = x:(f (x-1))
+
+\end{code}
+
+      -- fromIntegral for now until we sort out why there's a Word8 / Int clash
+
+      -- This is a space leak waiting to happen
+
+\begin{code}
+
+mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
+mFromPer t@INTEGER                 = mmUntoPerInt t
+mFromPer r@(RANGE INTEGER l u)     = mmUntoPerInt r
+mFromPer (SEQUENCE s)              =
+   do ps <- mmGetBits (l s)
+      mmFromPerSeq (map fromIntegral ps) s
+   where
+      l :: Integral n => Sequence a -> n
+      l Nil = 0
+      l (Cons (ETMandatory _) ts) = l ts
+      l (Cons (ETOptional _ ) ts) = 1+(l ts)
+
+\end{code}
+
+   -- The bitmap always matches the Sequence but we recurse the Sequence twice so this needs to be fixed
+
+I'm not really sure if this is true now having thought about it
+
+\begin{code}
+
+mmFromPerSeq :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => BitStream -> Sequence a -> m a
+mmFromPerSeq _ Nil = return Empty
+mmFromPerSeq bitmap (Cons (ETMandatory (NamedType _ _ t)) ts) =
+   do x <- mFromPer t
+      xs <- mmFromPerSeq bitmap ts
+      return (x:*:xs)
+mmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
+   do if (head bitmap) == 0
+         then
+            do xs <- mmFromPerSeq (tail bitmap) ts
+               return (Nothing:*:xs)
+         else
+            do x <- mFromPer t
+               xs <- mmFromPerSeq (tail bitmap) ts
+               return ((Just x):*:xs)
+
+\end{code}
 
 \end{document}
