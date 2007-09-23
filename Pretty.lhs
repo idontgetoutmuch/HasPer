@@ -282,9 +282,9 @@ instance Arbitrary RepSeqVal where
 data RepTypeVal = forall a . Eq a => RepTypeVal (ASNType a) a
 
 prettyTypeVal :: ASNType a -> a -> Doc
-prettyTypeVal INTEGER x = text (show x)
-prettyTypeVal (RANGE t l u) x = prettyTypeVal t x
-prettyTypeVal (SEQUENCE s) x = braces (prettySeqVal s x)
+prettyTypeVal a@INTEGER x       = text (show x)
+prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
+prettyTypeVal a@(SEQUENCE s) x  = braces (prettySeqVal s x)
 
 {-
 instance Eq RepTypeVal where
@@ -300,7 +300,7 @@ instance Show RepTypeVal where
    show r =
       case r of
          RepTypeVal t x ->
-            render (prettyTypeVal t x)
+            render (prettyType t <> colon <+> prettyTypeVal t x)
 
 instance Arbitrary RepTypeVal where
    arbitrary =
