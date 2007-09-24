@@ -192,7 +192,7 @@ data ASNType :: * -> * where
    NUMERICSTRING   :: ASNType NumericString
    SINGLE          :: SingleValue a => ASNType a -> a -> ASNType a
    INCLUDES        :: ContainedSubtype a => ASNType a -> ASNType a -> ASNType a
-   RANGE           :: (Ord a, ValueRange a) => ASNType a -> Maybe a -> Maybe a -> ASNType a
+   RANGE           :: ASNType Integer -> Maybe Integer -> Maybe Integer -> ASNType Integer
    SEQUENCE        :: Sequence a -> ASNType a
    SEQUENCEOF      :: ASNType a -> ASNType [a]
    SIZE            :: ASNType a -> Lower -> Upper -> ASNType a
@@ -284,7 +284,7 @@ toPer (TYPEASS tr tg ct) v                      = toPer ct v
 toPer (EXTADDGROUP s) x                         = toPerOpen (SEQUENCE s) x
 toPer t@BOOLEAN x                               = encodeBool t x
 toPer t@INTEGER x                               = encodeInt t x
-toPer r@(RANGE INTEGER l u) x                   = encodeInt r x
+toPer r@(RANGE i l u) x                         = encodeInt r x
 toPer (ENUMERATED e) x                          = encodeEnum e x
 toPer t@BITSTRING x                             = encodeBS t x
 toPer t@(SIZE BITSTRING l u) x                  = encodeBS t x
@@ -602,7 +602,7 @@ There are three cases to deal with:
 
 \begin{enumerate}
 
-\item 
+\item
 There is no extension marker. The enumerations are indexed
 based on their (explicit or implicit) values. Thus each
 enumeration without an explcit value, is given a value that is not

@@ -68,6 +68,7 @@ tInteger7 = RANGE INTEGER (Just 0) Nothing
 vInteger7 = 128
 integer7  = toPer (RANGE INTEGER (Just 0) Nothing) 128
 
+
 -- Constrained INTEGER
 
 integer8'1 = toPer (RANGE INTEGER (Just 3) (Just 6)) 3
@@ -85,6 +86,7 @@ integer12'1 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 1
 integer12'2 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 257
 integer12'3 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 65538
 
+integer13'3 = toPer (RANGE (RANGE INTEGER (Just 1) (Just 1)) (Just (-2)) Nothing) 1
 
 
 test0 = toPer t1' 27
