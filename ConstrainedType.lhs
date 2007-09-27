@@ -276,11 +276,16 @@ manageSize fn1 fn2 t x
 
 \end{code}
 
--- toPer is the top-level PER encoding function.
+toPer is the top-level PER encoding function. It currently uses
+the function toPer8s to apply the relevant `multiple-of-8'
+padding.
+This will be replaced with toPer functions that keep a running
+counter.
 
 \begin{code}
+
 toPer :: ASNType a -> a -> [Int]
-toPer (TYPEASS tr tg ct) v                      = toPer ct v
+toPer (TYPEASS tr tg ct) v                      = toPer8s ct v
 toPer (EXTADDGROUP s) x                         = toPerOpen (SEQUENCE s) x
 toPer t@BOOLEAN x                               = encodeBool t x
 toPer t@INTEGER x                               = encodeInt t x
@@ -307,6 +312,17 @@ toPer (SIZE (SIZE t l1 u1) l2 u2) x             = let ml = maxB l1 l2
                                                   in
                                                       toPer (SIZE t ml mu) x
 toPer (SIZE (TYPEASS r tg t) l u) x             = toPer (SIZE t l u) x
+
+toPer8s ct v
+    = let bts = toPer ct v
+          lbs = genericLength bts
+          rb  = lbs `mod` 8
+        in
+            if rb == 0
+                then bts
+            else
+               bts ++ take (8-rb) (repeat 0)
+
 \end{code}
 
 
