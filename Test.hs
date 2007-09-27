@@ -5,6 +5,7 @@ import qualified Data.ByteString.Lazy as B
 import IO
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
 
+
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
@@ -86,7 +87,8 @@ integer12'1 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 1
 integer12'2 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 257
 integer12'3 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 65538
 
-integer13'3 = toPer (RANGE (RANGE INTEGER (Just 1) (Just 1)) (Just (-2)) Nothing) 1
+integer13'1 = toPer (RANGE (RANGE INTEGER (Just 1) (Just 1)) (Just (-2)) Nothing) 1
+integer13'2 = toPer (RANGE (RANGE INTEGER (Just 2) Nothing) (Just (-2)) (Just 3)) 3
 
 
 test0 = toPer t1' 27
@@ -334,6 +336,28 @@ axVal
                   (Nothing :*:Empty))))))
 
 axEx = toPer ax axVal
+
+-- Another test (including multiple range constraint)
+
+seqType
+    = TYPEASS "seqType" Nothing
+        (SEQUENCE
+            (Cons (ETMandatory (NamedType "e" Nothing
+                (SEQUENCE
+                    (Cons (ETMandatory (NamedType "x" Nothing
+                            (RANGE (RANGE INTEGER (Just 2) Nothing) (Just (-2)) (Just 3))))
+                        (Cons (ETMandatory (NamedType "o" Nothing INTEGER)) Nil)))))
+                (Cons (ETMandatory (NamedType "b" Nothing INTEGER))
+                  (Cons (ETMandatory (NamedType "a" Nothing INTEGER)) Nil))))
+
+seqVal
+    = ((3 :*:
+        (3 :*:Empty)):*:
+            ((-1):*:
+                (0:*:Empty)))
+
+seqTest = toPer seqType seqVal
+
 
 -- Decoding
 

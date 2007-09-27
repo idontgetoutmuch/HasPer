@@ -50,8 +50,10 @@ import Language.ASN1 hiding (NamedType)
 import Data.Char
 import Data.Maybe
 import Data.Monoid
+import Data.List hiding (groupBy)
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
+-- import Test.QuickCheck.Gen
 
 prettyType :: ASNType a -> Doc
 prettyType INTEGER =
@@ -73,7 +75,7 @@ outer (RANGE t l u) x y = outer t x y
 prettySeq :: Sequence a -> Doc
 prettySeq Nil =
    empty
-prettySeq (Cons x Nil) = 
+prettySeq (Cons x Nil) =
    prettyElem x
 prettySeq (Cons x xs) =
    vcat [prettyElem x <> comma, prettySeq xs]
@@ -96,9 +98,9 @@ instance Arbitrary RepType where
          do x <- arbitrary
             y <- arbitrary
             case x of
-               RepElementType u -> 
+               RepElementType u ->
                   case y of
-                     RepSeq v -> 
+                     RepSeq v ->
                         return (RepType (SEQUENCE (Cons u v)))
          ]
 
@@ -115,7 +117,7 @@ instance Arbitrary RepElementType where
       do rnt <- arbitrary
          case rnt of
             RepNamedType nt ->
-               return (RepElementType (ETMandatory nt)) 
+               return (RepElementType (ETMandatory nt))
 
 data RepNamedType = forall t . RepNamedType (NamedType t)
 
@@ -154,7 +156,7 @@ instance Arbitrary RepSeq where
 
 range :: ASNType Integer -> Maybe (Maybe Integer,Maybe Integer)
 range INTEGER = return (Nothing,Nothing)
-range (RANGE t l u) = 
+range (RANGE t l u) =
    do (m,v) <- range t
       h1 (f1 l m) (g1 u v)
 
@@ -169,26 +171,26 @@ g1 (Just x) (Just y) = Just (min x y)
 h1 Nothing  Nothing  = Just (Nothing,Nothing)
 h1 Nothing  (Just y) = Just (Nothing,Just y)
 h1 (Just x) Nothing  = Just (Just x, Nothing)
-h1 (Just x) (Just y) 
+h1 (Just x) (Just y)
    | x > y = Nothing
    | otherwise = Just (Just x,Just y)
-     
+
 
 data OnlyINTEGER = OnlyINTEGER (ASNType Integer)
 
 instance Arbitrary OnlyINTEGER where
-   arbitrary = 
+   arbitrary =
       oneof [
          return (OnlyINTEGER INTEGER),
          sized onlyINTEGER
-         ] 
+         ]
       where
          onlyINTEGER 0 = return (OnlyINTEGER INTEGER)
          onlyINTEGER n | n > 0 =
             do l <- arbitrary
                u <- suchThat arbitrary (fromMaybe True . (g l))
                t <- subOnlyINTEGER
-               return (f t l u) 
+               return (f t l u)
             where
                subOnlyINTEGER = onlyINTEGER (n `div` 2)
          f (OnlyINTEGER x) l u = OnlyINTEGER (RANGE x l u)
@@ -251,7 +253,7 @@ instance Show RepSeqVal where
 
 prettyElementTypeVal :: ElementType a -> a -> Doc
 prettyElementTypeVal (ETMandatory (NamedType n _ t)) x =
-   text n <+> prettyTypeVal t x 
+   text n <+> prettyTypeVal t x
 
 arbitrarySeq :: Sequence a -> Gen RepSeqVal
 arbitrarySeq Nil =
@@ -374,22 +376,41 @@ prop_WithinRange (INTEGERVal t (Just n)) =
       Just (x,y) ->
          f2 x y n
 
+
 prop_2scomplement1 x =
    x == from2sComplement (to2sComplement x)
 
 prop_2scomplement2 x =
    x == to2sComplement (from2sComplement x)
 
+valid :: ASNType a -> a -> Bool
+valid r@(RANGE t l u) n
+    = case range r of
+        Nothing -> False
+        Just (x,y) ->
+         f2 x y n
+valid (SEQUENCE (Cons (ETMandatory (NamedType n t a)) as)) (x:*:xs)
+    = valid a x && valid (SEQUENCE as) xs
+valid (SEQUENCE (Cons (ETExtMand (NamedType n t a)) as)) (Just x:*:xs)
+    = valid a x && valid (SEQUENCE as) xs
+valid (SEQUENCE (Cons (ETDefault (NamedType n t a) v) as)) (Just x:*:xs)
+    = valid a x && valid (SEQUENCE as) xs
+valid (SEQUENCE (Extens as)) xs
+    = valid (SEQUENCE as) xs
+valid _ _ = True
+
 prop_fromPerToPer x =
    case x of
       RepTypeVal t y ->
-         y == runFromPer t (toPer t y)
+        if valid t y
+          then y == runFromPer t (toPer8s t y)
+           else True
    where
       runFromPer :: ASNType a -> BitStream -> a
       runFromPer t x =
-         case runTest t x 0 of
-            (Left _,_)   -> undefined
-            (Right xs,_) -> xs
+        case runTest t x 0 of
+             (Left _,_)   -> undefined
+             (Right xs,_) -> xs
       runTest t x y = runState (runErrorT (mFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
 
 main =
