@@ -10,9 +10,9 @@ Some notes:
 \item
 ASN.1 is an abstract way of representing data and concrete representations (in terms of bits).
 \item
-We represent ASN.1 as an Abstract Syntax Tree. 
-This can either be displayed as the original ASN.1 or it can be displayed as a DTD 
-(I think this is possible --- that's what asn1c can do). 
+We represent ASN.1 as an Abstract Syntax Tree.
+This can either be displayed as the original ASN.1 or it can be displayed as a DTD
+(I think this is possible --- that's what asn1c can do).
 It's also possible to display it as C code which uses asn1c (http://lionet.info/asn1c).
 \end{enumerate}
 

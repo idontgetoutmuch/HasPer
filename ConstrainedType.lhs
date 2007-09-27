@@ -343,14 +343,14 @@ minB _ _               = Nothing
 
 \end{code}
 
--- toPerOpen encodes an open type value. That is:
---    i. the value is encoded as ususal;
---   ii. it is padded at the end with 0s so that it has a octet-multiple length; and
---  iii. its length is added as a prefix using the fragmentation rules (10.9)
--- The first case is required since an extension addition group is
--- encoded as an open type sequence and toPerOpen is always called by
--- toPer on an extension component (avoids encoding it as an open
--- type open type sequence!)
+toPerOpen encodes an open type value. That is:
+i. the value is encoded as ususal;
+ii. it is padded at the end with 0s so that it has a octet-multiple length; and
+iii. its length is added as a prefix using the fragmentation rules (10.9)
+The first case is required since an extension addition group is
+encoded as an open type sequence and toPerOpen is always called by
+toPer on an extension component (avoids encoding it as an open
+type open type sequence!)
 
 \begin{code}
 
@@ -1434,7 +1434,7 @@ fromNonNeg xs =
 
 mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
 mFromPer t@INTEGER                 = mmUntoPerInt t
-mFromPer r@(RANGE INTEGER l u)     = mmUntoPerInt r
+mFromPer r@(RANGE i l u)           = mmUntoPerInt r
 mFromPer (SEQUENCE s)              =
    do ps <- mmGetBits (l s)
       mmFromPerSeq (map fromIntegral ps) s
