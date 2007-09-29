@@ -424,9 +424,9 @@ main =
 \begin{code}
 
 myMFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
-myMFromPer t@INTEGER                 = mmUntoPerInt t
-myMFromPer r@(RANGE INTEGER l u)     = mmUntoPerInt r
-myMFromPer (SEQUENCE s)              =
+myMFromPer t@INTEGER = mmUntoPerInt t
+myMFromPer r@(RANGE i l u) = mmUntoPerInt r
+myMFromPer (SEQUENCE s) =
    do ps <- mmGetBits (l s)
       myMmFromPerSeq (map fromIntegral ps) s
    where
