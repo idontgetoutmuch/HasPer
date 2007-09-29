@@ -53,7 +53,7 @@ import Data.Monoid
 import Data.List hiding (groupBy)
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
--- import Test.QuickCheck.Gen
+import Data.Int
 
 prettyType :: ASNType a -> Doc
 prettyType INTEGER =
@@ -411,13 +411,50 @@ prop_fromPerToPer x =
         case runTest t x 0 of
              (Left _,_)   -> undefined
              (Right xs,_) -> xs
-      runTest t x y = runState (runErrorT (mFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
+      runTest t x y = runState (runErrorT (myMFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
 
 main =
    do quickCheck prop_fromPerToPer
       quickCheck prop_WithinRange
       quickCheck prop_2scomplement1
       quickCheck prop_2scomplement2
+
+\end{code}
+
+\begin{code}
+
+myMFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
+myMFromPer t@INTEGER                 = mmUntoPerInt t
+myMFromPer r@(RANGE INTEGER l u)     = mmUntoPerInt r
+myMFromPer (SEQUENCE s)              =
+   do ps <- mmGetBits (l s)
+      myMmFromPerSeq (map fromIntegral ps) s
+   where
+      l :: Integral n => Sequence a -> n
+      l Nil = 0
+      l (Cons (ETMandatory _) ts) = l ts
+      l (Cons (ETOptional _ ) ts) = 1+(l ts)
+myMFromPer t = error (render (prettyType t))
+
+\end{code}
+
+\begin{code}
+
+myMmFromPerSeq :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => BitStream -> Sequence a -> m a
+myMmFromPerSeq _ Nil = return Empty
+myMmFromPerSeq bitmap (Cons (ETMandatory (NamedType _ _ t)) ts) =
+   do x <- myMFromPer t
+      xs <- myMmFromPerSeq bitmap ts
+      return (x:*:xs)
+myMmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
+   do if (head bitmap) == 0
+         then
+            do xs <- myMmFromPerSeq (tail bitmap) ts
+               return (Nothing:*:xs)
+         else
+            do x <- myMFromPer t
+               xs <- myMmFromPerSeq (tail bitmap) ts
+               return ((Just x):*:xs)
 
 \end{code}
 
