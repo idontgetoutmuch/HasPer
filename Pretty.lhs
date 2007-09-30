@@ -289,6 +289,7 @@ prettyTypeVal :: ASNType a -> a -> Doc
 prettyTypeVal a@BITSTRING x     = text (show x)
 prettyTypeVal a@INTEGER x       = text (show x)
 prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
+prettyTypeVal a@(SIZE t l u) x  = prettyTypeVal t x
 prettyTypeVal a@(SEQUENCE s) x  = braces (prettySeqVal s x)
 
 {-
@@ -484,8 +485,19 @@ data OnlyBITSTRING = OnlyBITSTRING (ASNType BitString)
 instance Arbitrary OnlyBITSTRING where
    arbitrary =
       oneof [
-         return (OnlyBITSTRING BITSTRING)
+         return (OnlyBITSTRING BITSTRING),
+         sized onlyBITSTRING
          ]
+      where
+         onlyBITSTRING 0 = return (OnlyBITSTRING BITSTRING)
+         onlyBITSTRING n | n > 0 =
+            do (OnlyBITSTRING t) <- subOnlyBITSTRING
+               let Constrained lb ub = sizeLimit t
+               nl <- suchThat arbitrary (f2 lb ub)
+               nu <- suchThat (suchThat arbitrary (f2 lb ub)) (>= nl)
+               return (OnlyBITSTRING (SIZE t (Just nl) (Just nu)))
+            where
+               subOnlyBITSTRING = onlyBITSTRING (n `div` 2)
 
 instance Show OnlyBITSTRING where
    show r =
