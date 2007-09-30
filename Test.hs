@@ -506,3 +506,4 @@ foo (NamedType _ _ t) =
       case d of
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
+

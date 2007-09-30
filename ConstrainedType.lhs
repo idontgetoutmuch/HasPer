@@ -36,6 +36,8 @@ instance Show IA5String where
    show s = iA5String s
 
 newtype BitString = BitString {bitString :: BitStream}
+   deriving Show
+
 newtype PrintableString = PrintableString {printableString :: String}
 newtype NumericString = NumericString {numericString :: String}
 
@@ -1311,6 +1313,7 @@ posIntStr n [] c
 \begin{code}
 
 n16k = 16*(2^10)
+n64k = 64*(2^10)
 
 mmGetBit :: (MonadState (B.ByteString,Int64) m, MonadError String m) => m Word8
 mmGetBit =
@@ -1373,6 +1376,64 @@ mmDecodeWithLengthDeterminant k =
 
 \end{code}
 
+
+decodeSized only ever gets called with either no upper bound or an upper bound of $>= 64$.
+
+It is an error if the length determinant is specified as indefinite for the first block.
+We don't capture this for now.
+
+The lowest the lower bound can be is $0$. Therefore we can assume that decodeSized only
+ever gets called with a constraint of the form Constraint (Just n) \_.
+
+
+\begin{code}
+
+decodeSizedSemi :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Integer -> m [Word8] 
+decodeSizedSemi k lb =
+   do p <- mmGetBit
+      case p of
+         0 ->
+            do j <- mmGetBits 7
+               let l = fromNonNeg j
+               mmGetBits ((l + lb) * k)
+         1 ->
+            do q <- mmGetBit
+               case q of
+                  0 ->
+                     do j <- mmGetBits 14
+                        let l = fromNonNeg j
+                        mmGetBits ((l + lb) * k)
+                  1 ->
+                     do j <- mmGetBits 6
+                        let fragSize = fromNonNeg j
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
+                           else do frag <- mmGetBits (fragSize * n16k * k)
+                                   rest <- decodeSizedSemi k lb
+                                   return (frag ++ rest)
+
+decodeSizedAsSemi :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Integer -> m [Word8] 
+decodeSizedAsSemi k lb =
+   do p <- mmGetBit
+      case p of
+         0 ->
+            throwError ("Unexpected length bits for SIZE >= 64k")
+         1 ->
+            do q <- mmGetBit
+               case q of
+                  0 ->
+                     throwError ("Unexpected length bits for SIZE >= 64k")
+                  1 ->
+                     do j <- mmGetBits 6
+                        let fragSize = fromNonNeg j
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
+                           else do frag <- mmGetBits (fragSize * n16k * k)
+                                   rest <- decodeSizedSemi k lb
+                                   return (frag ++ rest)
+
+\end{code}
+
 \begin{enumerate}
 \item
       -- 10.5 Encoding of a constrained whole number
@@ -1408,6 +1469,60 @@ mmUntoPerInt t =
    where
       p = bounds t
 
+\end{code}
+
+\begin{enumerate}
+
+\item
+The first case deals with clause 15.8.
+
+\item
+The second case deals with 15.9 and 15.10 which happen to be the same for unaligned PER.
+
+\item
+The third case deals with 15.11.
+
+This clause is hard to understand and we reproduce it here.
+
+15.11 If 15.8-15.10 do not apply, the bitstring shall be placed in a bit-field (octet-aligned in the ALIGNED variant)
+of length "n" bits and the procedures of 10.9 shall be invoked to add this bit-field (octet-aligned in the ALIGNED
+variant) of "n" bits to the field-list, preceded by a length determinant equal to "n" bits as a constrained whole number if
+"ub" is set and is less than 64K or as a semi-constrained whole number if "ub" is unset. "lb" is as determined above.
+    NOTE – Fragmentation applies for unconstrained or large "ub" after 16K, 32K, 48K or 64K bits.
+
+\end{enumerate}
+
+3rd guard is 10.9.4.1 
+
+4th guard is the second condition of 10.9.4.2. Note we haven't covered the other two conditions yet.
+
+decodeSizedAsSemi cpvers the second condition
+
+the 3rd pattern match for $f$ covers the 3rd condition in 10.9.4.2.
+
+So I think we have now covered all the relevant conditions.
+
+\begin{code}
+
+fromPerBitString t =
+   f s
+   where
+      s = sizeLimit t
+      f (Constrained _ (Just 0)) = return []
+      f (Constrained (Just lb) (Just ub))
+         | lb == ub && ub <= 16 =
+            mmGetBits ub
+         | lb == ub && ub <= n64k =
+            mmGetBits ub
+         | ub <= n64k = 
+            do let n = genericLength (encodeNNBIntBits (ub - lb, ub - lb))
+               j <- mmGetBits n
+               mmGetBits (lb + (fromNonNeg j))
+         | otherwise =
+            decodeSizedAsSemi 1 lb
+      f (Constrained (Just lb) Nothing) =
+         decodeSizedSemi 1 lb
+
 from2sComplement a@(x:xs) =
    -((fromIntegral x)*(2^(l-1))) + sum (zipWith (*) (map fromIntegral xs) ys)
    where
@@ -1435,6 +1550,7 @@ fromNonNeg xs =
 mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
 mFromPer t@INTEGER                 = mmUntoPerInt t
 mFromPer r@(RANGE i l u)           = mmUntoPerInt r
+mFromPer t@BITSTRING               = (liftM (BitString . map fromIntegral) . fromPerBitString) t
 mFromPer (SEQUENCE s)              =
    do ps <- mmGetBits (l s)
       mmFromPerSeq (map fromIntegral ps) s
