@@ -46,7 +46,7 @@ import Test.QuickCheck
 import Text.PrettyPrint
 import Control.Monad.State
 import ConstrainedType
-import Language.ASN1 hiding (NamedType)
+import Language.ASN1 hiding (NamedType, BitString)
 import Data.Char
 import Data.Maybe
 import Data.Monoid
@@ -56,6 +56,8 @@ import qualified Data.ByteString.Lazy as B
 import Data.Int
 
 prettyType :: ASNType a -> Doc
+prettyType BITSTRING =
+   text "BITSTRING"
 prettyType INTEGER =
    text "INTEGER"
 prettyType(RANGE x l u) =
@@ -284,6 +286,7 @@ instance Arbitrary RepSeqVal where
 data RepTypeVal = forall a . Eq a => RepTypeVal (ASNType a) a
 
 prettyTypeVal :: ASNType a -> a -> Doc
+prettyTypeVal a@BITSTRING x     = text (show x)
 prettyTypeVal a@INTEGER x       = text (show x)
 prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
 prettyTypeVal a@(SEQUENCE s) x  = braces (prettySeqVal s x)
@@ -307,6 +310,8 @@ instance Show RepTypeVal where
 instance Arbitrary RepTypeVal where
    arbitrary =
       oneof [
+         do (BITSTRINGVal t x) <- arbitrary
+            return (RepTypeVal t x),
          do (INTEGERVal t mn) <- arbitrary
             case mn of
                Nothing ->
@@ -455,6 +460,60 @@ myMmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
             do x <- myMFromPer t
                xs <- myMmFromPerSeq (tail bitmap) ts
                return ((Just x):*:xs)
+
+\end{code}
+
+\section{Testing BIT STRING}
+
+\begin{code}
+
+instance Arbitrary BitString where
+   arbitrary = 
+      liftM BitString (sized onesAndZeros)
+      where
+         onesAndZeros 0 = return []
+         onesAndZeros n | n > 0 =
+            do x <- oneof [return 0, return 1]
+               xs <- subOnesAndZeros
+               return (x:xs)
+            where
+               subOnesAndZeros = onesAndZeros (n `div` 2)
+
+data OnlyBITSTRING = OnlyBITSTRING (ASNType BitString)
+
+instance Arbitrary OnlyBITSTRING where
+   arbitrary =
+      oneof [
+         return (OnlyBITSTRING BITSTRING)
+         ]
+
+instance Show OnlyBITSTRING where
+   show r =
+      case r of
+         OnlyBITSTRING n ->
+            render (prettyType n)
+
+arbitraryBITSTRING :: OnlyBITSTRING -> Gen BitString
+arbitraryBITSTRING x =
+   case x of
+      OnlyBITSTRING y ->
+         case y of
+            BITSTRING ->
+               arbitrary
+
+data BITSTRINGVal = BITSTRINGVal (ASNType BitString) BitString
+
+instance Show BITSTRINGVal where
+   show (BITSTRINGVal t x) =
+      show (prettyType t) ++ ": " ++ show x
+
+instance Arbitrary BITSTRINGVal where
+   arbitrary =
+      do r <- arbitrary
+         x <- arbitraryBITSTRING r
+         case r of
+            OnlyBITSTRING t ->
+               return (BITSTRINGVal t x)
 
 \end{code}
 

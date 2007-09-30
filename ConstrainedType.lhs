@@ -36,7 +36,7 @@ instance Show IA5String where
    show s = iA5String s
 
 newtype BitString = BitString {bitString :: BitStream}
-   deriving Show
+   deriving (Eq, Show)
 
 newtype PrintableString = PrintableString {printableString :: String}
 newtype NumericString = NumericString {numericString :: String}
@@ -1502,6 +1502,8 @@ the 3rd pattern match for $f$ covers the 3rd condition in 10.9.4.2.
 
 So I think we have now covered all the relevant conditions.
 
+There is no case for f Nothing (Just\_) as this case cannot arise CHECK THIS!!!
+
 \begin{code}
 
 fromPerBitString t =
@@ -1522,6 +1524,8 @@ fromPerBitString t =
             decodeSizedAsSemi 1 lb
       f (Constrained (Just lb) Nothing) =
          decodeSizedSemi 1 lb
+      f (Constrained Nothing Nothing) = 
+         decodeSizedSemi 1 0
 
 from2sComplement a@(x:xs) =
    -((fromIntegral x)*(2^(l-1))) + sum (zipWith (*) (map fromIntegral xs) ys)
