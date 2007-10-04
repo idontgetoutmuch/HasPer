@@ -14,6 +14,7 @@ import Data.Monoid
 import Data.List hiding (groupBy)
 import Data.Bits
 import Data.Char
+import qualified Data.Set as S
 import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
@@ -94,7 +95,8 @@ instance SizeConstraint VisibleString
 instance SizeConstraint NumericString
 \end{code}
 
-Heterogeneous lists and GADTs for Sequence / Choice
+Heterogeneous lists and GADTs for Sequence, Choice and Enumerated
+values.
 
 \begin{code}
 data Nil = Empty
@@ -167,13 +169,14 @@ data Enumerate :: * -> * where
 
 \end{code}
 
-Type Aliases for Tag Information
+Type Aliases for Tag Information and Constraint Extension Marker
 
 \begin{code}
 
 type TagInfo    = (TagType, TagValue, TagPlicity)
 type TypeRef    = String
 type Name       = String
+type ExtMarker  = Maybe (Maybe (S.Set Integer))
 
 \end{code}
 
@@ -194,10 +197,10 @@ data ASNType :: * -> * where
    NUMERICSTRING   :: ASNType NumericString
    SINGLE          :: SingleValue a => ASNType a -> a -> ASNType a
    INCLUDES        :: ContainedSubtype a => ASNType a -> ASNType a -> ASNType a
-   RANGE           :: ASNType Integer -> Maybe Integer -> Maybe Integer -> ASNType Integer
+   RANGE           :: ASNType Integer -> Lower -> Upper -> ASNType Integer
    SEQUENCE        :: Sequence a -> ASNType a
    SEQUENCEOF      :: ASNType a -> ASNType [a]
-   SIZE            :: ASNType a -> Lower -> Upper -> ASNType a
+   SIZE            :: ASNType a -> S.Set Integer -> ExtMarker -> ASNType a
 -- REMOVED SizeConstraint a => from above
    SET             :: Sequence a -> ASNType a
    SETOF           :: ASNType a -> ASNType [a]
@@ -206,7 +209,7 @@ data ASNType :: * -> * where
 
 \end{code}
 
-Type aliases used when defining a size-constrained value.
+Type aliases used when defining a range-constrained Integer.
 
 \begin{code}
 
@@ -215,8 +218,7 @@ type Lower = Maybe Integer
 
 \end{code}
 
-Type used to represent the lower and upper bounds of a range or
-size-constrained value.
+Type used to represent the lower and upper bounds of a range.
 
 \begin{code}
 
@@ -247,34 +249,42 @@ bounds (RANGE t l u)      = (bounds t) `mappend` (Constrained l u)
 bounds _                  = Constrained Nothing Nothing
 \end{code}
 
-sizeLimit returns the size limits of a value. Nothing
-indicates no lower or upper bound.
-
+multiSize converts a multiply size-constrained type in to a single size-constrained type.
+multiRSize is similar but removes any extensions since it will be
+used in type assignment of an extensible type.
 \begin{code}
 
-sizeLimit :: ASNType a -> Constraint Integer
-sizeLimit (SIZE t l u) = sizeLimit t `mappend` Constrained l u
-sizeLimit _            = Constrained Nothing Nothing
+multiSize :: ASNType a -> ASNType a
+multiSize (SIZE t@(SIZE t' s' e') s e)
+        = let ns = S.intersection s' s
+              ne = unionEM e' e
+          in
+              multiSize (SIZE t' ns ne)
+multiSize x = x
 
-\end{code}
 
-manageSize is a HOF used to manage the three size cases for a
-type amenable to a size constraint.
+multiRSize :: ASNType a -> ASNType a
+multiRSize (SIZE t@(SIZE t' s' e') s e)
+        = let ns = S.intersection s' s
+          in
+              multiRSize (SIZE t' ns Nothing)
+multiRSize x = x
 
-\begin{code}
 
-manageSize :: (ASNType a -> Integer -> Integer -> t -> t1) -> (ASNType a -> t -> t1)
-                -> ASNType a -> t -> t1
-manageSize fn1 fn2 t x
-    = case p of
-       Constrained (Just lb) (Just ub) ->
-         fn1 t lb ub x
-       Constrained (Just lb) Nothing ->
-         fn2 t x
-       Constrained Nothing Nothing ->
-         fn2 t x
-     where
-      p = sizeLimit t
+sizeLimit t@(SIZE _ _ _)
+    = let SIZE _ s _  = multiSize t
+          l = S.findMin s
+          u = S.findMax s
+      in
+        Constrained (Just l) (Just u)
+sizeLimit t
+    = Constrained Nothing Nothing
+
+unionEM Nothing x = x
+unionEM y Nothing = y
+unionEM (Just Nothing) x = x
+unionEM y (Just Nothing) = y
+unionEM (Just (Just s)) (Just (Just t)) = Just (Just (S.union s t))
 
 \end{code}
 
