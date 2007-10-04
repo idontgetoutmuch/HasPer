@@ -51,6 +51,7 @@ import Data.Char
 import Data.Maybe
 import Data.Monoid
 import Data.List hiding (groupBy)
+import qualified Data.Set as S
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
 import Data.Int
@@ -289,7 +290,7 @@ prettyTypeVal :: ASNType a -> a -> Doc
 prettyTypeVal a@BITSTRING x     = text (show x)
 prettyTypeVal a@INTEGER x       = text (show x)
 prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
-prettyTypeVal a@(SIZE t l u) x  = prettyTypeVal t x
+prettyTypeVal a@(SIZE t s e) x  = prettyTypeVal t x
 prettyTypeVal a@(SEQUENCE s) x  = braces (prettySeqVal s x)
 
 {-
@@ -430,9 +431,10 @@ main =
 \begin{code}
 
 myMFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
-myMFromPer t@INTEGER = mmUntoPerInt t
+myMFromPer t@INTEGER       = mmUntoPerInt t
 myMFromPer r@(RANGE i l u) = mmUntoPerInt r
-myMFromPer (SEQUENCE s) =
+myMFromPer t@BITSTRING     = (liftM (BitString . map fromIntegral) . fromPerBitString) t
+myMFromPer (SEQUENCE s)    =
    do ps <- mmGetBits (l s)
       myMmFromPerSeq (map fromIntegral ps) s
    where
@@ -469,7 +471,7 @@ myMmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
 \begin{code}
 
 instance Arbitrary BitString where
-   arbitrary = 
+   arbitrary =
       liftM BitString (sized onesAndZeros)
       where
          onesAndZeros 0 = return []
@@ -495,7 +497,7 @@ instance Arbitrary OnlyBITSTRING where
                let Constrained lb ub = sizeLimit t
                nl <- suchThat arbitrary (f2 lb ub)
                nu <- suchThat (suchThat arbitrary (f2 lb ub)) (>= nl)
-               return (OnlyBITSTRING (SIZE t (Just nl) (Just nu)))
+               return (OnlyBITSTRING (SIZE t (S.fromList [nl..nu]) Nothing))
             where
                subOnlyBITSTRING = onlyBITSTRING (n `div` 2)
 

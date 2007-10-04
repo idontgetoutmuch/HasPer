@@ -288,6 +288,7 @@ unionEM (Just (Just s)) (Just (Just t)) = Just (Just (S.union s t))
 
 \end{code}
 
+
 toPer is the top-level PER encoding function. It currently uses
 the function toPer8s to apply the relevant `multiple-of-8'
 padding.
@@ -304,10 +305,10 @@ toPer t@INTEGER x                               = encodeInt t x
 toPer r@(RANGE i l u) x                         = encodeInt r x
 toPer (ENUMERATED e) x                          = encodeEnum e x
 toPer t@BITSTRING x                             = encodeBS t x
-toPer t@(SIZE BITSTRING l u) x                  = encodeBS t x
+toPer t@(SIZE BITSTRING _ _) x                  = encodeBS t x
 toPer (SEQUENCE s) x                            = encodeSeq s x
 toPer t@(SEQUENCEOF s) x                        = encodeSO t x
-toPer t@(SIZE (SEQUENCEOF c) l u) x             = encodeSO t x
+toPer t@(SIZE (SEQUENCEOF c) _ _) x             = encodeSO t x
 toPer (SET s) x                                 = encodeSet s x
 toPer t@(SETOF s) x                             = encodeSO t x
 toPer t@(CHOICE c) x                            = encodeChoice c x
@@ -315,15 +316,16 @@ toPer t@VISIBLESTRING x                         = encodeVS t x
 toPer t@NUMERICSTRING x                         = encodeNS t x
 toPer IA5STRING x                               = []
 -- IA5STRING to be encoded
-toPer t@(SIZE VISIBLESTRING l u) x              = encodeVS t x
-toPer t@(SIZE NUMERICSTRING l u) x              = encodeNS t x
+toPer t@(SIZE VISIBLESTRING _ _) x              = encodeVS t x
+toPer t@(SIZE NUMERICSTRING _ _) x              = encodeNS t x
 toPer t@(FROM VISIBLESTRING pac) x              = encodeVSF t x
-toPer t@(SIZE (FROM VISIBLESTRING pac) l u) x   = encodeVSF t x
-toPer (SIZE (SIZE t l1 u1) l2 u2) x             = let ml = maxB l1 l2
-                                                      mu = minB u1 u2
+toPer t@(SIZE (FROM VISIBLESTRING pac) _ _) x   = encodeVSF t x
+toPer t@(SIZE (SIZE _ _ _) _ _) x                 = let nt = multiSize t
                                                   in
-                                                      toPer (SIZE t ml mu) x
-toPer (SIZE (TYPEASS r tg t) l u) x             = toPer (SIZE t l u) x
+                                                      toPer nt x
+toPer (SIZE (TYPEASS r tg t) s em) x            = let nt = multiRSize t
+                                                  in
+                                                      toPer (SIZE nt s em) x
 
 toPer8s ct v
     = let bts = toPer ct v
@@ -337,23 +339,6 @@ toPer8s ct v
 
 \end{code}
 
-
-maxB and minB are used when one has a nested size-constrained
-value.
-
-\begin{code}
-
-maxB Nothing (Just b)  = Just b
-maxB (Just b) Nothing  = Just b
-maxB (Just a) (Just b) = Just (max a b)
-maxB _ _               = Nothing
-
-minB Nothing (Just b)  = Just b
-minB (Just b) Nothing  = Just b
-minB (Just a) (Just b) = Just (min a b)
-minB _ _               = Nothing
-
-\end{code}
 
 toPerOpen encodes an open type value. That is:
 i. the value is encoded as ususal;
@@ -514,8 +499,20 @@ encoding of a value with an unconstrained length.
 encodeInsert :: (t -> [[[t1]]] -> [[a]]) -> t -> [t1] -> [a]
 encodeInsert f s = concat . f s . groupBy 4 . groupBy (16*(2^10))
 
+\end{code}
+
+encodeWithLengthDeterminant adds a length determinant (in octets) to an
+encoding. It applied any required fragmentation.
+encodeWithLengthDeterminantBits does the same except where one is
+measuring the length of bits.
+
+\begin{code}
+
 encodeWithLengthDeterminant :: [Int] -> [Int]
 encodeWithLengthDeterminant = concat . encodeInsert unfoldr addLengths . groupBy 8
+
+encodeWithLengthDeterminantBits :: [Int] -> [Int]
+encodeWithLengthDeterminantBits = concat . encodeInsert unfoldr addLengths.(map (:[]))
 
 groupBy :: Int -> [t] -> [[t]]
 groupBy n =
@@ -729,30 +726,47 @@ findN i []
 \end{code}
 
 
-\section{ENCODING THE BITSTRING TYPE}
+\section{15. ENCODING THE BITSTRING TYPE}
 
 
 \begin{code}
 
 encodeBS :: ASNType BitString -> BitString -> BitStream
-encodeBS = manageSize encodeBSSz encodeBSNoSz
+encodeBS t@(SIZE ty s e) x = encodeBSSz t x
+encodeBS t x               = encodeBSNoSz t x
 
 
-encodeBSSz :: ASNType BitString -> Integer -> Integer -> BitString -> BitStream
-encodeBSSz t@(SIZE ty _ _) l u x@(BitString xs)
-    = let exs = editBS l u xs
+encodeBSSz :: ASNType BitString -> BitString -> BitStream
+encodeBSSz (SIZE t s Nothing) (BitString xs)
+    = let l   = S.findMin s
+          u   = S.findMax s
+          exs = editBS l u xs
+          ln  = genericLength exs
       in
-        if u == 0
-            then []
-            else if u == l && u <= 65536
-                    then exs
-                    else encodeBSWithLD exs
+                bsCode s Nothing exs
+encodeBSSz (SIZE ty s m@(Just e)) (BitString xs)
+    =   let ln = genericLength xs
+            l  = S.findMin s
+            u  = S.findMax s
+        in if ln <= u && ln >= l
+                then 0: bsCode s m xs
+                else 1: bsCode s m xs
 
-encodeBSWithLD  = encodeInsert insertBSL INTEGER
+bsCode s m xs
+      =  let (Just (Just ns)) = unionEM (Just (Just s)) m
+             l  = S.findMin ns
+             u  = S.findMax ns
+             exs = editBS l u xs
+             ln = genericLength exs
+         in
+             if u == 0
+             then []
+             else if u == l && u <= 65536
+                       then exs
+                       else if u <= 65536
+                            then encodeNNBIntBits ((ln-l), (u-l)) ++ exs
+                            else encodeWithLengthDeterminantBits exs
 
-insertBSL s = unfoldr (bsLengths s)
-
-bsLengths t = ulWrapper (id) (++) arg1 ld2
 
 editBS :: Integer -> Integer -> BitStream -> BitStream
 editBS l u xs
@@ -781,7 +795,9 @@ encodeBSNoSz :: ASNType BitString -> BitString -> BitStream
 encodeBSNoSz t (BitString bs)
     = let rbs = reverse bs
           rem0 = strip0s rbs
-       in reverse rem0
+          ln = genericLength rem0
+       in
+        encodeWithLengthDeterminantBits (reverse rem0)
 
 strip0s (a:r)
     = if a == 0
@@ -897,18 +913,17 @@ encodeSO implements the encoding of an unconstrained
 sequence-of value. This requires both the encoding of
 each of the components, and in most cases the encoding
 of the length of the sequence of (which may require
-fragmentation into 64K blocks). It uses the function manageSize
-which manages the 3 possible size cases.
+fragmentation into 64K blocks).
 
 \begin{code}
 
 encodeSO :: ASNType [a] -> [a] -> BitStream
-encodeSO  = manageSize encodeSeqSz encodeSeqOf
+encodeSO  t@(SIZE t' s e) x = encodeSeqSz t x
+encodeSO t x = encodeSeqOf t x
 
 \end{code}
 
-encodeSeqSz encodes a size-constrained SEQUENCEOF. It uses the
-function manageExtremes which manages the 3 upper/lower bound size value cases.
+encodeSeqSz encodes a size-constrained SEQUENCEOF.
 
 \begin{code}
 
@@ -922,9 +937,12 @@ manageExtremes fn1 fn2 l u x
                    then fn2 x
                    else encodeNNBIntBits ((genericLength x-l),range-1) ++ fn1 x
 
-encodeSeqSz :: ASNType [a] -> Integer -> Integer -> [a] -> BitStream
-encodeSeqSz (SIZE ty _ _) l u x
-        = manageExtremes (encodeNoL ty) (encodeSeqOf ty) l u x
+encodeSeqSz :: ASNType [a] -> [a] -> BitStream
+encodeSeqSz (SIZE ty s e) x
+        =   let l = S.findMin s
+                u = S.findMax s
+            in
+                manageExtremes (encodeNoL ty) (encodeSeqOf ty) l u x
 
 
 encodeSeqOf :: ASNType a -> a -> BitStream
@@ -1070,7 +1088,7 @@ getTI (SEQUENCE s)              = (Universal, 16, Explicit)
 getTI (SEQUENCEOF s)            = (Universal, 16, Explicit)
 getTI (SET s)                   = (Universal, 17, Explicit)
 getTI (SETOF s)                 = (Universal, 17, Explicit)
-getTI (SIZE c _ _)              = getTI c
+getTI (SIZE c _ _ )             = getTI c
 getTI (CHOICE c)                = (minimum . getCTags) c
 
 \end{code}
@@ -1185,11 +1203,16 @@ encodeChoiceExtAux' ext body (ChoiceOption a as) (x:*:xs) =
 
 \begin{code}
 encodeVS :: ASNType VisibleString -> VisibleString -> BitStream
-encodeVS = manageSize encodeVisSz encodeVis
+encodeVS t@(SIZE _ _ _) x = encodeVisSz t x
+encodeVS t x = encodeVis t x
 
-encodeVisSz :: ASNType VisibleString -> Integer -> Integer -> VisibleString -> BitStream
-encodeVisSz t@(SIZE ty _ _) l u x@(VisibleString xs)
-    = manageExtremes encS (encodeVis ty . VisibleString) l u xs
+encodeVisSz :: ASNType VisibleString -> VisibleString -> BitStream
+encodeVisSz t@(SIZE ty s _) x@(VisibleString xs)
+    = let l = S.findMin s
+          u = S.findMax s
+      in
+          manageExtremes encS (encodeVis ty . VisibleString) l u xs
+
 
 encodeVis :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVis vs (VisibleString s)
@@ -1219,11 +1242,16 @@ encS s  = (concat . map encC) s
 \begin{code}
 
 encodeVSF :: ASNType VisibleString -> VisibleString -> BitStream
-encodeVSF = manageSize encodeVisSzF encodeVisF
+encodeVSF (SIZE t@(FROM _ _) _ _) x = encodeVisSzF t x
+encodeVSF v@(FROM _ _) x = encodeVisF v x
 
-encodeVisSzF :: ASNType VisibleString -> Integer -> Integer -> VisibleString -> BitStream
-encodeVisSzF t@(SIZE ty@(FROM cv pac)_ _) l u x@(VisibleString xs)
-    = manageExtremes (encSF pac) (encodeVisF ty . VisibleString) l u xs
+encodeVisSzF :: ASNType VisibleString -> VisibleString -> BitStream
+encodeVisSzF (SIZE ty@(FROM cv pac) s e) x@(VisibleString xs)
+        =   let l = S.findMin s
+                u = S.findMax s
+            in
+                manageExtremes (encSF pac) (encodeVisF ty . VisibleString) l u xs
+
 
 encodeVisF :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVisF vs@(FROM cv pac) (VisibleString s)
@@ -1284,11 +1312,19 @@ findV m (a:rs)
 \begin{code}
 
 encodeNS :: ASNType NumericString -> NumericString -> BitStream
-encodeNS = manageSize encodeNumSz encodeNum
+encodeNS t@(SIZE _ _ _) x = encodeNumSz t x
+encodeNS t x              = encodeNum t x
 
-encodeNumSz :: ASNType NumericString -> Integer -> Integer -> NumericString -> BitStream
-encodeNumSz t@(SIZE ty _ _) l u x@(NumericString xs)
-    = manageExtremes encNS (encodeNum ty . NumericString) l u xs
+encodeNumSz :: ASNType NumericString -> NumericString -> BitStream
+encodeNumSz t@(SIZE ty s _) x@(NumericString xs)
+    = let l = S.findMin s
+          u = S.findMax s
+      in
+          manageExtremes encNS (encodeNum ty . NumericString) l u xs
+
+
+
+
 
 encodeNum :: ASNType NumericString -> NumericString -> BitStream
 encodeNum ns (NumericString s)
@@ -1398,7 +1434,7 @@ ever gets called with a constraint of the form Constraint (Just n) \_.
 
 \begin{code}
 
-decodeSizedSemi :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Integer -> m [Word8] 
+decodeSizedSemi :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Integer -> m [Word8]
 decodeSizedSemi k lb =
    do p <- mmGetBit
       case p of
@@ -1422,7 +1458,7 @@ decodeSizedSemi k lb =
                                    rest <- decodeSizedSemi k lb
                                    return (frag ++ rest)
 
-decodeSizedAsSemi :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Integer -> m [Word8] 
+decodeSizedAsSemi :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Integer -> m [Word8]
 decodeSizedAsSemi k lb =
    do p <- mmGetBit
       case p of
@@ -1502,7 +1538,7 @@ variant) of "n" bits to the field-list, preceded by a length determinant equal t
 
 \end{enumerate}
 
-3rd guard is 10.9.4.1 
+3rd guard is 10.9.4.1
 
 4th guard is the second condition of 10.9.4.2. Note we haven't covered the other two conditions yet.
 
@@ -1526,7 +1562,7 @@ fromPerBitString t =
             mmGetBits ub
          | lb == ub && ub <= n64k =
             mmGetBits ub
-         | ub <= n64k = 
+         | ub <= n64k =
             do let n = genericLength (encodeNNBIntBits (ub - lb, ub - lb))
                j <- mmGetBits n
                mmGetBits (lb + (fromNonNeg j))
@@ -1534,7 +1570,7 @@ fromPerBitString t =
             decodeSizedAsSemi 1 lb
       f (Constrained (Just lb) Nothing) =
          decodeSizedSemi 1 lb
-      f (Constrained Nothing Nothing) = 
+      f (Constrained Nothing Nothing) =
          decodeSizedSemi 1 0
 
 from2sComplement a@(x:xs) =

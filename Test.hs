@@ -2,6 +2,7 @@ import ConstrainedType
 import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
+import Data.Set hiding (map)
 import IO
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
 
@@ -39,10 +40,10 @@ t41 = RANGE INTEGER (Just 0) (Just 18000)
 t42 = RANGE INTEGER (Just 3) (Just 3)
 t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
 t6 = SEQUENCE (Cons t1 (Cons t1 Nil))
-t7 = SIZE (SEQUENCEOF t1') (Just 3) (Just 5)
-t8 = SIZE (SEQUENCEOF t5) (Just 2) (Just 2)
+t7 = SIZE (SEQUENCEOF t1') (fromList [2..5]) Nothing
+t8 = SIZE (SEQUENCEOF t5) (fromList [2]) Nothing
 t9 = SEQUENCE (Cons t4' (Cons t4 Nil))
-t10 = SIZE (SEQUENCEOF t9) (Just 1) (Just 3)
+t10 = SIZE (SEQUENCEOF t9) (fromList [1..3]) Nothing
 --t11 = CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice))))
 --t12 = CHOICE (ChoiceOption t04 (ChoiceOption t03 NoChoice))
 
@@ -113,14 +114,23 @@ ev = (Nothing :*:
                         (Just "F" :*: Empty))))))
 -- BITSTRING
 
-bsTest1 = toPer BITSTRING (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest1  = toPer BITSTRING (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest1' = toPer BITSTRING (BitString [1,1])
+bsTest1'' = toPer BITSTRING (BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
 
 -- Size-constrained BITSTRING
 
-bsTest2 = toPer (SIZE BITSTRING (Just 7) (Just 7)) (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest3 = toPer (SIZE BITSTRING (Just 12) (Just 15)) (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest2 = toPer (SIZE BITSTRING (fromList [7]) Nothing) (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest3 = toPer (SIZE BITSTRING (fromList [12..15]) Nothing)(BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest3' = toPer (SIZE BITSTRING (fromList [0..2128]) Nothing) (BitString [1,1])
 
 
+-- Extensible Size-Constrained BITSTRING
+
+bsTest4 = toPer (SIZE BITSTRING (fromList [4..12]) (Just (Just (fromList [15]))))
+                (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest4' = toPer (SIZE BITSTRING (fromList [4..12]) (Just (Just (fromList [15]))))
+                (BitString [1,1,0,0,0,1,0,0,0,0,1,0,1])
 -- SEQUENCE
 
 test1 = toPer (SEQUENCE (Cons (ETMandatory (NamedType "" Nothing
@@ -210,7 +220,7 @@ testvs1 = toPer VISIBLESTRING (VisibleString "Director")
 
 -- VISIBLESTRING with permitted alphabet constraint and size constraints tests
 
-x = (SIZE (FROM VISIBLESTRING (VisibleString ['0'..'9'])) (Just 8) (Just 8))
+x = (SIZE (FROM VISIBLESTRING (VisibleString ['0'..'9'])) (fromList [8,9]) Nothing)
 
 testvsc1 = toPer x (VisibleString "19710917")
 
@@ -236,7 +246,7 @@ name
     = TYPEASS "Name" (Just (Application, 1, Implicit))
         (SEQUENCE
           (Cons (ETMandatory (NamedType "givenName" Nothing nameString))
-            (Cons (ETMandatory (NamedType "initial" Nothing (SIZE nameString (Just 1) (Just 1))))
+            (Cons (ETMandatory (NamedType "initial" Nothing (SIZE nameString (fromList [1]) Nothing)))
               (Cons (ETMandatory (NamedType "familyName" Nothing nameString)) Nil))))
 
 
@@ -249,7 +259,7 @@ num = 51
 
 date
     = TYPEASS "Date" (Just (Application, 3, Implicit))
-        (SIZE (FROM VISIBLESTRING  (VisibleString ['0'..'9'])) (Just 8) (Just 8))
+        (SIZE (FROM VISIBLESTRING  (VisibleString ['0'..'9'])) (fromList [8,9]) Nothing)
 
 hiredate = VisibleString "19710917"
 
@@ -289,7 +299,7 @@ childInfo
 nameString
     = TYPEASS "NameString" Nothing
         (SIZE (FROM VISIBLESTRING (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])) )
-                            (Just 1) (Just 64))
+                            (fromList [1..64]) Nothing)
 
 empGN = VisibleString "John"
 
@@ -319,7 +329,7 @@ ax
                     (Extens
                         (Cons (ETExtMand (NamedType "" Nothing
                                (EXTADDGROUP
-                                (Cons (ETExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (Just 3) (Just 3))))
+                                (Cons (ETExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (fromList [3]) Nothing)))
                                      (Cons (ETOptional (NamedType "h" Nothing BOOLEAN)) Nil)))))
                             (Extens
                                 (Cons (ETOptional (NamedType "i" Nothing VISIBLESTRING))
@@ -506,4 +516,3 @@ foo (NamedType _ _ t) =
       case d of
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
-
