@@ -65,6 +65,8 @@ prettyType(RANGE x l u) =
    prettyType x <+> outer x l u
 prettyType (SEQUENCE x) =
    text "SEQUENCE" <> space <> braces (prettySeq x)
+prettyType(SIZE t s _) =
+   prettyType t <+> parens (text "SIZE" <+> text (show s))
 
 outer :: ASNType a -> Maybe a -> Maybe a -> Doc
 outer INTEGER Nothing  Nothing  = parens (text "MIN"    <> text ".." <> text "MAX")
@@ -416,7 +418,7 @@ prop_fromPerToPer x =
       runFromPer :: ASNType a -> BitStream -> a
       runFromPer t x =
         case runTest t x 0 of
-             (Left _,_)   -> undefined
+             (Left e,_)   -> error ("Left " ++ e ++ ": Type = " ++ (render (prettyType t)) ++ " BitStream = " ++ show x)
              (Right xs,_) -> xs
       runTest t x y = runState (runErrorT (myMFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
 
@@ -442,7 +444,7 @@ myMFromPer (SEQUENCE s)    =
       l Nil = 0
       l (Cons (ETMandatory _) ts) = l ts
       l (Cons (ETOptional _ ) ts) = 1+(l ts)
-myMFromPer t = error (render (prettyType t))
+myMFromPer t = error ("This case is not handled in myMFromPer: " ++ render (prettyType t))
 
 \end{code}
 
@@ -472,7 +474,10 @@ myMmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
 
 instance Arbitrary BitString where
    arbitrary =
-      liftM BitString (sized onesAndZeros)
+      oneof [
+         return (BitString []),
+         liftM BitString (sized onesAndZeros)
+         ]
       where
          onesAndZeros 0 = return []
          onesAndZeros n | n > 0 =
@@ -495,7 +500,7 @@ instance Arbitrary OnlyBITSTRING where
          onlyBITSTRING n | n > 0 =
             do (OnlyBITSTRING t) <- subOnlyBITSTRING
                let Constrained lb ub = sizeLimit t
-               nl <- suchThat arbitrary (f2 lb ub)
+               nl <- suchThat (suchThat arbitrary (f2 lb ub)) (>= 0)
                nu <- suchThat (suchThat arbitrary (f2 lb ub)) (>= nl)
                return (OnlyBITSTRING (SIZE t (S.fromList [nl..nu]) Nothing))
             where
@@ -514,6 +519,21 @@ arbitraryBITSTRING x =
          case y of
             BITSTRING ->
                arbitrary
+            SIZE t s _ ->
+               if S.null s 
+                  then
+                     error "arbitraryBITSTRING: generating impossible constraints"
+                  else
+                     g s
+   where
+      h 0 = return []
+      h n = 
+         do x <- oneof [return 0, return 1]
+            xs <- h (n - 1)
+            return (x:xs)
+      f = (liftM BitString) . h
+      g ns = oneof (map f (S.toList ns))
+--       g = g' . S.toList
 
 data BITSTRINGVal = BITSTRINGVal (ASNType BitString) BitString
 
