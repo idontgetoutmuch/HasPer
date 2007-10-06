@@ -40,10 +40,10 @@ t41 = RANGE INTEGER (Just 0) (Just 18000)
 t42 = RANGE INTEGER (Just 3) (Just 3)
 t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
 t6 = SEQUENCE (Cons t1 (Cons t1 Nil))
-t7 = SIZE (SEQUENCEOF t1') (fromList [2..5]) Nothing
-t8 = SIZE (SEQUENCEOF t5) (fromList [2]) Nothing
+t7 = SIZE (SEQUENCEOF t1') (Elem (fromList [2..5])) NoMarker
+t8 = SIZE (SEQUENCEOF t5) (Elem (fromList [2])) NoMarker
 t9 = SEQUENCE (Cons t4' (Cons t4 Nil))
-t10 = SIZE (SEQUENCEOF t9) (fromList [1..3]) Nothing
+t10 = SIZE (SEQUENCEOF t9) (Elem (fromList [1..3])) NoMarker
 --t11 = CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice))))
 --t12 = CHOICE (ChoiceOption t04 (ChoiceOption t03 NoChoice))
 
@@ -120,16 +120,16 @@ bsTest1'' = toPer BITSTRING (BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
 
 -- Size-constrained BITSTRING
 
-bsTest2 = toPer (SIZE BITSTRING (fromList [7]) Nothing) (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest3 = toPer (SIZE BITSTRING (fromList [12..15]) Nothing)(BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest3' = toPer (SIZE BITSTRING (fromList [0..2128]) Nothing) (BitString [1,1])
+bsTest2 = toPer (SIZE BITSTRING (Elem (fromList [7])) NoMarker) (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest3 = toPer (SIZE BITSTRING (Elem (fromList [12..15])) NoMarker)(BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest3' = toPer (SIZE BITSTRING (Elem (fromList [0..2128])) NoMarker) (BitString [1,1])
 
 
 -- Extensible Size-Constrained BITSTRING
 
-bsTest4 = toPer (SIZE BITSTRING (fromList [4..12]) (Just (Just (fromList [15]))))
+bsTest4 = toPer (SIZE BITSTRING (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
                 (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest4' = toPer (SIZE BITSTRING (fromList [4..12]) (Just (Just (fromList [15]))))
+bsTest4' = toPer (SIZE BITSTRING (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
                 (BitString [1,1,0,0,0,1,0,0,0,0,1,0,1])
 -- SEQUENCE
 
@@ -220,7 +220,7 @@ testvs1 = toPer VISIBLESTRING (VisibleString "Director")
 
 -- VISIBLESTRING with permitted alphabet constraint and size constraints tests
 
-x = (SIZE (FROM VISIBLESTRING (VisibleString ['0'..'9'])) (fromList [8,9]) Nothing)
+x = (SIZE (FROM VISIBLESTRING (VisibleString ['0'..'9'])) (Elem (fromList [8,9])) NoMarker)
 
 testvsc1 = toPer x (VisibleString "19710917")
 
@@ -246,7 +246,7 @@ name
     = TYPEASS "Name" (Just (Application, 1, Implicit))
         (SEQUENCE
           (Cons (ETMandatory (NamedType "givenName" Nothing nameString))
-            (Cons (ETMandatory (NamedType "initial" Nothing (SIZE nameString (fromList [1]) Nothing)))
+            (Cons (ETMandatory (NamedType "initial" Nothing (SIZE nameString (Elem (fromList [1])) NoMarker)))
               (Cons (ETMandatory (NamedType "familyName" Nothing nameString)) Nil))))
 
 
@@ -259,7 +259,7 @@ num = 51
 
 date
     = TYPEASS "Date" (Just (Application, 3, Implicit))
-        (SIZE (FROM VISIBLESTRING  (VisibleString ['0'..'9'])) (fromList [8,9]) Nothing)
+        (SIZE (FROM VISIBLESTRING  (VisibleString ['0'..'9'])) (Elem (fromList [8,9])) NoMarker)
 
 hiredate = VisibleString "19710917"
 
@@ -299,7 +299,7 @@ childInfo
 nameString
     = TYPEASS "NameString" Nothing
         (SIZE (FROM VISIBLESTRING (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])) )
-                            (fromList [1..64]) Nothing)
+                            (Elem (fromList [1..64])) NoMarker)
 
 empGN = VisibleString "John"
 
@@ -329,7 +329,7 @@ ax
                     (Extens
                         (Cons (ETExtMand (NamedType "" Nothing
                                (EXTADDGROUP
-                                (Cons (ETExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (fromList [3]) Nothing)))
+                                (Cons (ETExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (Elem (fromList [3])) NoMarker)))
                                      (Cons (ETOptional (NamedType "h" Nothing BOOLEAN)) Nil)))))
                             (Extens
                                 (Cons (ETOptional (NamedType "i" Nothing VISIBLESTRING))

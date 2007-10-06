@@ -176,7 +176,24 @@ Type Aliases for Tag Information and Constraint Extension Marker
 type TagInfo    = (TagType, TagValue, TagPlicity)
 type TypeRef    = String
 type Name       = String
-type ExtMarker  = Maybe (Maybe (S.Set Integer))
+
+
+data Ord a => Constraint a 
+		= Elem (S.Set a) 
+		    | Union (Constraint a) (Constraint a) 
+                    | Intersection (Constraint a) (Constraint a)
+		    | Except (Constraint a) (Constraint a) 
+
+evalCons :: Ord a => Constraint a -> S.Set a
+evalCons (Elem s) = s
+evalCons (Union s t) = evalCons s `S.union` evalCons t
+evalCons (Intersection s t) = evalCons s `S.intersection` evalCons t
+evalCons (Except s t) = evalCons s `S.difference` evalCons t
+
+
+data EM a = NoMarker | EM (Maybe (Constraint a))
+
+evalEM (EM x) = x
 
 \end{code}
 
@@ -200,13 +217,13 @@ data ASNType :: * -> * where
    RANGE           :: ASNType Integer -> Lower -> Upper -> ASNType Integer
    SEQUENCE        :: Sequence a -> ASNType a
    SEQUENCEOF      :: ASNType a -> ASNType [a]
-   SIZE            :: ASNType a -> S.Set Integer -> ExtMarker -> ASNType a
+   SIZE            :: ASNType a -> Constraint Integer -> EM Integer -> ASNType a
 -- REMOVED SizeConstraint a => from above
    SET             :: Sequence a -> ASNType a
    SETOF           :: ASNType a -> ASNType [a]
    CHOICE          :: Choice a -> ASNType a
    FROM            :: PermittedAlphabet a => ASNType a -> a -> ASNType a
-
+-- WILL CHANGE 2ND ELEMENT TO cONSTRAINT cHAR FOR FROM CONSTRUCTOR
 \end{code}
 
 Type aliases used when defining a range-constrained Integer.
@@ -222,10 +239,10 @@ Type used to represent the lower and upper bounds of a range.
 
 \begin{code}
 
-data Constraint a = Constrained (Maybe a) (Maybe a)
+data Constrained a = Constrained (Maybe a) (Maybe a)
    deriving Show
 
-instance Ord a => Monoid (Constraint a) where
+instance Ord a => Monoid (Constrained a) where
    mempty = Constrained Nothing Nothing
    mappend x y = Constrained (g x y) (f x y)
       where
@@ -243,7 +260,7 @@ bounds returns the range of a value. Nothing indicates
 no lower or upper bound.
 
 \begin{code}
-bounds :: Ord a => ASNType a -> Constraint a
+bounds :: Ord a => ASNType a -> Constrained a
 bounds (INCLUDES t1 t2)   = (bounds t1) `mappend` (bounds t2)
 bounds (RANGE t l u)      = (bounds t) `mappend` (Constrained l u)
 bounds _                  = Constrained Nothing Nothing
@@ -256,35 +273,35 @@ used in type assignment of an extensible type.
 
 multiSize :: ASNType a -> ASNType a
 multiSize (SIZE t@(SIZE t' s' e') s e)
-        = let ns = S.intersection s' s
+        = let ns = evalCons s' `S.intersection` evalCons s
               ne = unionEM e' e
           in
-              multiSize (SIZE t' ns ne)
+              multiSize (SIZE t' (Elem ns) ne)
 multiSize x = x
 
 
 multiRSize :: ASNType a -> ASNType a
 multiRSize (SIZE t@(SIZE t' s' e') s e)
-        = let ns = S.intersection s' s
+        = let ns = evalCons s' `S.intersection` evalCons s
           in
-              multiRSize (SIZE t' ns Nothing)
+              multiRSize (SIZE t' (Elem ns) NoMarker)
 multiRSize x = x
 
 
 sizeLimit t@(SIZE _ _ _)
     = let SIZE _ s _  = multiSize t
-          l = S.findMin s
-          u = S.findMax s
+          l = S.findMin (evalCons s)
+          u = S.findMax (evalCons s)
       in
         Constrained (Just l) (Just u)
 sizeLimit t
     = Constrained Nothing Nothing
 
-unionEM Nothing x = x
-unionEM y Nothing = y
-unionEM (Just Nothing) x = x
-unionEM y (Just Nothing) = y
-unionEM (Just (Just s)) (Just (Just t)) = Just (Just (S.union s t))
+unionEM NoMarker x = x
+unionEM y NoMarker = y
+unionEM (EM Nothing) x = x
+unionEM y (EM Nothing) = y
+unionEM (EM (Just s)) (EM (Just t)) = EM (Just (Elem (evalCons s `S.union` evalCons t)))
 
 \end{code}
 
@@ -320,7 +337,7 @@ toPer t@(SIZE VISIBLESTRING _ _) x              = encodeVS t x
 toPer t@(SIZE NUMERICSTRING _ _) x              = encodeNS t x
 toPer t@(FROM VISIBLESTRING pac) x              = encodeVSF t x
 toPer t@(SIZE (FROM VISIBLESTRING pac) _ _) x   = encodeVSF t x
-toPer t@(SIZE (SIZE _ _ _) _ _) x                 = let nt = multiSize t
+toPer t@(SIZE (SIZE _ _ _) _ _) x               = let nt = multiSize t
                                                   in
                                                       toPer nt x
 toPer (SIZE (TYPEASS r tg t) s em) x            = let nt = multiRSize t
@@ -737,25 +754,25 @@ encodeBS t x               = encodeBSNoSz t x
 
 
 encodeBSSz :: ASNType BitString -> BitString -> BitStream
-encodeBSSz (SIZE t s Nothing) (BitString xs)
-    = let l   = S.findMin s
-          u   = S.findMax s
+encodeBSSz (SIZE t s NoMarker) (BitString xs)
+    = let l   = S.findMin (evalCons s)
+          u   = S.findMax (evalCons s)
           exs = editBS l u xs
           ln  = genericLength exs
       in
-                bsCode s Nothing exs
-encodeBSSz (SIZE ty s m@(Just e)) (BitString xs)
+                bsCode s NoMarker exs
+encodeBSSz (SIZE ty s m@(EM (Just e))) (BitString xs)
     =   let ln = genericLength xs
-            l  = S.findMin s
-            u  = S.findMax s
+            l  = S.findMin (evalCons s)
+            u  = S.findMax (evalCons s)
         in if ln <= u && ln >= l
                 then 0: bsCode s m xs
                 else 1: bsCode s m xs
 
 bsCode s m xs
-      =  let (Just (Just ns)) = unionEM (Just (Just s)) m
-             l  = S.findMin ns
-             u  = S.findMax ns
+      =  let (EM (Just ns)) = unionEM (EM (Just s)) m
+             l  = S.findMin (evalCons ns)
+             u  = S.findMax (evalCons ns)
              exs = editBS l u xs
              ln = genericLength exs
          in
@@ -939,8 +956,8 @@ manageExtremes fn1 fn2 l u x
 
 encodeSeqSz :: ASNType [a] -> [a] -> BitStream
 encodeSeqSz (SIZE ty s e) x
-        =   let l = S.findMin s
-                u = S.findMax s
+        =   let l = S.findMin (evalCons s)
+                u = S.findMax (evalCons s)
             in
                 manageExtremes (encodeNoL ty) (encodeSeqOf ty) l u x
 
@@ -1208,8 +1225,8 @@ encodeVS t x = encodeVis t x
 
 encodeVisSz :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVisSz t@(SIZE ty s _) x@(VisibleString xs)
-    = let l = S.findMin s
-          u = S.findMax s
+    = let l = S.findMin (evalCons s)
+          u = S.findMax (evalCons s)
       in
           manageExtremes encS (encodeVis ty . VisibleString) l u xs
 
@@ -1247,8 +1264,8 @@ encodeVSF v@(FROM _ _) x = encodeVisF v x
 
 encodeVisSzF :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVisSzF (SIZE ty@(FROM cv pac) s e) x@(VisibleString xs)
-        =   let l = S.findMin s
-                u = S.findMax s
+        =   let l = S.findMin (evalCons s)
+                u = S.findMax (evalCons s)
             in
                 manageExtremes (encSF pac) (encodeVisF ty . VisibleString) l u xs
 
@@ -1317,8 +1334,8 @@ encodeNS t x              = encodeNum t x
 
 encodeNumSz :: ASNType NumericString -> NumericString -> BitStream
 encodeNumSz t@(SIZE ty s _) x@(NumericString xs)
-    = let l = S.findMin s
-          u = S.findMax s
+    = let l = S.findMin (evalCons s)
+          u = S.findMax (evalCons s)
       in
           manageExtremes encNS (encodeNum ty . NumericString) l u xs
 
