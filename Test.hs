@@ -6,7 +6,6 @@ import Data.Set hiding (map)
 import IO
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
 
-
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
@@ -117,6 +116,15 @@ ev = (Nothing :*:
 bsTest1  = toPer BITSTRING (BitString [1,1,0,0,0,1,0,0,0,0])
 bsTest1' = toPer BITSTRING (BitString [1,1])
 bsTest1'' = toPer BITSTRING (BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
+
+bsEmptyTest1 = 
+   SEQUENCE (Cons (ETMandatory (NamedType "rb" Nothing BITSTRING)) (Cons (ETMandatory (NamedType "an" Nothing BITSTRING)) Nil)) 
+
+bsEmptyVal1 :: BitStream
+bsEmptyVal1 = take 16 (repeat 0)          
+
+bsEmptyVal2 :: BitStream
+bsEmptyVal2 = [0,0,0,0,0,0,1,0,1,1,0,0,0,0,0,0,0,1,1]          
 
 -- Size-constrained BITSTRING
 
@@ -516,3 +524,4 @@ foo (NamedType _ _ t) =
       case d of
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
+

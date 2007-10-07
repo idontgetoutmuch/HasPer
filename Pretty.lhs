@@ -56,6 +56,9 @@ import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
 import Data.Int
 
+prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
+prettyConstraint (Elem s) = text (show s)
+
 prettyType :: ASNType a -> Doc
 prettyType BITSTRING =
    text "BITSTRING"
@@ -66,7 +69,7 @@ prettyType(RANGE x l u) =
 prettyType (SEQUENCE x) =
    text "SEQUENCE" <> space <> braces (prettySeq x)
 prettyType(SIZE t s _) =
-   prettyType t <+> parens (text "SIZE" <+> text (show s))
+   prettyType t <+> parens (text "SIZE" <+> prettyConstraint s) -- text (show s))
 
 outer :: ASNType a -> Maybe a -> Maybe a -> Doc
 outer INTEGER Nothing  Nothing  = parens (text "MIN"    <> text ".." <> text "MAX")
@@ -502,7 +505,7 @@ instance Arbitrary OnlyBITSTRING where
                let Constrained lb ub = sizeLimit t
                nl <- suchThat (suchThat arbitrary (f2 lb ub)) (>= 0)
                nu <- suchThat (suchThat arbitrary (f2 lb ub)) (>= nl)
-               return (OnlyBITSTRING (SIZE t (S.fromList [nl..nu]) Nothing))
+               return (OnlyBITSTRING (SIZE t (Elem (S.fromList [nl..nu])) NoMarker))
             where
                subOnlyBITSTRING = onlyBITSTRING (n `div` 2)
 
@@ -520,7 +523,7 @@ arbitraryBITSTRING x =
             BITSTRING ->
                arbitrary
             SIZE t s _ ->
-               if S.null s 
+               if S.null (evalCons s)
                   then
                      error "arbitraryBITSTRING: generating impossible constraints"
                   else
@@ -532,8 +535,7 @@ arbitraryBITSTRING x =
             xs <- h (n - 1)
             return (x:xs)
       f = (liftM BitString) . h
-      g ns = oneof (map f (S.toList ns))
---       g = g' . S.toList
+      g (Elem ns) = oneof (map f (S.toList ns))
 
 data BITSTRINGVal = BITSTRINGVal (ASNType BitString) BitString
 
