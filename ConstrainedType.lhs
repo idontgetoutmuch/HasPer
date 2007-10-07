@@ -101,6 +101,13 @@ values.
 \begin{code}
 data Nil = Empty
 data a:*:l = a:*:l
+
+instance Show Nil where
+   show _ = "Empty"
+
+instance (Show a, Show l) => Show (a:*:l) where
+   show (x:*:xs) = show x ++ ":*:" ++ show xs
+
 \end{code}
 
 A sequence is a collection of element types
