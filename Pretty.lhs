@@ -60,7 +60,7 @@ prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
 prettyConstraint (Elem s) = text (show s)
 
 prettyType :: ASNType a -> Doc
-prettyType BITSTRING =
+prettyType (BITSTRING []) =
    text "BITSTRING"
 prettyType INTEGER =
    text "INTEGER"
@@ -292,7 +292,7 @@ instance Arbitrary RepSeqVal where
 data RepTypeVal = forall a . Eq a => RepTypeVal (ASNType a) a
 
 prettyTypeVal :: ASNType a -> a -> Doc
-prettyTypeVal a@BITSTRING x     = text (show x)
+prettyTypeVal a@(BITSTRING []) x     = text (show x)
 prettyTypeVal a@INTEGER x       = text (show x)
 prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
 prettyTypeVal a@(SIZE t s e) x  = prettyTypeVal t x
@@ -438,7 +438,7 @@ main =
 myMFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
 myMFromPer t@INTEGER       = mmUntoPerInt t
 myMFromPer r@(RANGE i l u) = mmUntoPerInt r
-myMFromPer t@BITSTRING     = (liftM (BitString . map fromIntegral) . fromPerBitString) t
+myMFromPer t@(BITSTRING []) = (liftM (BitString . map fromIntegral) . fromPerBitString) t
 myMFromPer (SEQUENCE s)    =
    do ps <- mmGetBits (l s)
       myMmFromPerSeq (map fromIntegral ps) s
@@ -495,11 +495,11 @@ data OnlyBITSTRING = OnlyBITSTRING (ASNType BitString)
 instance Arbitrary OnlyBITSTRING where
    arbitrary =
       oneof [
-         return (OnlyBITSTRING BITSTRING),
+         return (OnlyBITSTRING (BITSTRING [])),
          sized onlyBITSTRING
          ]
       where
-         onlyBITSTRING 0 = return (OnlyBITSTRING BITSTRING)
+         onlyBITSTRING 0 = return (OnlyBITSTRING (BITSTRING []))
          onlyBITSTRING n | n > 0 =
             do (OnlyBITSTRING t) <- subOnlyBITSTRING
                let Constrained lb ub = sizeLimit t
@@ -520,7 +520,7 @@ arbitraryBITSTRING x =
    case x of
       OnlyBITSTRING y ->
          case y of
-            BITSTRING ->
+            (BITSTRING []) ->
                arbitrary
             SIZE t s _ ->
                if S.null (evalCons s)
@@ -530,7 +530,7 @@ arbitraryBITSTRING x =
                      g s
    where
       h 0 = return []
-      h n = 
+      h n =
          do x <- oneof [return 0, return 1]
             xs <- h (n - 1)
             return (x:xs)

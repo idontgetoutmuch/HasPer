@@ -6,6 +6,7 @@ import Data.Set hiding (map)
 import IO
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
 
+
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
@@ -111,33 +112,24 @@ ev = (Nothing :*:
                 (Nothing :*:
                     (Nothing :*:
                         (Just "F" :*: Empty))))))
--- BITSTRING
+-- BitString
 
-bsTest1  = toPer BITSTRING (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest1' = toPer BITSTRING (BitString [1,1])
-bsTest1'' = toPer BITSTRING (BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
+bsTest1  = toPer (BITSTRING []) (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest1' = toPer (BITSTRING []) (BitString [1,1])
+bsTest1'' = toPer (BITSTRING []) (BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
 
-bsEmptyTest1 = 
-   SEQUENCE (Cons (ETMandatory (NamedType "rb" Nothing BITSTRING)) (Cons (ETMandatory (NamedType "an" Nothing BITSTRING)) Nil)) 
+-- Size-constrained (BITSTRING [])
 
-bsEmptyVal1 :: BitStream
-bsEmptyVal1 = take 16 (repeat 0)          
-
-bsEmptyVal2 :: BitStream
-bsEmptyVal2 = [0,0,0,0,0,0,1,0,1,1,0,0,0,0,0,0,0,1,1]          
-
--- Size-constrained BITSTRING
-
-bsTest2 = toPer (SIZE BITSTRING (Elem (fromList [7])) NoMarker) (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest3 = toPer (SIZE BITSTRING (Elem (fromList [12..15])) NoMarker)(BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest3' = toPer (SIZE BITSTRING (Elem (fromList [0..2128])) NoMarker) (BitString [1,1])
+bsTest2 = toPer (SIZE (BITSTRING []) (Elem (fromList [7])) NoMarker) (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest3 = toPer (SIZE (BITSTRING []) (Elem (fromList [12..15])) NoMarker)(BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest3' = toPer (SIZE (BITSTRING []) (Elem (fromList [0..2128])) NoMarker) (BitString [1,1])
 
 
--- Extensible Size-Constrained BITSTRING
+-- Extensible Size-Constrained (BITSTRING [])
 
-bsTest4 = toPer (SIZE BITSTRING (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
+bsTest4 = toPer (SIZE (BITSTRING []) (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
                 (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest4' = toPer (SIZE BITSTRING (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
+bsTest4' = toPer (SIZE (BITSTRING []) (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
                 (BitString [1,1,0,0,0,1,0,0,0,0,1,0,1])
 -- SEQUENCE
 
@@ -524,4 +516,3 @@ foo (NamedType _ _ t) =
       case d of
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
-

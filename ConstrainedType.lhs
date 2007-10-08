@@ -202,6 +202,10 @@ data EM a = NoMarker | EM (Maybe (Constraint a))
 
 evalEM (EM x) = x
 
+type NamedBits = [NamedBit]
+
+data NamedBit = NB String Integer
+
 \end{code}
 
 ASNType
@@ -214,7 +218,7 @@ data ASNType :: * -> * where
    BOOLEAN         :: ASNType Bool
    INTEGER         :: ASNType Integer
    ENUMERATED      :: Enumerate a -> ASNType a
-   BITSTRING       :: ASNType BitString
+   BITSTRING       :: NamedBits -> ASNType BitString
    PRINTABLESTRING :: ASNType PrintableString
    IA5STRING       :: ASNType IA5String
    VISIBLESTRING   :: ASNType VisibleString
@@ -328,8 +332,8 @@ toPer t@BOOLEAN x                               = encodeBool t x
 toPer t@INTEGER x                               = encodeInt t x
 toPer r@(RANGE i l u) x                         = encodeInt r x
 toPer (ENUMERATED e) x                          = encodeEnum e x
-toPer t@BITSTRING x                             = encodeBS t x
-toPer t@(SIZE BITSTRING _ _) x                  = encodeBS t x
+toPer t@(BITSTRING nbs) x                       = encodeBS t x
+toPer t@(SIZE (BITSTRING _) _ _) x              = encodeBS t x
 toPer (SEQUENCE s) x                            = encodeSeq s x
 toPer t@(SEQUENCEOF s) x                        = encodeSO t x
 toPer t@(SIZE (SEQUENCEOF c) _ _) x             = encodeSO t x
@@ -351,15 +355,17 @@ toPer (SIZE (TYPEASS r tg t) s em) x            = let nt = multiRSize t
                                                   in
                                                       toPer (SIZE nt s em) x
 
+
 toPer8s ct v
     = let bts = toPer ct v
           lbs = genericLength bts
           rb  = lbs `mod` 8
         in
-            if rb == 0
-                then bts
-            else
-               bts ++ take (8-rb) (repeat 0)
+            if null bts then [0,0,0,0,0,0,0,0]
+		else if rb == 0
+                     then bts
+                     else
+                       bts ++ take (8-rb) (repeat 0)
 
 \end{code}
 
@@ -761,26 +767,28 @@ encodeBS t x               = encodeBSNoSz t x
 
 
 encodeBSSz :: ASNType BitString -> BitString -> BitStream
-encodeBSSz (SIZE t s NoMarker) (BitString xs)
+encodeBSSz (SIZE (BITSTRING nbs) s NoMarker) (BitString xs)
     = let l   = S.findMin (evalCons s)
           u   = S.findMax (evalCons s)
-          exs = editBS l u xs
+          exs = if (not.null) nbs then editBS l u xs
+				  else xs
           ln  = genericLength exs
       in
-                bsCode s NoMarker exs
-encodeBSSz (SIZE ty s m@(EM (Just e))) (BitString xs)
+                bsCode nbs s NoMarker exs
+encodeBSSz (SIZE (BITSTRING nbs) s m@(EM (Just e))) (BitString xs)
     =   let ln = genericLength xs
             l  = S.findMin (evalCons s)
             u  = S.findMax (evalCons s)
         in if ln <= u && ln >= l
-                then 0: bsCode s m xs
-                else 1: bsCode s m xs
+                then 0: bsCode nbs s m xs
+                else 1: bsCode nbs s m xs
 
-bsCode s m xs
+bsCode nbs s m xs
       =  let (EM (Just ns)) = unionEM (EM (Just s)) m
              l  = S.findMin (evalCons ns)
              u  = S.findMax (evalCons ns)
-             exs = editBS l u xs
+             exs = if (not.null) nbs then editBS l u xs
+				     else xs
              ln = genericLength exs
          in
              if u == 0
@@ -816,12 +824,15 @@ rem0s 0 xs = xs
 
 \begin{code}
 encodeBSNoSz :: ASNType BitString -> BitString -> BitStream
-encodeBSNoSz t (BitString bs)
+encodeBSNoSz (BITSTRING nbs) (BitString bs)
     = let rbs = reverse bs
-          rem0 = strip0s rbs
+          rem0 = if (not.null) nbs then strip0s rbs
+			else rbs
           ln = genericLength rem0
        in
         encodeWithLengthDeterminantBits (reverse rem0)
+
+
 
 strip0s (a:r)
     = if a == 0
@@ -1104,7 +1115,7 @@ getTI BOOLEAN                   = (Universal, 1, Explicit)
 getTI INTEGER                   = (Universal,2, Explicit)
 getTI (RANGE c _ _)             = getTI c
 getTI IA5STRING                 = (Universal,22, Explicit)
-getTI BITSTRING                 = (Universal, 3, Explicit)
+getTI (BITSTRING _)             = (Universal, 3, Explicit)
 getTI PRINTABLESTRING           = (Universal, 19, Explicit)
 getTI VISIBLESTRING             = (Universal, 26, Explicit)
 getTI NUMERICSTRING             = (Universal, 18, Explicit)
@@ -1624,7 +1635,7 @@ fromNonNeg xs =
 mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
 mFromPer t@INTEGER                 = mmUntoPerInt t
 mFromPer r@(RANGE i l u)           = mmUntoPerInt r
-mFromPer t@BITSTRING               = (liftM (BitString . map fromIntegral) . fromPerBitString) t
+mFromPer t@(BITSTRING _)           = (liftM (BitString . map fromIntegral) . fromPerBitString) t
 mFromPer (SEQUENCE s)              =
    do ps <- mmGetBits (l s)
       mmFromPerSeq (map fromIntegral ps) s
