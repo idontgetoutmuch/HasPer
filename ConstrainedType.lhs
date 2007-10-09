@@ -107,7 +107,6 @@ instance Show Nil where
 
 instance (Show a, Show l) => Show (a:*:l) where
    show (x:*:xs) = show x ++ ":*:" ++ show xs
-
 \end{code}
 
 A sequence is a collection of element types
@@ -185,11 +184,11 @@ type TypeRef    = String
 type Name       = String
 
 
-data Ord a => Constraint a 
-		= Elem (S.Set a) 
-		    | Union (Constraint a) (Constraint a) 
+data Ord a => Constraint a
+        = Elem (S.Set a)
+            | Union (Constraint a) (Constraint a)
                     | Intersection (Constraint a) (Constraint a)
-		    | Except (Constraint a) (Constraint a) 
+            | Except (Constraint a) (Constraint a)
 
 evalCons :: Ord a => Constraint a -> S.Set a
 evalCons (Elem s) = s
@@ -362,7 +361,7 @@ toPer8s ct v
           rb  = lbs `mod` 8
         in
             if null bts then [0,0,0,0,0,0,0,0]
-		else if rb == 0
+        else if rb == 0
                      then bts
                      else
                        bts ++ take (8-rb) (repeat 0)
@@ -771,7 +770,7 @@ encodeBSSz (SIZE (BITSTRING nbs) s NoMarker) (BitString xs)
     = let l   = S.findMin (evalCons s)
           u   = S.findMax (evalCons s)
           exs = if (not.null) nbs then editBS l u xs
-				  else xs
+                  else xs
           ln  = genericLength exs
       in
                 bsCode nbs s NoMarker exs
@@ -788,7 +787,7 @@ bsCode nbs s m xs
              l  = S.findMin (evalCons ns)
              u  = S.findMax (evalCons ns)
              exs = if (not.null) nbs then editBS l u xs
-				     else xs
+                     else xs
              ln = genericLength exs
          in
              if u == 0
@@ -824,10 +823,12 @@ rem0s 0 xs = xs
 
 \begin{code}
 encodeBSNoSz :: ASNType BitString -> BitString -> BitStream
+encodeBSNoSz (BITSTRING nbs) (BitString [])
+    = [0,0,0,0,0,0,0,0]
 encodeBSNoSz (BITSTRING nbs) (BitString bs)
     = let rbs = reverse bs
           rem0 = if (not.null) nbs then strip0s rbs
-			else rbs
+            else rbs
           ln = genericLength rem0
        in
         encodeWithLengthDeterminantBits (reverse rem0)
