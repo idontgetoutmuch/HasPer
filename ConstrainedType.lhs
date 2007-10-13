@@ -1609,6 +1609,17 @@ fromPerBitString t =
       f (Constrained Nothing Nothing) =
          decodeSizedSemi 1 0
 
+\end{code}
+
+\section{Twos Complement Stuff}
+
+{\em from2sComplement} will give an invalid answer for the empty list.
+However, it is only used with a list of bits obtained from
+{\em mmDecodeWithLengthDeterminant} which never returns an empty list
+(it will produce an error if there are not enough bits).
+
+\begin{code}
+
 from2sComplement a@(x:xs) =
    -((fromIntegral x)*(2^(l-1))) + sum (zipWith (*) (map fromIntegral xs) ys)
    where

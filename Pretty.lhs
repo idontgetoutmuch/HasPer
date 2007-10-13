@@ -392,8 +392,15 @@ prop_WithinRange (INTEGERVal t (Just n)) =
 prop_2scomplement1 x =
    x == from2sComplement (to2sComplement x)
 
+\end{code}
+
+This really needs its own generator rather than using BitString.
+
+\begin{code}
+
 prop_2scomplement2 x =
-   x == to2sComplement (from2sComplement x)
+   length (bitString x) `mod` 8 == 0 && (not (null (bitString x))) ==> 
+      x == (BitString . to2sComplement . from2sComplement .bitString) x
 
 valid :: ASNType a -> a -> Bool
 valid r@(RANGE t l u) n
@@ -438,7 +445,10 @@ main =
 myMFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
 myMFromPer t@INTEGER       = mmUntoPerInt t
 myMFromPer r@(RANGE i l u) = mmUntoPerInt r
-myMFromPer t@(BITSTRING []) = (liftM (BitString . map fromIntegral) . fromPerBitString) t
+myMFromPer t@(BITSTRING []) = 
+   (liftM (BitString . map fromIntegral) . fromPerBitString) t
+myMFromPer t@(SIZE (BITSTRING _) _ _) = 
+   (liftM (BitString . map fromIntegral) . fromPerBitString) t
 myMFromPer (SEQUENCE s)    =
    do ps <- mmGetBits (l s)
       myMmFromPerSeq (map fromIntegral ps) s
@@ -447,6 +457,8 @@ myMFromPer (SEQUENCE s)    =
       l Nil = 0
       l (Cons (ETMandatory _) ts) = l ts
       l (Cons (ETOptional _ ) ts) = 1+(l ts)
+myMFromPer t@(SIZE (SIZE _ _ _) _ _) = 
+   let nt = multiSize t in myMFromPer nt
 myMFromPer t = error ("This case is not handled in myMFromPer: " ++ render (prettyType t))
 
 \end{code}
