@@ -69,7 +69,7 @@ mainC nt@(NamedType name tagInfo t) v =
                         ]
                      ),
                   text "}",
-                  text "/* Encode " <> text name <> text " as BER */",
+                  text "/* Encode " <> text name <> text " as PER */",
                   text "ec = uper_encode(&asn_DEF_" <> text name <> text "," <> cPtr <> text ",write_out,fp);",
                   text "fclose(fp);",
                   text "if(ec.encoded == -1) {",
@@ -105,7 +105,19 @@ lowerFirst (x:xs) = (toLower x):xs
 
 sequenceC :: Doc -> Sequence a -> a -> Doc
 sequenceC prefix Nil _ = empty
-sequenceC prefix (Cons (ETMandatory (NamedType name _ t)) ts) (x:*:xs) =
-   prefix <> text "->" <> text name <> text " = " <> text (show x) <> semi $$ 
+sequenceC prefix (Cons t ts) (x:*:xs) =
+   prefix <> text "->" <> elemC t x <> semi $$ 
    sequenceC prefix ts xs
+
+elemC :: ElementType a -> a -> Doc
+elemC (ETMandatory (NamedType n _ t)) x =
+   text n <> text " = " <> typeValC t x
+
+typeValC :: ASNType a -> a -> Doc
+typeValC a@(BITSTRING []) x = text (show x)
+typeValC a@INTEGER x        = text (show x)
+typeValC a@(RANGE t l u) x  = typeValC t x
+typeValC a@(SIZE t s e) x   = typeValC t x
+typeValC a@(SEQUENCE s) x   = sequenceC empty s x
+
    
