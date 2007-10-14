@@ -1648,6 +1648,8 @@ mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType 
 mFromPer t@INTEGER                 = mmUntoPerInt t
 mFromPer r@(RANGE i l u)           = mmUntoPerInt r
 mFromPer t@(BITSTRING _)           = (liftM (BitString . map fromIntegral) . fromPerBitString) t
+mFromPer t@(SIZE (BITSTRING _) _ _) = 
+   (liftM (BitString . map fromIntegral) . fromPerBitString) t
 mFromPer (SEQUENCE s)              =
    do ps <- mmGetBits (l s)
       mmFromPerSeq (map fromIntegral ps) s
@@ -1656,6 +1658,8 @@ mFromPer (SEQUENCE s)              =
       l Nil = 0
       l (Cons (ETMandatory _) ts) = l ts
       l (Cons (ETOptional _ ) ts) = 1+(l ts)
+mFromPer t@(SIZE (SIZE _ _ _) _ _) = 
+   let nt = multiSize t in mFromPer nt
 
 \end{code}
 

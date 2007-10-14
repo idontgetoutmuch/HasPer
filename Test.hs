@@ -5,7 +5,7 @@ import qualified Data.ByteString.Lazy as B
 import Data.Set hiding (map)
 import IO
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
-
+import qualified Data.Set as S
 
 {-
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
@@ -508,6 +508,12 @@ type3 =
    NamedType "T3" Nothing (SEQUENCE (
       Cons (ETMandatory (NamedType "first" Nothing INTEGER)) (
          Cons (ETMandatory (NamedType "second" Nothing INTEGER)) Nil)))
+
+type4 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..4])) NoMarker)
+
+type5 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..14])) NoMarker)
+
+type6 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..((2^16)+1)])) NoMarker)
 
 foo (NamedType _ _ t) =
    do h <- openFile "test" ReadMode
