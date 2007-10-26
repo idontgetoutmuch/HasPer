@@ -1494,26 +1494,6 @@ decodeSizedSemi k lb =
                                    rest <- decodeSizedSemi k lb
                                    return (frag ++ rest)
 
-decodeSizedAsSemi :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Integer -> m [Word8]
-decodeSizedAsSemi k lb =
-   do p <- mmGetBit
-      case p of
-         0 ->
-            throwError ("Unexpected length bits for SIZE >= 64k")
-         1 ->
-            do q <- mmGetBit
-               case q of
-                  0 ->
-                     throwError ("Unexpected length bits for SIZE >= 64k")
-                  1 ->
-                     do j <- mmGetBits 6
-                        let fragSize = fromNonNeg j
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
-                           else do frag <- mmGetBits (fragSize * n16k * k)
-                                   rest <- decodeSizedSemi k lb
-                                   return (frag ++ rest)
-
 \end{code}
 
 \begin{enumerate}
@@ -1603,7 +1583,7 @@ fromPerBitString t =
                j <- mmGetBits n
                mmGetBits (lb + (fromNonNeg j))
          | otherwise =
-            decodeSizedAsSemi 1 lb
+            decodeSizedSemi 1 lb
       f (Constrained (Just lb) Nothing) =
          decodeSizedSemi 1 lb
       f (Constrained Nothing Nothing) =
