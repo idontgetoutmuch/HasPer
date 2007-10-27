@@ -509,6 +509,20 @@ type3 =
       Cons (ETMandatory (NamedType "first" Nothing INTEGER)) (
          Cons (ETMandatory (NamedType "second" Nothing INTEGER)) Nil)))
 
+type7       = NamedType "T3" Nothing (SEQUENCE (Cons (ETMandatory type7First) (Cons (ETMandatory type7Second) (Cons (ETMandatory type7Nest1) Nil))))
+type7First  = NamedType "first" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+type7Second = NamedType "second" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+
+type7Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (ETMandatory type7Fifth) (Cons (ETMandatory type7Fourth) (Cons (ETMandatory type7Nest2) Nil))))
+type7Third  = NamedType "third" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+type7Fourth = NamedType "fourth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+
+type7Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (ETMandatory type7Fifth) (Cons (ETMandatory type7Sixth) Nil)))
+type7Fifth  = NamedType "fifth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+type7Sixth  = NamedType "sixth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+
+testType7 = let NamedType _ _ t = type7Nest1 in toPer t (7:*:(11:*:((13:*:(17:*:Empty)):*:Empty)))
+
 type4 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..4])) NoMarker)
 
 type5 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..14])) NoMarker)
