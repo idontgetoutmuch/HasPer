@@ -565,4 +565,12 @@ instance Arbitrary BITSTRINGVal where
 
 \end{code}
 
+\begin{code}
+
+t3 = NamedType "T3" Nothing (SEQUENCE (
+        Cons (ETMandatory (NamedType "first" Nothing INTEGER)) (
+           Cons (ETMandatory (NamedType "second" Nothing INTEGER)) Nil)))
+
+\end{code}
+
 \end{document}

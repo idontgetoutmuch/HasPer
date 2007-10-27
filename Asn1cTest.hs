@@ -1,6 +1,9 @@
 import Text.PrettyPrint
 import Data.Char
 import ConstrainedType
+import qualified Data.Set as S
+import Data.Word
+import Data.List
 
 t1 = NamedType "T1" Nothing (RANGE INTEGER (Just 25) (Just 30))
 
@@ -9,9 +12,22 @@ t2 = NamedType "T2" Nothing (SEQUENCE (Cons (ETMandatory (NamedType "first" Noth
 t3 = NamedType "T3" Nothing (SEQUENCE (
         Cons (ETMandatory (NamedType "first" Nothing INTEGER)) (
            Cons (ETMandatory (NamedType "second" Nothing INTEGER)) Nil)))
+{-
+    T1 ::=
+      SEQUENCE {
+        first BIT STRING (SIZE (0..65537))
+-}
+
+f1 = NamedType "first" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..((2^16)+1)])) NoMarker)
+
+t4 = NamedType "T4" Nothing (SEQUENCE (
+        Cons (ETMandatory f1) Nil))
 
 genC :: NamedType a -> a -> Doc
 genC nt@(NamedType name tagInfo t) v =
+   text "#include <stdio.h>   /* for stdout */" $$
+   text "#include  <stdlib.h> /* for malloc () */" $$
+   text "#include  <assert.h> /* for run-time control */" $$
    text "#include <" <> text name <> text ".h>" <> space <> text "/* " <> text name <> text " ASN.1 type */" $$
    space $$
    preface $$
@@ -40,18 +56,21 @@ preface =
 
 mainC :: NamedType a -> a -> Doc
 mainC nt@(NamedType name tagInfo t) v = 
-   vcat [
+   foldr ($+$) empty [
       text "int main(int ac, char **av) {",
-      nest 5 (
+      nest 2 (
          vcat [
-            cType <+> text "*" <> cPtr <> semi <+> text "/* Type to encode */",
-            text "asn_enc_rval_t ec; /* Encoder return value */",
-            text "/* Allocate " <+> cType <+> text "*/",
+            space,
+            text "/* Declare a pointer to a " <> text name <> text " type */",
+            cType <+> text "*" <> cPtr <> semi,
+            space,
+            text "/* Encoder return value */",
+            text "asn_enc_rval_t ec;",
+            space,
+            text "/* Allocate an instance of " <+> text name <+> text "*/",
             cPtr <> text " = calloc(1, sizeof(" <> cType <> text ")); /* not malloc! */",
-            text "if(!" <> cPtr <> text ") {",
-            text "perror(\"calloc() failed\");",
-            text "exit(71); /* better, EX_OSERR */",
-            text "}",
+            text "assert(" <> cPtr <> text "); /* Assume infinite memory */",
+            space,
             text "/* Initialize" <+> text name <+> text "*/",
             sequenceC cPtr ntSeq v,
             text "if(ac < 2) {",
@@ -103,21 +122,61 @@ lowerFirst :: String -> String
 lowerFirst "" = ""
 lowerFirst (x:xs) = (toLower x):xs
 
+callocC :: String -> ASNType a -> a -> Doc
+callocC name a@(BITSTRING []) x = undefined -- bitStringC prefix a x
+callocC name a@INTEGER x = 
+   foldr ($+$) empty [
+      text "/* Allocate an instance of " <+> text name <+> text "*/",
+      cPtr <> text " = calloc(1, sizeof(" <> cType <> text ")); /* not malloc! */",
+      text "assert(" <> cPtr <> text "); /* Assume infinite memory */"
+      ]
+   where
+      cPtr = text (lowerFirst name)
+      cType = text name <> text "_t"
+callocC name a@(RANGE t l u) x  = undefined -- typeValC prefix t x
+callocC name a@(SIZE t s e) x   = undefined -- typeValC prefix t x
+callocC name a@(SEQUENCE s) x   = undefined -- sequenceC prefix s x
+
 sequenceC :: Doc -> Sequence a -> a -> Doc
 sequenceC prefix Nil _ = empty
 sequenceC prefix (Cons t ts) (x:*:xs) =
-   prefix <> text "->" <> elemC t x <> semi $$ 
+   elemC (prefix <> text "->") t x $$ 
    sequenceC prefix ts xs
 
-elemC :: ElementType a -> a -> Doc
-elemC (ETMandatory (NamedType n _ t)) x =
-   text n <> text " = " <> typeValC t x
+elemC :: Doc -> ElementType a -> a -> Doc
+elemC prefix (ETMandatory (NamedType n _ t)) x =
+   typeValC (prefix <> text n) t x
 
-typeValC :: ASNType a -> a -> Doc
-typeValC a@(BITSTRING []) x = text (show x)
-typeValC a@INTEGER x        = text (show x)
-typeValC a@(RANGE t l u) x  = typeValC t x
-typeValC a@(SIZE t s e) x   = typeValC t x
-typeValC a@(SEQUENCE s) x   = sequenceC empty s x
+typeValC :: Doc -> ASNType a -> a -> Doc
+typeValC prefix a@(BITSTRING []) x = bitStringC prefix a x
+typeValC prefix a@INTEGER x        = prefix <> text " = " <> text (show x) <> semi
+typeValC prefix a@(RANGE t l u) x  = typeValC prefix t x
+typeValC prefix a@(SIZE t s e) x   = typeValC prefix t x
+typeValC prefix a@(SEQUENCE s) x   = sequenceC prefix s x
 
-   
+namedTypeValC :: Doc -> NamedType a -> a -> Doc
+namedTypeValC prefix nt@(NamedType name tagInfo t) v =
+   typeValC (prefix <+> text name) t v
+
+bitStringC :: Doc -> ASNType a -> a -> Doc
+bitStringC prefix a@(BITSTRING []) x = 
+   vcat (zipWith (<>) bufs ((map ((<> semi) . text .show) . bitStringToBytes) x))
+   where
+      bufs = map (\x -> prefix <> text ".buf[" <> text (show x) <> text "] = ") [0..]
+
+bitStringToBytes :: BitString -> [Word8]
+bitStringToBytes =
+   map fromNonNeg . pad . bitString
+
+pad :: Num a => [a] -> [[a]]
+pad =
+   unfoldr f
+      where
+         f x
+            | l == 0 = Nothing
+            | l < 8  = Just (t ++ replicate (8 - l) 0, [])
+            | otherwise = Just (t, d)
+            where
+               l = length t
+               t = take 8 x
+               d = drop 8 x
