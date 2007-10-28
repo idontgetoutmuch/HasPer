@@ -523,6 +523,12 @@ type7Sixth  = NamedType "sixth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 
 testType7 = let NamedType _ _ t = type7Nest1 in toPer t (7:*:(11:*:((13:*:(17:*:Empty)):*:Empty)))
 
+testType7' = let NamedType _ _ t = type7 in toPer t (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty)))
+
+thereAndBack7 =
+   let NamedType _ _ t = type7 in 
+      mmIdem t (toPer t (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty))))
+
 type4 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..4])) NoMarker)
 
 type5 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..14])) NoMarker)
