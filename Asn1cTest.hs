@@ -55,7 +55,7 @@ mainC nt@(NamedType name tagInfo t) v =
             text "assert(" <> cPtr <> text "); /* Assume infinite memory */",
             space,
             text "/* Initialize" <+> text name <+> text "*/",
-            sequenceC cPtr ntSeq v,
+            topLevelNamedTypeValC nt v, -- sequenceC cPtr ntSeq v,
             space,
             text "if(ac < 2) {",
             nest 5 (text "fprintf(stderr,\"Specify filename for PER output\\n\");"),
