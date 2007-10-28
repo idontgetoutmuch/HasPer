@@ -1,0 +1,12 @@
+FooBar {1 2 0 0 6 1} DEFINITIONS ::=
+  BEGIN
+    T4 ::= 
+      SEQUENCE {
+        first  BIT STRING (SIZE (0..65537)),
+	second BIT STRING (SIZE (0..65537)),
+	nest1 SEQUENCE {
+          third  BIT STRING (SIZE (0..65537)),
+          fourth BIT STRING (SIZE (0..65537))
+	}
+      }
+  END

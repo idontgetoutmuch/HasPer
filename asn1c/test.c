@@ -29,12 +29,12 @@ int main(int ac, char **av) {
   assert(t1); /* Assume infinite memory */ 
 
   /* Prepare a BIT STRING */ 
-  t1->first.buf = calloc(2, 1); 
-  assert(t1->first.buf);
-  t1->first.size = 2;        /* 2 bytes */ 
-  t1->first.buf[0] = 0xc0;   /* Set BIT STRING value */ 
-  t1->first.buf[1] = 0xc0;   /* Set BIT STRING value */ 
-  t1->first.bits_unused = 4; /* Trim unused bits */ 
+  (*t1).first.buf = calloc(2, 1); 
+  assert((*t1).first.buf);
+  (*t1).first.size = 2;        /* 2 bytes */ 
+  (*t1).first.buf[0] = 0xc0;   /* Set BIT STRING value */ 
+  (*t1).first.buf[1] = 0xc0;   /* Set BIT STRING value */ 
+  (*t1).first.bits_unused = 4; /* Trim unused bits */ 
 
   /* 
    * Output the resulting structure as PER 
