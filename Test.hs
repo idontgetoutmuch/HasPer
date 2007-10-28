@@ -529,9 +529,21 @@ thereAndBack7 =
    let NamedType _ _ t = type7 in 
       mmIdem t (toPer t (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty))))
 
+type8       = NamedType "T4" Nothing (SEQUENCE (Cons (ETMandatory type8First) (Cons (ETMandatory type8Second) (Cons (ETMandatory type8Nest1) Nil))))
+type8First  = NamedType "first"  Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+type8Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+
 type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (ETMandatory type8Third) (Cons (ETMandatory type8Fourth) Nil)))
 type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
 type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+
+testType8 = 
+   let (NamedType _ _ t) = type8 in 
+      toPer t ((BitString [1,0,1,0,0,0,0,0]):*:((BitString [1,0,1,0,0,0,0,0]):*:(((BitString [1,0,1,0,0,0,0,0]):*:((BitString [1,0,1,0,0,0,0,0]):*:Empty)):*:Empty)))
+
+thereAndBack8 =
+   let NamedType _ _ t = type8 in 
+      mmIdem t (toPer t ((BitString [1,0,1,0,0,0,0,0]):*:((BitString [1,0,1,0,0,0,0,0]):*:(((BitString [1,0,1,0,0,0,0,0]):*:((BitString [1,0,1,0,0,0,0,0]):*:Empty)):*:Empty))))
 
 type4 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..4])) NoMarker)
 

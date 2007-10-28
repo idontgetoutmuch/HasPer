@@ -5,24 +5,6 @@ import qualified Data.Set as S
 import Data.Word
 import Data.List
 
-t1 = NamedType "T1" Nothing (RANGE INTEGER (Just 25) (Just 30))
-
-t2 = NamedType "T2" Nothing (SEQUENCE (Cons (ETMandatory (NamedType "first" Nothing INTEGER)) Nil))
-
-t3 = NamedType "T3" Nothing (SEQUENCE (
-        Cons (ETMandatory (NamedType "first" Nothing INTEGER)) (
-           Cons (ETMandatory (NamedType "second" Nothing INTEGER)) Nil)))
-{-
-    T1 ::=
-      SEQUENCE {
-        first BIT STRING (SIZE (0..65537))
--}
-
-f1 = NamedType "first" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..((2^16)+1)])) NoMarker)
-
-t4 = NamedType "T4" Nothing (SEQUENCE (
-        Cons (ETMandatory f1) Nil))
-
 genC :: NamedType a -> a -> Doc
 genC nt@(NamedType name tagInfo t) v =
    text "#include <stdio.h>   /* for stdout */" $$
@@ -73,6 +55,7 @@ mainC nt@(NamedType name tagInfo t) v =
             space,
             text "/* Initialize" <+> text name <+> text "*/",
             sequenceC cPtr ntSeq v,
+            space,
             text "if(ac < 2) {",
             nest 5 (text "fprintf(stderr,\"Specify filename for PER output\\n\");"),
             text "} else {",
@@ -100,7 +83,7 @@ mainC nt@(NamedType name tagInfo t) v =
                      ),
                   text "exit(65); /* better, EX_DATAERR */",
                   text "} else {",
-                  text "fprintf(stderr,\"Created %s with BER encoded " <> text name <> text "\\n\",filename);",
+                  text "fprintf(stderr,\"Created %s with PER encoded " <> text name <> text "\\n\",filename);",
                   text "}"
                   ]
                ),
@@ -170,19 +153,51 @@ type7Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (ETMandatory type7Fifth)
 type7Fifth  = NamedType "fifth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 type7Sixth  = NamedType "sixth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 
-testType7 = let NamedType _ _ t = type7Nest1 in toPer t (7:*:(11:*:((13:*:(17:*:Empty)):*:Empty)))
-
-testType7' = let NamedType _ _ t = type7 in toPer t (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty)))
-
 val7 = (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty)))
 
+type8       = NamedType "T4" Nothing (SEQUENCE (Cons (ETMandatory type8First) (Cons (ETMandatory type8Second) (Cons (ETMandatory type8Nest1) Nil))))
+type8First  = NamedType "first"  Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+type8Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
 
+type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (ETMandatory type8Third) (Cons (ETMandatory type8Fourth) Nil)))
+type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+
+val8 = ((BitString (bs8 12)):*:((BitString (bs8 20)):*:(((BitString (bs8 36)):*:((BitString (bs8 52)):*:Empty)):*:Empty)))
+
+bs8 n = take n (cycle [1,0,1,0,0,0,0,0])
+
+{-
+  T5 ::=
+    SEQUENCE {
+      first INTEGER (0..65535),
+      second BIT STRING (SIZE (0..65537))
+    }
+-}
+
+type9       = NamedType "T5" Nothing (SEQUENCE (Cons (ETMandatory type9First) (Cons (ETMandatory type9Second) Nil)))
+type9First  = NamedType "first"  Nothing (RANGE INTEGER (Just 0) (Just 65535))
+type9Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+
+val9 = 2:*:((BitString (bs8 52)):*:Empty)
 
 bitStringC :: Doc -> ASNType a -> a -> Doc
 bitStringC prefix a@(BITSTRING []) x = 
+   space
+   $+$
+   prefix <> text ".buf = calloc(" <> text (show calloc) <> text ", 1); /* " <> text (show calloc) <> text " bytes */" 
+   $$
+   text "assert(" <> prefix <> text ".buf);"
+   $$
+   prefix <> text ".buf.size = " <> text (show calloc) <> semi
+   $$
    vcat (zipWith (<>) bufs ((map ((<> semi) . text .show) . bitStringToBytes) x))
+   $$
+   prefix <> text ".buf.bits_unused = " <> text (show unusedBits) <> semi <> text " /* Trim unused bits */"
    where
       bufs = map (\x -> prefix <> text ".buf[" <> text (show x) <> text "] = ") [0..]
+      (callocM1, unusedBits) = length ((bitString x)) `quotRem` 8
+      calloc = callocM1 + 1
 
 bitStringToBytes :: BitString -> [Word8]
 bitStringToBytes =
