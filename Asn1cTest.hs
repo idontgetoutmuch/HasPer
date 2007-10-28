@@ -122,9 +122,8 @@ lowerFirst :: String -> String
 lowerFirst "" = ""
 lowerFirst (x:xs) = (toLower x):xs
 
-callocC :: String -> ASNType a -> a -> Doc
-callocC name a@(BITSTRING []) x = undefined -- bitStringC prefix a x
-callocC name a@INTEGER x = 
+callocPreamble :: String -> Doc
+callocPreamble name =
    foldr ($+$) empty [
       text "/* Allocate an instance of " <+> text name <+> text "*/",
       cPtr <> text " = calloc(1, sizeof(" <> cType <> text ")); /* not malloc! */",
@@ -133,14 +132,11 @@ callocC name a@INTEGER x =
    where
       cPtr = text (lowerFirst name)
       cType = text name <> text "_t"
-callocC name a@(RANGE t l u) x  = undefined -- typeValC prefix t x
-callocC name a@(SIZE t s e) x   = undefined -- typeValC prefix t x
-callocC name a@(SEQUENCE s) x   = undefined -- sequenceC prefix s x
 
 sequenceC :: Doc -> Sequence a -> a -> Doc
 sequenceC prefix Nil _ = empty
 sequenceC prefix (Cons t ts) (x:*:xs) =
-   elemC (prefix <> text "->") t x $$ 
+   elemC (prefix <> text ".") t x $$ 
    sequenceC prefix ts xs
 
 elemC :: Doc -> ElementType a -> a -> Doc
@@ -157,6 +153,30 @@ typeValC prefix a@(SEQUENCE s) x   = sequenceC prefix s x
 namedTypeValC :: Doc -> NamedType a -> a -> Doc
 namedTypeValC prefix nt@(NamedType name tagInfo t) v =
    typeValC (prefix <+> text name) t v
+
+topLevelNamedTypeValC :: NamedType a -> a -> Doc
+topLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
+   typeValC (parens (text "*" <> text (lowerFirst name))) t v
+
+type7       = NamedType "T3" Nothing (SEQUENCE (Cons (ETMandatory type7First) (Cons (ETMandatory type7Second) (Cons (ETMandatory type7Nest1) Nil))))
+type7First  = NamedType "first" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+type7Second = NamedType "second" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+
+type7Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (ETMandatory type7Fifth) (Cons (ETMandatory type7Fourth) (Cons (ETMandatory type7Nest2) Nil))))
+type7Third  = NamedType "third" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+type7Fourth = NamedType "fourth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+
+type7Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (ETMandatory type7Fifth) (Cons (ETMandatory type7Sixth) Nil)))
+type7Fifth  = NamedType "fifth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+type7Sixth  = NamedType "sixth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
+
+testType7 = let NamedType _ _ t = type7Nest1 in toPer t (7:*:(11:*:((13:*:(17:*:Empty)):*:Empty)))
+
+testType7' = let NamedType _ _ t = type7 in toPer t (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty)))
+
+val7 = (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty)))
+
+
 
 bitStringC :: Doc -> ASNType a -> a -> Doc
 bitStringC prefix a@(BITSTRING []) x = 

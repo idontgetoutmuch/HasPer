@@ -529,6 +529,10 @@ thereAndBack7 =
    let NamedType _ _ t = type7 in 
       mmIdem t (toPer t (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty))))
 
+type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (ETMandatory type8Third) (Cons (ETMandatory type8Fourth) Nil)))
+type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+
 type4 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..4])) NoMarker)
 
 type5 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..14])) NoMarker)
