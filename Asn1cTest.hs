@@ -94,7 +94,7 @@ mainC nt@(NamedType name tagInfo t) v =
                text "return 0; /* Encoding finished successfully */"
             ]
          ),
-         text "}"
+         text "}\n"
       ]
    where
       cPtr = text (lowerFirst name)
@@ -190,11 +190,11 @@ bitStringC prefix a@(BITSTRING []) x =
    $$
    text "assert(" <> prefix <> text ".buf);"
    $$
-   prefix <> text ".buf.size = " <> text (show calloc) <> semi
+   prefix <> text ".size = " <> text (show calloc) <> semi
    $$
    vcat (zipWith (<>) bufs ((map ((<> semi) . text .show) . bitStringToBytes) x))
    $$
-   prefix <> text ".buf.bits_unused = " <> text (show unusedBits) <> semi <> text " /* Trim unused bits */"
+   prefix <> text ".bits_unused = " <> text (show unusedBits) <> semi <> text " /* Trim unused bits */"
    where
       bufs = map (\x -> prefix <> text ".buf[" <> text (show x) <> text "] = ") [0..]
       (callocM1, unusedBits) = length ((bitString x)) `quotRem` 8
