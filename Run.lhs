@@ -23,7 +23,6 @@ import IO
 
 runTest f =
    runCommands [
-      ("pwd","Failure in pwd"),
       ("asn1c -gen-PER " ++ f, "Failure in asn1c"),
       ("mv converter-sample.c converter-sample.c.old", "Failure in mv of converter-sample.c"),
       ("gcc -I. -o test *.c",  "Failure in gcc"),
@@ -62,6 +61,8 @@ main =
       let u = "asn1c." ++ show (utctDay t) ++ "." ++ show (utctDayTime t)
       createDirectory u
       setCurrentDirectory u
+      c <- getCurrentDirectory
+      putStrLn c
       writeFile "generated.asn1" (render (genASN1 type7))
       writeFile "generated.c" (render (genC type7 val7))
       runTest "generated.asn1"
