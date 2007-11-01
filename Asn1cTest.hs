@@ -1,3 +1,5 @@
+module Asn1cTest where
+
 import Text.PrettyPrint
 import Data.Char
 import ConstrainedType
@@ -216,6 +218,7 @@ pad =
                l = length t
                t = take 8 x
                d = drop 8 x
-
+{-
 main =
    writeFile "asn1c2/generated.c" (render (genC type9 val9))
+-}
