@@ -61,19 +61,6 @@ t10 = SIZE (SEQUENCEOF t9) (Elem (fromList [1..3])) NoMarker
 --t11 = CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice))))
 --t12 = CHOICE (ChoiceOption t04 (ChoiceOption t03 NoChoice))
 
--- Semi-constrained INTEGER
-
-tInteger5 = RANGE INTEGER (Just (-1)) Nothing
-vInteger5 = 4096
-integer5  = toPer (RANGE INTEGER (Just (-1)) Nothing) 4096
-tInteger6 = RANGE INTEGER (Just 1) Nothing
-vInteger6 = 127
-integer6  = toPer (RANGE INTEGER (Just 1) Nothing) 127
-tInteger7 = RANGE INTEGER (Just 0) Nothing
-vInteger7 = 128
-integer7  = toPer (RANGE INTEGER (Just 0) Nothing) 128
-
-
 -- Constrained INTEGER
 
 integer8'1 = toPer (RANGE INTEGER (Just 3) (Just 6)) 3
@@ -403,8 +390,8 @@ unConIntegerTest1 =
       assertEqual "Unconstrained INTEGER Test 1" vInteger1 mUn1
    )
 
-longInteger1 = toPer natural longIntegerVal1
-mUnLong1 = mDecodeEncode natural longInteger1
+longInteger1 = toPer tUnConInteger1 longIntegerVal1
+mUnLong1 = mDecodeEncode tUnConInteger1 longInteger1
 
 unConIntegerTest2 = 
    TestCase (
@@ -452,29 +439,44 @@ integerTest3 =
       assertEqual "Semi-Constrained INTEGER Test 3" vSemiConInteger3 mUn3
    )
 
-integer4 = toPer (RANGE INTEGER Nothing (Just 65535)) 128
+vSemiConInteger4 = 128
+semiConInteger4 = toPer tSemiConInteger2 vSemiConInteger4
+mUn4 = mDecodeEncode tSemiConInteger2 semiConInteger4
 
-longIntegerPER2 = toPer natural longIntegerVal2
-mSemiLong2 = mDecodeEncode natural longIntegerPER2
-mUnLongTest2 = longIntegerVal2 == mSemiLong2
+integerTest4 = 
+   TestCase (
+      assertEqual "Semi-Constrained INTEGER Test 4" vSemiConInteger4 mUn4
+   )
+
+-- Semi-constrained INTEGER
+
+tInteger5 = RANGE INTEGER (Just (-1)) Nothing
+vInteger5 = 4096
+integer5  = toPer (RANGE INTEGER (Just (-1)) Nothing) 4096
+tInteger6 = RANGE INTEGER (Just 1) Nothing
+vInteger6 = 127
+integer6  = toPer (RANGE INTEGER (Just 1) Nothing) 127
+tInteger7 = RANGE INTEGER (Just 0) Nothing
+vInteger7 = 128
+integer7  = toPer (RANGE INTEGER (Just 0) Nothing) 128
+
+mUnSemi5 = mDecodeEncode tInteger5 integer5
+mSemiTest5 = vInteger5 == mUnSemi5
+
+mUnSemi6 = mDecodeEncode tInteger6 integer6
+mSemiTest6 = vInteger6 == mUnSemi6
+
+mUnSemi7 = mDecodeEncode tInteger7 integer7
+mSemiTest7 = vInteger7 == mUnSemi7
+
+natural = RANGE INTEGER (Just 0) Nothing
+
+longIntegerVal3 = 256^(2^11)
+longIntegerPER3 = toPer natural longIntegerVal3
+mSemiUnLong3 = mDecodeEncode natural longIntegerPER3
+mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 
 \end{code}
-
-{-
--- Tests for constrained INTEGERs
--- ** uncompTest1 = runState (runErrorT (untoPerInt (RANGE INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
-mUncompTest1 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just 3) (Just 6)) (B.pack [0xc0,0,0,0]))) 0
-
--- These tests are wrong
--- uncompTest2 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x18,0,1,1]))) 0
--- uncompTest3 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x81,0x80,0,0]))) 0
-
-
--- Tests for semi-constrained INTEGERs
--- We need to replace decodeLengthDeterminant with untoPerInt
--- ** unInteger5 = runState (runErrorT (decodeLengthDeterminant (B.pack [0x02,0x10,0x01]))) 0
-mUnInteger5 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
--}
 
 \begin{code}
 
@@ -499,22 +501,6 @@ mIdem t x =
 -}
 
 \begin{code}
-
-mUnSemi5 = mDecodeEncode tInteger5 integer5
-mSemiTest5 = vInteger5 == mUnSemi5
-
-mUnSemi6 = mDecodeEncode tInteger6 integer6
-mSemiTest6 = vInteger6 == mUnSemi6
-
-mUnSemi7 = mDecodeEncode tInteger7 integer7
-mSemiTest7 = vInteger7 == mUnSemi7
-
-natural = RANGE INTEGER (Just 0) Nothing
-
-longIntegerVal3 = 256^(2^11)
-longIntegerPER3 = toPer natural longIntegerVal3
-mSemiUnLong3 = mDecodeEncode natural longIntegerPER3
-mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 
 mmIdem :: ASNType a -> BitStream -> a
 mmIdem t x =
@@ -667,7 +653,8 @@ tests =
       unConIntegerTest3, 
 --       unConIntegerTest4, 
       integerTest2,
-      integerTest3]
+      integerTest3,
+      integerTest4]
 
 main = runTestTT tests
 
