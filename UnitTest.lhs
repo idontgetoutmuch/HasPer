@@ -443,7 +443,15 @@ integerTest2 =
       assertEqual "Semi-Constrained INTEGER Test 2" vSemiConInteger2 mUn2
    )
 
-integer3 = toPer (RANGE INTEGER Nothing (Just 65535)) (-128)
+vSemiConInteger3 = (-128)
+semiConInteger3 = toPer tSemiConInteger2 vSemiConInteger3
+mUn3 = mDecodeEncode tSemiConInteger2 semiConInteger3
+
+integerTest3 = 
+   TestCase (
+      assertEqual "Semi-Constrained INTEGER Test 3" vSemiConInteger3 mUn3
+   )
+
 integer4 = toPer (RANGE INTEGER Nothing (Just 65535)) 128
 
 longIntegerPER2 = toPer natural longIntegerVal2
@@ -658,7 +666,8 @@ tests =
       unConIntegerTest2, 
       unConIntegerTest3, 
 --       unConIntegerTest4, 
-      integerTest2]
+      integerTest2,
+      integerTest3]
 
 main = runTestTT tests
 
