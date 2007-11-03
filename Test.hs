@@ -1,3 +1,5 @@
+module Test where
+
 import ConstrainedType
 import Control.Monad.State
 import Control.Monad.Error
@@ -544,6 +546,38 @@ testType8 =
 thereAndBack8 =
    let NamedType _ _ t = type8 in 
       mmIdem t (toPer t ((BitString [1,0,1,0,0,0,0,0]):*:((BitString [1,0,1,0,0,0,0,0]):*:(((BitString [1,0,1,0,0,0,0,0]):*:((BitString [1,0,1,0,0,0,0,0]):*:Empty)):*:Empty))))
+
+bs8' n = take n (cycle [1,0,1,0,0,0,0,0])
+
+type9       = NamedType "T5" Nothing (SEQUENCE (Cons (ETMandatory type9First) (Cons (ETMandatory type9Second) Nil)))
+type9First  = NamedType "first"  Nothing (RANGE INTEGER (Just 0) (Just 65535))
+type9Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65544])) NoMarker)
+
+val9 = 2:*:((BitString (bs8' 52)):*:Empty)
+
+val91 = 2:*:((BitString (bs8' ((2^16) + 8))):*:Empty)
+
+thereAndBack9 =
+   let NamedType _ _ t = type9 in 
+      mmIdem t (toPer t val9)
+
+thereAndBack91 =
+   let NamedType _ _ t = type9 in 
+      mmIdem t (toPer t val91)
+
+type10 = NamedType "T6" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+
+val10 = BitString (bs8' 56)
+
+val101 = BitString (bs8' ((2^16) + 8))
+
+thereAndBack10 =
+   let NamedType _ _ t = type10 in 
+      mmIdem t (toPer t val10)
+
+thereAndBack101 =
+   let NamedType _ _ t = type10 in 
+      mmIdem t (toPer t val101)
 
 type4 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..4])) NoMarker)
 

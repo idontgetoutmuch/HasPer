@@ -178,12 +178,6 @@ bs8 n = take n (cycle [1,0,1,0,0,0,0,0])
     }
 -}
 
-type9       = NamedType "T5" Nothing (SEQUENCE (Cons (ETMandatory type9First) (Cons (ETMandatory type9Second) Nil)))
-type9First  = NamedType "first"  Nothing (RANGE INTEGER (Just 0) (Just 65535))
-type9Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
-
-val9 = 2:*:((BitString (bs8 52)):*:Empty)
-
 bitStringC :: Doc -> ASNType a -> a -> Doc
 bitStringC prefix a@(BITSTRING []) x = 
    space

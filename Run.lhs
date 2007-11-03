@@ -19,6 +19,7 @@ import ConstrainedType
 import qualified Data.ByteString.Lazy as B
 import Control.Monad.State
 import Control.Monad.Error
+import Test (type9, val9, val91)
 import IO
 
 runTest f =
@@ -63,8 +64,8 @@ main =
       setCurrentDirectory u
       c <- getCurrentDirectory
       putStrLn c
-      writeFile "generated.asn1" (render (genASN1 type7))
-      writeFile "generated.c" (render (genC type7 val7))
+      writeFile "generated.asn1" (render (genASN1 type9))
+      writeFile "generated.c" (render (genC type9 val91))
       runTest "generated.asn1"
       r <- readGen type7
       putStrLn r
