@@ -427,26 +427,24 @@ unConIntegerTest4 =
       assertEqual "Unconstrained INTEGER Test 4" longIntegerVal3 mUnLong3
    )
 
-integer2 = toPer (RANGE INTEGER Nothing (Just 65535)) 127
-integer3 = toPer (RANGE INTEGER Nothing (Just 65535)) (-128)
-integer4 = toPer (RANGE INTEGER Nothing (Just 65535)) 128
-
 \end{code}
 
 \section{Tests for Semi-Constrained INTEGERs}
 
 \begin{code}
 
-tInteger2 = RANGE INTEGER Nothing (Just 65535)
-vInteger2 = 127
-
-mUn2 = mDecodeEncode tInteger2 integer2
--- mUnTest2 = vInteger2 == mUn2
+tSemiConInteger2 = RANGE INTEGER Nothing (Just 65535)
+vSemiConInteger2 = 127
+semiConInteger2 = toPer tSemiConInteger2 vSemiConInteger2
+mUn2 = mDecodeEncode tSemiConInteger2 semiConInteger2
 
 integerTest2 = 
    TestCase (
-      assertEqual "Semi-Constrained INTEGER Test 2" vInteger2 mUn2
+      assertEqual "Semi-Constrained INTEGER Test 2" vSemiConInteger2 mUn2
    )
+
+integer3 = toPer (RANGE INTEGER Nothing (Just 65535)) (-128)
+integer4 = toPer (RANGE INTEGER Nothing (Just 65535)) 128
 
 longIntegerPER2 = toPer natural longIntegerVal2
 mSemiLong2 = mDecodeEncode natural longIntegerPER2
@@ -659,7 +657,7 @@ tests =
       unConIntegerTest1, 
       unConIntegerTest2, 
       unConIntegerTest3, 
-      unConIntegerTest4, 
+--       unConIntegerTest4, 
       integerTest2]
 
 main = runTestTT tests
