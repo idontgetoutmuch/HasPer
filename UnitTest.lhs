@@ -4,6 +4,8 @@
 
 \section{Introduction}
 
+Note that some of the tests take a long time to run especially the one for encoding and decoding $256^{128}$.
+
 \begin{code}
 
 module UnitTest where
@@ -58,13 +60,6 @@ t9 = SEQUENCE (Cons t4' (Cons t4 Nil))
 t10 = SIZE (SEQUENCEOF t9) (Elem (fromList [1..3])) NoMarker
 --t11 = CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice))))
 --t12 = CHOICE (ChoiceOption t04 (ChoiceOption t03 NoChoice))
-
--- Unconstrained INTEGER
-
-integer2 = toPer (RANGE INTEGER Nothing (Just 65535)) 127
-integer3 = toPer (RANGE INTEGER Nothing (Just 65535)) (-128)
-integer4 = toPer (RANGE INTEGER Nothing (Just 65535)) 128
-
 
 -- Semi-constrained INTEGER
 
@@ -394,16 +389,47 @@ seqTest = toPer seqType seqVal
 
 \begin{code}
 
-tInteger1 = INTEGER
+tUnConInteger1 = INTEGER
 vInteger1 = 4096
+longIntegerVal1 = 256^4
+longIntegerVal2 = 256^128
+
 integer1 = toPer INTEGER 4096
 
-mUn1 = mDecodeEncode tInteger1 integer1
+mUn1 = mDecodeEncode tUnConInteger1 integer1
 
-integerTest1 = 
+unConIntegerTest1 = 
    TestCase (
       assertEqual "Unconstrained INTEGER Test 1" vInteger1 mUn1
    )
+
+longInteger1 = toPer natural longIntegerVal1
+mUnLong1 = mDecodeEncode natural longInteger1
+
+unConIntegerTest2 = 
+   TestCase (
+      assertEqual "Unconstrained INTEGER Test 2" longIntegerVal1 mUnLong1
+   )
+
+longInteger2 = toPer tUnConInteger1 longIntegerVal2
+mUnLong2 = mDecodeEncode tUnConInteger1 longInteger2
+
+unConIntegerTest3 = 
+   TestCase (
+      assertEqual "Unconstrained INTEGER Test 3" longIntegerVal2 mUnLong2
+   )
+
+longInteger3 = toPer tUnConInteger1 longIntegerVal3
+mUnLong3 = mDecodeEncode tUnConInteger1 longInteger3
+
+unConIntegerTest4 = 
+   TestCase (
+      assertEqual "Unconstrained INTEGER Test 4" longIntegerVal3 mUnLong3
+   )
+
+integer2 = toPer (RANGE INTEGER Nothing (Just 65535)) 127
+integer3 = toPer (RANGE INTEGER Nothing (Just 65535)) (-128)
+integer4 = toPer (RANGE INTEGER Nothing (Just 65535)) 128
 
 \end{code}
 
@@ -422,17 +448,9 @@ integerTest2 =
       assertEqual "Semi-Constrained INTEGER Test 2" vInteger2 mUn2
    )
 
-longUnIntegerPER1 = toPer tInteger1 longIntegerVal1
-mUnUnLong1 = mDecodeEncode tInteger1 longUnIntegerPER1
-mUnUnLongTest1 = longIntegerVal1 == mUnUnLong1
-
-longUnIntegerPER2 = toPer tInteger1 longIntegerVal2
-mUnUnLong2 = mDecodeEncode tInteger1 longUnIntegerPER2
-mUnUnLongTest2 = longIntegerVal2 == mUnUnLong2
-
-longUnIntegerPER3 = toPer tInteger1 longIntegerVal3
-mUnUnLong3 = mDecodeEncode tInteger1 longUnIntegerPER3
-mUnUnLongTest3 = longIntegerVal3 == mUnUnLong3
+longIntegerPER2 = toPer natural longIntegerVal2
+mSemiLong2 = mDecodeEncode natural longIntegerPER2
+mUnLongTest2 = longIntegerVal2 == mSemiLong2
 
 \end{code}
 
@@ -487,20 +505,10 @@ mSemiTest7 = vInteger7 == mUnSemi7
 
 natural = RANGE INTEGER (Just 0) Nothing
 
-longIntegerVal1 = 256^4
-longIntegerPER1 = toPer natural longIntegerVal1
-mUnLong1 = mDecodeEncode natural longIntegerPER1
-mUnLongTest1 = longIntegerVal1 == mUnLong1
-
-longIntegerVal2 = 256^128
-longIntegerPER2 = toPer natural longIntegerVal2
-mUnLong2 = mDecodeEncode natural longIntegerPER2
-mUnLongTest2 = longIntegerVal2 == mUnLong2
-
 longIntegerVal3 = 256^(2^11)
 longIntegerPER3 = toPer natural longIntegerVal3
-mUnLong3 = mDecodeEncode natural longIntegerPER3
-mUnLongTest3 = longIntegerVal3 == mUnLong3
+mSemiUnLong3 = mDecodeEncode natural longIntegerPER3
+mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 
 mmIdem :: ASNType a -> BitStream -> a
 mmIdem t x =
@@ -646,7 +654,13 @@ foo (NamedType _ _ t) =
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
 
-tests = TestList [integerTest1, integerTest2]
+tests = 
+   TestList [
+      unConIntegerTest1, 
+      unConIntegerTest2, 
+      unConIntegerTest3, 
+      unConIntegerTest4, 
+      integerTest2]
 
 main = runTestTT tests
 
