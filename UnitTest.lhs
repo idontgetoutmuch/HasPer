@@ -18,7 +18,8 @@ import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, Co
 import qualified Data.Set as S
 import Test.HUnit
 
-{-
+\end{code}
+
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
       T1 ::= INTEGER (25..30)
@@ -33,8 +34,8 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
             second T1 OPTIONAL
          }
    END
--}
 
+\begin{code}
 
 t0 = INTEGER
 t01 = INTEGER
@@ -61,8 +62,6 @@ t10 = SIZE (SEQUENCEOF t9) (Elem (fromList [1..3])) NoMarker
 -- Unconstrained INTEGER
 
 integer2 = toPer (RANGE INTEGER Nothing (Just 65535)) 127
-tInteger2 = RANGE INTEGER Nothing (Just 65535)
-vInteger2 = 127
 integer3 = toPer (RANGE INTEGER Nothing (Just 65535)) (-128)
 integer4 = toPer (RANGE INTEGER Nothing (Just 65535)) 128
 
@@ -145,6 +144,9 @@ bsTest4' = toPer (SIZE (BITSTRING []) (Elem (fromList [4..12])) (EM (Just (Elem 
 test1 = toPer (SEQUENCE (Cons (ETMandatory (NamedType "" Nothing
                 (SEQUENCE (Cons (ETMandatory (NamedType "" Nothing t1'))
             Nil)))) Nil)) ((27:*:Empty):*:Empty)
+
+\end{code}
+
 {-
 test2 = toPer (SEQUENCE (Cons t1 (Cons t1 Nil))) (29:*:(30:*:Empty))
 test2a = encodeSeqAux [] [] (Cons t1 (Cons t1 Nil)) (29:*:(30:*:Empty))
@@ -158,6 +160,9 @@ test5 = petest2 (Nothing:*:((Just 30):*:Empty))
 test6 = petest2 ((Just 29):*:(Nothing:*:Empty))
 test7 = petest2 (Nothing:*:(Nothing:*:Empty))
 -}
+
+\begin{code}
+
 -- SEQUENCEOF
 test8 = toPer (SEQUENCEOF t1') [26,27,28,25]
 test9 = toPer (SEQUENCEOF t6) [29:*:(30:*:Empty),28:*:(28:*:Empty)]
@@ -192,6 +197,8 @@ test17
                 (Cons (ETMandatory (NamedType "" Nothing t0)) Nil)))
             (27 :*: (5 :*: Empty))
 
+\end{code}
+
 {-
 test17a = toPer (SEQUENCE (Cons t1 (Cons t0 Nil))) (27 :*: (5 :*: Empty))
 test17b = encodeSeqAux [] [] (Cons t1 (Cons t0 Nil)) (27 :*: (5 :*: Empty))
@@ -223,6 +230,9 @@ test23c
         (Just (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
             :*: (Nothing :*: Empty))
 -}
+
+\begin{code}
+
 -- VISIBLESTRING tests
 
 testvs1 = toPer VISIBLESTRING (VisibleString "Director")
@@ -380,7 +390,7 @@ seqTest = toPer seqType seqVal
 \end{code}
 
 
-\section{Tests for unconstrained INTEGERs}
+\section{Tests for Unconstrained INTEGERs}
 
 \begin{code}
 
@@ -389,15 +399,28 @@ vInteger1 = 4096
 integer1 = toPer INTEGER 4096
 
 mUn1 = mDecodeEncode tInteger1 integer1
--- mUnTest1 = vInteger1 == mUn1
 
 integerTest1 = 
    TestCase (
-      assertEqual "INTEGER 1" vInteger1 mUn1
+      assertEqual "Unconstrained INTEGER Test 1" vInteger1 mUn1
    )
 
+\end{code}
+
+\section{Tests for Semi-Constrained INTEGERs}
+
+\begin{code}
+
+tInteger2 = RANGE INTEGER Nothing (Just 65535)
+vInteger2 = 127
+
 mUn2 = mDecodeEncode tInteger2 integer2
-mUnTest2 = vInteger2 == mUn2
+-- mUnTest2 = vInteger2 == mUn2
+
+integerTest2 = 
+   TestCase (
+      assertEqual "Semi-Constrained INTEGER Test 2" vInteger2 mUn2
+   )
 
 longUnIntegerPER1 = toPer tInteger1 longIntegerVal1
 mUnUnLong1 = mDecodeEncode tInteger1 longUnIntegerPER1
@@ -410,6 +433,8 @@ mUnUnLongTest2 = longIntegerVal2 == mUnUnLong2
 longUnIntegerPER3 = toPer tInteger1 longIntegerVal3
 mUnUnLong3 = mDecodeEncode tInteger1 longUnIntegerPER3
 mUnUnLongTest3 = longIntegerVal3 == mUnUnLong3
+
+\end{code}
 
 {-
 -- Tests for constrained INTEGERs
@@ -427,6 +452,8 @@ mUncompTest1 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just 3) (Just 6)
 mUnInteger5 = runState (runErrorT (mUntoPerInt (RANGE INTEGER (Just (-1)) Nothing) (B.pack [0x02,0x10,0x01]))) 0
 -}
 
+\begin{code}
+
 mDecodeEncode :: ASNType Integer -> BitStream -> Integer
 mDecodeEncode t x =
    case runTest x 0 of
@@ -434,6 +461,9 @@ mDecodeEncode t x =
       (Right xs,_) -> xs
    where
       runTest x y = runState (runErrorT (mFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
+
+\end{code}
+
 {-
 mIdem :: ASNType a -> BitStream -> a
 mIdem t x =
@@ -443,6 +473,8 @@ mIdem t x =
    where
       runTest = runState . runErrorT . fromPer t . B.pack . map (fromIntegral . fromNonNeg) . groupBy 8
 -}
+
+\begin{code}
 
 mUnSemi5 = mDecodeEncode tInteger5 integer5
 mSemiTest5 = vInteger5 == mUnSemi5
@@ -489,7 +521,7 @@ testToPer3' = toPer testType3 testVal3'
 -- It's exposed because we use groupBy 8.
 testFromPer3' = mmIdem testType3 testToPer3'
 
-
+\end{code}
 
 {-
 testType2 = SEQUENCE (Cons t1 (Cons t1 Nil))
@@ -520,6 +552,8 @@ seqTest t xs =
       (Right x,(u,v)) -> show x
    where d = runState (runErrorT (mFromPer t)) (B.pack xs,0)
 -}
+
+\begin{code}
 
 type1 = NamedType "T1" Nothing (RANGE INTEGER (Just 25) (Just 30))
 
@@ -612,7 +646,7 @@ foo (NamedType _ _ t) =
          (Left e,s)  -> return (e ++ " " ++ show s)
          (Right n,s) -> return (show n ++ " " ++ show s)
 
-tests = TestList [integerTest1]
+tests = TestList [integerTest1, integerTest2]
 
 main = runTestTT tests
 
