@@ -476,7 +476,7 @@ mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 
 tBitString1 = BITSTRING []
 vBitString1 = BitString [1,1,0,0,0,1,0,0,0,0]
-bitString1  = toPer (BITSTRING []) (BitString [1,1,0,0,0,1,0,0,0,0])
+bitString1  = toPer tBitString1 vBitString1
 
 eBitString1 = [
    0,0,0,0,1,0,1,0,
@@ -489,7 +489,19 @@ bitStringTest1 =
       assertEqual "BIT STRING Test 1" eBitString1 bitString1 
    )
 
-bsTest1' = toPer (BITSTRING []) (BitString [1,1])
+vBitString1' = BitString [1,1]
+bitString1'  = toPer tBitString1 vBitString1'
+
+eBitString1' = [
+   0,0,0,0,0,0,1,0,
+   1,1
+   ]
+
+bitStringTest1' = 
+   TestCase (
+      assertEqual "BIT STRING Test 2" eBitString1' bitString1'
+   )
+
 bsTest1'' = toPer (BITSTRING []) (BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
 
 -- Size-constrained (BITSTRING [])
@@ -687,7 +699,8 @@ tests =
       integerTest3,
       integerTest4,
       semiIntegerTest5,
-      bitStringTest1]
+      bitStringTest1,
+      bitStringTest1']
 
 main = runTestTT tests
 
