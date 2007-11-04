@@ -20,7 +20,7 @@
 \setlength{\parskip}{\medskipamount}
 \setlength{\parindent}{0pt}
 
-\title{Haskell ASN.1 PER Library 1.0.0}
+\title{Haskell Cryptographic Library 3.0.3}
 \author{Dominic Steinitz}
 
 \begin{document}
@@ -29,51 +29,57 @@
 
 The 
 \htmladdnormallinkfoot
-{Haskell Cryptographic Library 1.0.0}
-{http://www.haskell.org/asn1}
-is an implementation of the ASN.1 Packed Encoding Rules (PER).
+{Haskell Cryptographic Library 3.0.3}
+{http://www.haskell.org/crypto}
+collects together existing Haskell cryptographic
+functions into one cabalized package, together with HUnit tests,
+QuickCheck property tests, examples showing how to interwork with
+other cryptographic implementations and examples showing how to 
+handle other ASN.1 definitions.
 
-
-The current release does not contain a parser for ASN.1 so you have to hand encode
-ASN.1 definitions into the Haskell ASN.1 Abstract Syntax Tree (AST). Examples of these are given
-for each ASN.1 construction supported.
+This release contains:
+\begin{itemize}
+\item DES
+\item Blowfish
+\item AES
+\item Cipher Block Chaining (CBC)
+\item PKCS\#5 and nulls padding
+\item SHA-1
+\item MD5
+\item RSA
+\item OAEP-based encryption (Bellare-Rogaway)
+\item PKCS\#1v1.5 signature scheme
+\item ASN.1
+\item PKCS\#8
+\item X.509 Identity Certificates
+\item X.509 Attribute Certificates
+\end{itemize}
 
 Haddock documentation for the library is available
 \htmladdnormallinkfoot
 {here}
-{http://www.haskell.org/asn1/doc/html}
-; alternatively, you can generate it yourself (need to give instructions on how to do this).
+{http://www.haskell.org/crypto/doc/html}
+.
 
-\section{ASN.1 Support}
+\section{System Requirements}
 
-\subsection{BOOLEAN}
-
-\lstset{language=Haskell}
-\begin{lstlisting}[frame=single]
-BOOLEAN :: ASNType Bool
-
-falseEncoding = toPer BOOLEAN False
-\end{lstlisting}
-
-\subsection{INTEGER}
-
-\subsection{ENUMERATED}
-
-\subsection{REAL}
-
-We don't currently support this. Do we want to?
-
-\subsection{BIT STRING}
-
-\begin{lstlisting}[frame=single]
-BITSTRING :: NamedBits -> ASNType BitString
-
-bitString = 
-   toPer (BITSTRING []) 
-         (BitString [1,1,0,0,0,1,0,0,0,0])
-\end{lstlisting}
-
-We don't seem to have any named bits tests or examples.
+\begin{itemize}
+\item
+The code has been tested on GHC 6.4.
+It does not currently work with Hugs or NHC. 
+\item
+It requires the use of
+\htmladdnormallinkfoot
+{{\tt NewBinary.Binary}}
+{http://www.n-heptane.com/nhlab/repos/NewBinary}
+.
+This uses an old version of cabal and you will need to download 
+\htmladdnormallinkfoot
+{this}
+{http://www.haskell.org/crypto/downloads/NewBinary.cabal}
+this
+in order to build and install it.
+\end{itemize}
 
 \section{Installation Instructions}
 
@@ -81,7 +87,7 @@ Get the sources:
 
 \lstset{language=shell,basicstyle=\ttfamily\small}
 \begin{lstlisting}[frame=single]
-darcs get --tag "4.0.3" http://darcs.haskell.org/crypto
+darcs get --tag "3.0.3" http://www.haskell.org/crypto/src
 \end{lstlisting}
 
 Build and install ready for testing:
@@ -97,6 +103,7 @@ Run the tests.
 
 \begin{lstlisting}[frame=single]
 cd /my/chosen/dir/bin
+./BERTest
 ./RSATest
 ./SymmetricTest
 ./QuickTest
@@ -115,11 +122,388 @@ their final destination:
 ./Setup install
 \end{lstlisting}
 
+\section{Asymmetric Encryption and Digital Signing}
+
+\subsection{Preliminaries}
+
+First of all, create a self-signed (identity) certificate and private key.
+Be careful as not all OIDs are supported (although they are easy to add).
+
+\lstset{language=shell,basicstyle=\ttfamily\small}
+\begin{lstlisting}[frame=single]
+openssl req -new -nodes -x509 -outform PEM -out cert.pem \
+-keyout key.pem -days 365 -subj "/C=UK/L=Tooting/CN=Dan"
+\end{lstlisting}
+
+Copy the certificate and save it
+using the
+Distinguished Encoding Rules (DER) format.
+
+\begin{lstlisting}[frame=single]
+openssl x509 -inform PEM -outform DER -in cert.pem \
+-out cert.der
+\end{lstlisting}
+
+Extract the public key from the certificate.
+
+\begin{lstlisting}[frame=single]
+openssl x509 -in cert.pem -pubkey -noout > pubkey.pem
+\end{lstlisting}
+
+Copy the private key and store it using DER.
+
+\begin{lstlisting}[frame=single]
+openssl pkcs8 -topk8 -inform PEM -outform DER -in key.pem \
+-nocrypt -out key.der
+\end{lstlisting}
+
+Notes:
+\begin{itemize}
+\item
+The private key is produced in PKCS\#8 format.
+You can look at it with Peter Gutmann's ASN.1 
+\htmladdnormallinkfoot
+{object dump program}
+{http://www.cs.auckland.ac.nz/~pgut001/dumpasn1.c}
+if required. 
+\item
+The private key is unencrypted. Storing private keys in clear 
+is not good security practice. The current implementation does not support 
+encrypted private keys but this should be straightforward to add.
+\end{itemize}
+
+Run the examples to examine your private and public keys.
+
+\begin{lstlisting}[frame=single]
+PKCS8Example key.der
+X509Example cert.der
+\end{lstlisting}
+
+\subsection{Attribute Certificates}
+
+\htmladdnormallinkfoot
+{PERMIS}
+{http://sec.isi.salford.ac.uk/permis}
+provides facilities for generating attribute certificates using
+the
+\htmladdnormallinkfoot
+{Attribute Certicate Manager}
+{http://sec.isi.salford.ac.uk/permis/private/wip.html\#ACM}
+.
+
+Run the example to examine your certificate.
+
+\begin{lstlisting}[frame=single]
+AttributeCertificate attCert.der
+\end{lstlisting}
+
+\subsection{Encryption}
+
+Run the example to encrypt using Haskell and decrypt using openssl. Note
+that only OAEP is supported currently. This is not the default for openssl
+so you must remember to add the correct option.
+
+\begin{lstlisting}[frame=single]
+echo plaintext > plaintext
+
+RSAEncryptionExample --cert=cert.der --plain=plaintext \
+--cipher=ciphertext
+
+openssl rsautl -decrypt -inkey key.pem -in ciphertext \ 
+-out unciphertext -oaep
+\end{lstlisting}
+
+\subsection{Signing and Verification}
+
+Signing is more complicated than encryption so it is best to check
+that you are using signatures correctly before using the library.
+
+You can sign a "small" amount of data with 
+\begin{tt}openssl rsautl\end{tt}.
+Doing this with more data than allowed by the encryption algorithm
+will result in error messages. It's important to understand
+that this operation signs the raw data and does not digest it
+beforehand. However, the operation does apply the padding algorithm
+described in the
+\htmladdnormallinkfoot
+{PKCS \#1 v2.1: RSA Cryptography Standard}
+{ftp://ftp.rsasecurity.com/pub/pkcs/pkcs-1/pkcs-1v2-1.pdf}
+and in
+\htmladdnormallinkfoot
+{PKCS \#1: RSA Encryption Standard: An RSA Laboratories Technical Note 
+Version 1.5 Revised November 1, 1993}
+{ftp://ftp.rsasecurity.com/pub/pkcs/ps/pkcs-1.ps}
+. This prepends the data to be signed with 
+\begin{tt}00 01 ff \ldots ff 00\end{tt} as can be seen below.
+
+\begin{lstlisting}[frame=single]
+echo small > small.txt
+
+openssl rsautl -in small.txt -inkey key.pem -sign -out small.sgn
+
+openssl rsautl -verify -in small.sgn -inkey pubkey.pem -pubin \
+-hexdump -raw
+\end{lstlisting}
+
+\begin{lstlisting}
+0000 - 00 01 ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0010 - ff ff ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0020 - ff ff ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0030 - ff ff ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0040 - ff ff ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0050 - ff ff ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0060 - ff ff ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0070 - ff ff ff ff ff ff ff ff-ff 00 73 6d 61 6c 6c 0a   ..........small.
+\end{lstlisting}
+
+You can sign larger amounts of data with 
+\begin{tt}openssl dgst\end{tt}.
+In contrast to 
+\begin{tt}openssl rsautl\end{tt}
+this digests
+the data, encodes the digest in
+
+\lstset{language=ASN1}
+\begin{lstlisting}[frame=single]
+DigestInfo ::= SEQUENCE {
+   digestAlgorithm DigestAlgorithm,
+   digest OCTET STRING
+}
+\end{lstlisting}
+
+as DER and then encrypts it with the the private key.
+Again, this DER is prepended with 
+\begin{tt}00 01 ff \ldots ff 00\end{tt} as can be seen below.
+
+\lstset{language=shell,basicstyle=\ttfamily\small}
+\begin{lstlisting}[frame=single]
+openssl dgst -sha1 -sign key.pem -out ReadMe.sgn ReadMe.tex
+
+openssl rsautl -verify -in ReadMe.sgn -inkey pubkey.pem -pubin \
+-hexdump -raw
+\end{lstlisting}
+
+\begin{lstlisting}
+0000 - 00 01 ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0010 - ff ff ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0020 - ff ff ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0030 - ff ff ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0040 - ff ff ff ff ff ff ff ff-ff ff ff ff ff ff ff ff   ................
+0050 - ff ff ff ff ff ff ff ff-ff ff ff ff 00 30 21 30   .............0!0
+0060 - 09 06 05 2b 0e 03 02 1a-05 00 04 14 90 d0 00 b2   ...+............
+0070 - f6 b3 d7 2f 2c ab e7 40-6a 75 89 7c bb 56 54 19   .../,..@ju.|.VT.
+\end{lstlisting}
+
+The ASN.1 can be parsed using the following command.
+
+\begin{lstlisting}[frame=single]
+openssl rsautl -in ReadMe.sgn -verify -asn1parse \
+-inkey pubkey.pem -pubin
+\end{lstlisting}
+
+\begin{lstlisting}
+ 0:d=0  hl=2 l=  33 cons: SEQUENCE
+ 2:d=1  hl=2 l=   9 cons:  SEQUENCE
+ 4:d=2  hl=2 l=   5 prim:   OBJECT            :sha1
+11:d=2  hl=2 l=   0 prim:   NULL
+13:d=1  hl=2 l=  20 prim:  OCTET STRING
+0000 - 90 d0 00 b2 f6 b3 d7 2f-2c ab e7 40 6a 75 89 7c   ......./,..@ju.|
+0010 - bb 56 54 19                                       .VT.
+\end{lstlisting}
+
+As a final verification, compare the parsed digest against a digest
+of the plaintext file.
+
+\begin{lstlisting}[frame=single]
+openssl dgst -sha1 ReadMe.tex
+SHA1(ReadMe.tex)= 90d000b2f6b3d72f2cabe7406a75897cbb565419
+
+sha1sum ReadMe.tex
+90d000b2f6b3d72f2cabe7406a75897cbb565419  ReadMe.tex
+\end{lstlisting}
+
+Now that you have confirmed that signatures are working satisfactorily,
+you can verify one using the Haskell example.
+
+\begin{lstlisting}[frame=single]
+RSAVerifyExample -ecert.der -pReadMe.tex -sReadMe.sgn
+\end{lstlisting}
+
+\begin{lstlisting}
+AlgorithmIdentifier {algorithm1 = OID [1,3,14,3,2,26], parameters1 = Nothing}
+Given digest:      OctetString [144,208,0,178,246,179,215,47,44, \
+                                171,231,64,106,117,137,124,187,86,84,25]
+Calculated digest: OctetString [144,208,0,178,246,179,215,47,44,171, \
+                                231,64,106,117,137,124,187,86,84,25]
+Verified
+\end{lstlisting}
+
+\section{ASN.1 Support}
+
+The package contains some enough general ASN.1 support to decode PKCS\#8 and
+X.509 identity and attribute certificates encoded using BER. See the examples that
+are provided with the package: \begin{tt}X509Example\end{tt},
+\begin{tt}PKCS8Example\end{tt}, and \begin{tt}AttributeCertificate\end{tt}.
+
+Here's a further example.
+
+Suppose you have an ASN.1 module and have checked that it conforms to
+the standard using, for example, 
+the on-line tool, 
+\htmladdnormallinkfoot{Asnp}{http://asn1.elibel.tm.fr/en/tools/asnp/index.htm}
+\footnote{Definitions using ANY DEFINED BY have to be checked with -1990.}
+\footnote{Asnp was developed in Objective Caml.}
+
+\lstset{language=ASN1}
+\begin{lstlisting}[frame=single]
+FooBar {1 2 0 0 6 1} DEFINITIONS ::= 
+   BEGIN 
+      Journey ::= SEQUENCE {
+         origin IA5String,
+         stop1 [0] IA5String OPTIONAL,
+         stop2 [1] IA5String OPTIONAL,
+         destination IA5String
+      }
+      Odyssey ::= SEQUENCE {
+         start Journey,
+         trip1 [0] Journey OPTIONAL,
+         trip2 [1] Journey OPTIONAL,
+         trip3 [2] Journey OPTIONAL,
+         end Journey
+      }
+   END 
+\end{lstlisting}
+
+Create abstract Haskell representations of the ASN.1 types.
+
+\lstset{language=Haskell}
+\begin{lstlisting}[frame=single]
+journey =
+   "Journey" ::=
+      AbsSeq Universal 16 Implicit [
+         Regular  (Just "origin"       :>: 
+            (Nothing  :@: absIA5String)),
+         Optional (Just "stop1"        :>: 
+            (Just 0   :@: absIA5String)),
+         Optional (Just "stop2"        :>: 
+            (Just 1   :@: absIA5String)),
+         Regular  (Just "destination"  :>: 
+            (Nothing  :@: absIA5String))
+      ]
+
+odyssey =
+   "Odyssey" ::=
+      AbsSeq Universal 16 Implicit [
+         Regular  (Just "start"       :>: (Nothing  :@: journey)),
+         Optional (Just "trip1"       :>: (Just 0   :@: journey)),
+         Optional (Just "trip2"       :>: (Just 1   :@: journey)),
+         Optional (Just "trip3"       :>: (Just 2   :@: journey)),
+         Regular  (Just "end"         :>: (Nothing  :@: journey))
+      ]
+\end{lstlisting}
+
+Then you can check that (abstract representations of) BER values conform
+to these types.
+
+\begin{lstlisting}[frame=single]
+module Main(main) where
+
+import Codec.ASN1.BER
+import Codec.ASN1
+
+-- Other definitions
+
+main = 
+   do (w,y) <- typeCheck odyssey berValue
+      putStrLn (show w)
+\end{lstlisting}
+
+Now suppose that the BER value conforms to the ASN.1 type and that
+you wish to manipulate the various values in the encoding. First
+create some Haskell types to hold the decoded values.
+
+\begin{lstlisting}[frame=single]
+data Journey =
+   Journey {
+      origin :: IA5String,
+      stop1 :: Maybe IA5String,
+      stop2 :: Maybe IA5String,
+      destination :: IA5String
+   }
+   deriving (Eq,Show)
+
+data Odyssey =
+   Odyssey {
+      start :: Journey,
+      trip1 :: Maybe Journey,
+      trip2 :: Maybe Journey,
+      trip3 :: Maybe Journey,
+      end   :: Journey
+   }
+   deriving (Eq,Show)
+\end{lstlisting}
+
+Then make them instances of the class {\begin{tt}Encode\end{tt}}.
+
+\begin{lstlisting}[frame=single]
+
+instance Encode Journey where
+   decode a b =
+      do x <- b
+         let as = absSeqComponents a
+             bs  = encodedDefComps x
+         return $
+            Journey {
+               origin      = fromJust (decode (as!!0) (bs!!0)),
+               stop1       = do decode (as!!1) (bs!!1),
+               stop2       = do decode (as!!2) (bs!!2),
+               destination = fromJust (decode (as!!3) (bs!!3))
+            }
+
+instance Encode Odyssey where
+   decode a b =
+      do x <- b
+         let as = absSeqComponents a
+             bs  = encodedDefComps x
+         return $
+            Odyssey {
+               start  = fromJust (decode (as!!0) (bs!!0)),
+               trip1  = do decode (as!!1) (bs!!1),
+               trip2  = do decode (as!!2) (bs!!2),
+               trip3  = do decode (as!!3) (bs!!3),
+               end    = fromJust (decode (as!!4) (bs!!4))
+            }
+
+\end{lstlisting}
+
+Finally, you can extract values from the decoded value.
+
+\begin{lstlisting}[frame=single]
+module Main(main) where
+
+import Codec.ASN1.BER
+import Codec.ASN1
+
+-- Other definitions
+
+main = 
+   do (w,y) <- typeCheck odyssey berValue
+      let (_ ::= c) = w
+          d         = decode c (Just y)
+          (Just x)  = d
+      putStrLn . show . start $ x
+\end{lstlisting}
+
+Further examples can be found in {\tt BERTest.hs}
+
 \section{To Do}
 
 In no particular order:
 
 \begin{itemize}
+\item
+Read and generate PKCS12 private keys so that it is easy to inter-work 
+with other RSA implementations.
 \item
 Incorporate other symmetric key algorithms already coded in Haskell.
 \item
@@ -127,34 +511,76 @@ Performance analysis as Blowfish ought to run more quickly than DES.
 \item
 Other modes / padding schemes.
 \item
+Fix the known issue  with ASN.1 CHOICE types where an error in one
+of the choices will give an error message which indicates that no valid
+choice was found. It would be better to report an error indicating the
+problem in choice.
+\item
+Although support for
+{\begin{tt}ANY DEFINED BY\end{tt}} has been improved, it and its replacement
+in later versions of the ASN.1 standards need yet further improvement.
+In particular, replace the index
+number by a label and do not treat as equivalent to {\tt OPTIONAL} or
+{\tt DEFAULT}.
+\item
 Extend typechecking to ensure that only the appropriate key sizes are used
 for a given algorithm.
 \item
-Improve performance, for example, for SHA1. This 
-\htmladdnormallinkfoot
-{code}
-{http://www.abridgegame.org/repos/darcs-unstable}
-runs an order of magnitude faster but, with respect to the authors, doesn't
-feel that functional.
+Although some 
+ASN.1 definitions have been put into more appropriate modules, more work
+needs to be done, for example,
+{\tt AlgorithmIdentifier}.
 \item
-Get rid of the GPL code.
+Check lengths for correctness when decoding BER. See the Codec.ASN1.TLV
+source for more on this.
+\item
+Improve the error messages when checking a BER encoding against its ASN.1
+specification. Currently the messages say what has failed but does not
+give the context.
 \end{itemize}
 
 \section{Contact}
 
 All questions, comments, bug reports, flames, requests for 
-updates / changes and suggestions should be directed to Dominic Steinitz and
-logged
-\htmladdnormallinkfoot
-{here}
-{http://hackage.haskell.org/trac/crypto}
-.
+updates / changes and suggestions should be directed to Dominic Steinitz.
+
 \section{Licensing}
 
 The modules in the library come from different authors and have been 
 released under different licences. 
 
 \subsection{Contributors}
+
+\subsubsection{Codec.ASN1}
+\begin{tabular}{|p{6cm}|p{3cm}|p{3cm}|p{1cm}|}
+\hline\hline
+Codec.ASN1 & Dominic Steinitz & 
+Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
+Codec.ASN1.BER & Dominic Steinitz & 
+Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
+Codec.ASN1.PKCS8 & Dominic Steinitz & 
+Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
+Codec.ASN1.PKCS1v15 & Dominic Steinitz & 
+Copyright \copyright\ 2006, All rights reserved & BSD \\
+\hline
+Codec.ASN1.TLV & Dominic Steinitz & 
+Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
+Codec.ASN1.X509 & Dominic Steinitz & 
+Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
+Codec.ASN1.X509.Information\-Framework
+& Dominic Steinitz &
+Copyright \copyright\ 2006, All rights reserved & BSD \\
+\hline
+Codec.ASN1.X509.Attribute\-Certificate\-Definitions
+& Dominic Steinitz &
+Copyright \copyright\ 2006, All rights reserved & BSD \\
+\hline\hline
+\end{tabular}
 
 \subsubsection{Codec.Binary}
 \begin{tabular}{|p{6cm}|p{3cm}|p{3cm}|p{1cm}|}
@@ -232,6 +658,9 @@ Copyright \copyright\ 2005, All rights reserved & BSD \\
 \hline
 Data.Digest.SHA1 & Dominic Steinitz &
 Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
+Data.Digest.SHA1Aux & Ian Lynagh &
+Copyright \copyright\ 2005, All rights reserved & BSD \\
 \hline\hline
 \end{tabular}
 
@@ -247,7 +676,15 @@ Copyright \copyright\ 2005, All rights reserved & BSD \\
 \subsubsection{Tests and Examples}
 \begin{tabular}{|p{6cm}|p{3cm}|p{3cm}|p{1cm}|}
 \hline\hline
+BERTest
+& Dominic Steinitz &
+Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
 RSATest
+& Dominic Steinitz &
+Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
+X509Example
 & Dominic Steinitz &
 Copyright \copyright\ 2005, All rights reserved & BSD \\
 \hline
@@ -258,6 +695,22 @@ Copyright \copyright\ 2005, All rights reserved & BSD \\
 SymmetricTest
 & Dominic Steinitz &
 Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
+PKCS8Example
+& Dominic Steinitz &
+Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
+RSAEncryptionExample
+& Dominic Steinitz &
+Copyright \copyright\ 2005, All rights reserved & BSD \\
+\hline
+AttributeCertificate
+& Dominic Steinitz &
+Copyright \copyright\ 2006, All rights reserved & BSD \\
+\hline
+RSAVerifyExample
+& Dominic Steinitz &
+Copyright \copyright\ 2006, All rights reserved & BSD \\
 \hline\hline
 \end{tabular}
 
@@ -343,8 +796,6 @@ even if advised of the possibility of such damage.
 \item
 Doug Hoyte (HardCore SoftWare)
 \item
-Anatoly Zaretsky
-\item
 \htmladdnormallinkfoot
    {Ian Lynagh}
    {http://web.comlab.ox.ac.uk/oucl/work/ian.lynagh}
@@ -362,15 +813,9 @@ Lukasz Anforowicz
 \htmladdnormallinkfoot 
 {Warrick Gray}
 {http://homepages.paradise.net.nz/warrickg/haskell/http/}
-\item
-\htmladdnormallinkfoot 
-{Russell O'Connor}
-{http://r6.ca}
-\item
-Spencer Janssen
 \end{itemize}
 
-This document was last updated on 1st May 2007.
-\copyright\ 2006--2007 Dominic Steinitz. 
+This document was last updated on 1st April 2006.
+\copyright\ 2006 Dominic Steinitz. 
 
 \end{document}
