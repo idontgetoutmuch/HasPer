@@ -1,0 +1,195 @@
+\documentclass{article}
+
+\usepackage{listings}
+\usepackage{a4}
+\usepackage{courier}
+\usepackage{hyperref}
+\usepackage{html}
+
+
+\lstdefinelanguage{ASN1} {
+  morekeywords={},
+  sensitive=false,
+  morecomment=[s]{(--}{--)}
+  }
+
+\lstdefinelanguage{shell} {
+  sensitive=true
+  }
+
+\setlength{\parskip}{\medskipamount}
+\setlength{\parindent}{0pt}
+
+\title{Haskell ASN.1 PER Library 1.0.0}
+\author{Dominic Steinitz}
+
+\begin{document}
+
+\maketitle
+
+The 
+\htmladdnormallinkfoot
+{Haskell Cryptographic Library 1.0.0}
+{http://www.haskell.org/asn1}
+is an implementation of the ASN.1 Packed Encoding Rules (PER).
+
+
+The current release does not contain a parser for ASN.1 so you have to hand encode
+ASN.1 definitions into the Haskell ASN.1 Abstract Syntax Tree (AST). Examples of these are given
+for each ASN.1 construction supported.
+
+Haddock documentation for the library is available
+\htmladdnormallinkfoot
+{here}
+{http://www.haskell.org/asn1/doc/html}
+; alternatively, you can generate it yourself (need to give instructions on how to do this).
+
+\section{ASN.1 Support}
+
+\subsection{BOOLEAN}
+
+\lstset{language=Haskell}
+\begin{lstlisting}[frame=single]
+BOOLEAN :: ASNType Bool
+
+falseEncoding = toPer BOOLEAN False
+\end{lstlisting}
+
+\subsection{INTEGER}
+
+\subsection{ENUMERATED}
+
+\subsection{REAL}
+
+We don't currently support this. Do we want to?
+
+\subsection{BIT STRING}
+
+\begin{lstlisting}[frame=single]
+BITSTRING :: NamedBits -> ASNType BitString
+
+encodedBitString = 
+   toPer (BITSTRING []) 
+         (BitString [1,1,0,0,0,1,0,0,0,0])
+\end{lstlisting}
+
+We don't seem to have any named bits tests or examples.
+
+\section{Installation Instructions}
+
+Get the sources:
+
+\lstset{language=shell,basicstyle=\ttfamily\small}
+\begin{lstlisting}[frame=single]
+darcs get --tag "1.0.0" http://darcs.haskell.org/asn1
+\end{lstlisting}
+
+Build and install ready for testing:
+
+\begin{lstlisting}[frame=single]
+ghc -o Setup Setup.hs -package Cabal
+./Setup configure --prefix=/my/chosen/dir
+./Setup build
+./Setup install --user
+\end{lstlisting}
+
+Run the tests.
+
+\begin{lstlisting}[frame=single]
+cd /my/chosen/dir/bin
+./UnitTest
+\end{lstlisting}
+
+You can now run the examples to confirm further that everything
+is working satisfactorily.
+When you are happy, build and install them in
+their final destination:
+
+\begin{lstlisting}[frame=single]
+./Setup unregister --user
+./Setup clean
+./Setup configure
+./Setup build
+./Setup install
+\end{lstlisting}
+
+\section{To Do}
+
+In no particular order:
+
+\begin{itemize}
+\item
+Parser.
+\item
+Object classes.
+\end{itemize}
+
+\section{Contact}
+
+All questions, comments, bug reports, flames, requests for 
+updates / changes and suggestions should be directed to Dominic Steinitz and
+logged
+\htmladdnormallinkfoot
+{here}
+{http://code.google.com/p/hasn1/}
+.
+
+
+The modules in the library come from different authors and have been 
+released under different licences. 
+
+\section{Licensing}
+
+This license is based on
+\htmladdnormallinkfoot
+{The BSD License}
+{http://www.opensource.org/licenses/bsd-license.php}.
+
+Redistribution and use in source and binary forms, with or without 
+modification, are permitted provided that the following conditions are met:
+
+\begin{itemize}
+\item
+Redistributions of source code must retain the above copyright notice, 
+this list of conditions and the following disclaimer.
+\item
+Redistributions in binary form must reproduce the above copyright notice, 
+this list of conditions and the following disclaimer in the documentation 
+and/or other materials provided with the distribution.
+\item
+The names of its contributors may not be used to endorse or promote 
+products derived from this software without specific prior written permission.
+\end{itemize}
+
+\begin{sc}
+This software is provided by the copyright holders and contributors ``AS IS'' 
+and any express or implied warranties, including, but not limited to, 
+the implied warranties of merchantability and fitness for a particular 
+purpose are disclaimed. In no event shall the copyright onwers or
+contributors be liable for any direct, indirect, incidental, special,
+exemplary, or consequential damages (including, but not limited to,
+procurement of substitute goods or services; loss of use, data, or profits;
+or business interruption) however caused and on any theory of liability,
+whether in contract, strict liability, or tort (including negligence or
+otherwise) arising in any way out of the use of this software,
+even if advised of the possibility of such damage.
+\end{sc}
+
+\section{Contributors}
+
+\begin{itemize}
+
+\item
+\htmladdnormallinkfoot
+   {Dan Russell}
+   {http://www.kingston.ac.uk/~ku02309/}
+
+\item
+Dominic Steinitz
+
+\end{itemize}
+
+This document was last updated on 4th November 2007.
+\copyright\ 2006--2007 Dominic Steinitz. 
+
+\end{document}
