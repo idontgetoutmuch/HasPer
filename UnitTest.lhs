@@ -102,25 +102,6 @@ ev = (Nothing :*:
                 (Nothing :*:
                     (Nothing :*:
                         (Just "F" :*: Empty))))))
--- BitString
-
-bsTest1  = toPer (BITSTRING []) (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest1' = toPer (BITSTRING []) (BitString [1,1])
-bsTest1'' = toPer (BITSTRING []) (BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
-
--- Size-constrained (BITSTRING [])
-
-bsTest2 = toPer (SIZE (BITSTRING []) (Elem (fromList [7])) NoMarker) (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest3 = toPer (SIZE (BITSTRING []) (Elem (fromList [12..15])) NoMarker)(BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest3' = toPer (SIZE (BITSTRING []) (Elem (fromList [0..2128])) NoMarker) (BitString [1,1])
-
-
--- Extensible Size-Constrained (BITSTRING [])
-
-bsTest4 = toPer (SIZE (BITSTRING []) (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
-                (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest4' = toPer (SIZE (BITSTRING []) (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
-                (BitString [1,1,0,0,0,1,0,0,0,0,1,0,1])
 -- SEQUENCE
 
 test1 = toPer (SEQUENCE (Cons (ETMandatory (NamedType "" Nothing
@@ -488,6 +469,46 @@ mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 
 \end{code}
 
+
+\section{BIT STRING}
+
+\begin{code}
+
+tBitString1 = BITSTRING []
+vBitString1 = BitString [1,1,0,0,0,1,0,0,0,0]
+bitString1  = toPer (BITSTRING []) (BitString [1,1,0,0,0,1,0,0,0,0])
+
+eBitString1 = [
+   0,0,0,0,1,0,1,0,
+   1,1,0,0,0,1,0,0,
+   0,0
+   ]
+
+bitStringTest1 = 
+   TestCase (
+      assertEqual "BIT STRING Test 1" eBitString1 bitString1 
+   )
+
+bsTest1' = toPer (BITSTRING []) (BitString [1,1])
+bsTest1'' = toPer (BITSTRING []) (BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
+
+-- Size-constrained (BITSTRING [])
+
+bsTest2 = toPer (SIZE (BITSTRING []) (Elem (fromList [7])) NoMarker) (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest3 = toPer (SIZE (BITSTRING []) (Elem (fromList [12..15])) NoMarker)(BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest3' = toPer (SIZE (BITSTRING []) (Elem (fromList [0..2128])) NoMarker) (BitString [1,1])
+
+
+-- Extensible Size-Constrained (BITSTRING [])
+
+bsTest4 = toPer (SIZE (BITSTRING []) (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
+                (BitString [1,1,0,0,0,1,0,0,0,0])
+bsTest4' = toPer (SIZE (BITSTRING []) (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
+                (BitString [1,1,0,0,0,1,0,0,0,0,1,0,1])
+
+\end{code}
+
+
 \begin{code}
 
 mDecodeEncode :: ASNType Integer -> BitStream -> Integer
@@ -665,7 +686,8 @@ tests =
       integerTest2,
       integerTest3,
       integerTest4,
-      semiIntegerTest5]
+      semiIntegerTest5,
+      bitStringTest1]
 
 main = runTestTT tests
 
