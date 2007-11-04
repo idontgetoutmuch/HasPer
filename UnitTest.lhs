@@ -1,5 +1,13 @@
 \documentclass{article}
 %include polycode.fmt
+\usepackage{listings}
+
+\lstdefinelanguage{ASN1} {
+  morekeywords={},
+  sensitive=false,
+  morecomment=[s]{(--}{--)}
+  }
+
 \begin{document}
 
 \section{Introduction}
@@ -22,6 +30,8 @@ import Test.HUnit
 
 \end{code}
 
+\lstset{language=ASN1}
+\begin{lstlisting}[frame=single]
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
       T1 ::= INTEGER (25..30)
@@ -36,6 +46,7 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
             second T1 OPTIONAL
          }
    END
+\end{lstlisting}
 
 \begin{code}
 
@@ -353,7 +364,7 @@ seqTest = toPer seqType seqVal
 \end{code}
 
 
-\section{Tests for Unconstrained INTEGERs}
+\section{Tests for Unconstrained INTEGER}
 
 \begin{code}
 
@@ -425,7 +436,7 @@ integerTest4 =
 
 \end{code}
 
-\section{Tests for Semi-Constrained INTEGERs}
+\section{Tests for Semi-Constrained INTEGER}
 
 \begin{code}
 
@@ -470,7 +481,7 @@ mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 \end{code}
 
 
-\section{BIT STRING}
+\section{Tests for BIT STRING}
 
 \begin{code}
 
@@ -518,12 +529,40 @@ bitStringTest1'' =
 
 \end{code}
 
-\subsection{Size Constrained BIT STRING}
+\subsection{Tests for Size Constrained BIT STRING}
 
 \begin{code}
 
-bsTest2 = toPer (SIZE (BITSTRING []) (Elem (fromList [7])) NoMarker) (BitString [1,1,0,0,0,1,0,0,0,0])
+tSConBitString1 = SIZE (BITSTRING []) (Elem (fromList [7])) NoMarker
+vSConBitString1 = BitString [1,1,0,0,0,1,0]
+sConBitString1  = toPer tSConBitString1 vSConBitString1
+
+eSConBitString1 = [
+   1,1,0,0,0,1,0
+   ]
+
+sConBitStringTest1 = 
+   TestCase (
+      assertEqual "BIT STRING Test 4" eSConBitString1 sConBitString1
+   )
+
 bsTest3 = toPer (SIZE (BITSTRING []) (Elem (fromList [12..15])) NoMarker)(BitString [1,1,0,0,0,1,0,0,0,0])
+
+tSConBitString2 = SIZE (BITSTRING []) (Elem (fromList [12..15])) NoMarker
+vSConBitString2 = BitString [1,0,0,1,1,0,0,1,1,0,0,1,1]
+sConBitString2  = toPer tSConBitString2 vSConBitString2
+
+eSConBitString2 = [
+   0,1,
+   1,0,0,1,1,0,0,1,
+   1,0,0,1,1
+   ]
+
+sConBitStringTest2 = 
+   TestCase (
+      assertEqual "BIT STRING Test 5" eSConBitString2 sConBitString2
+   )
+
 bsTest3' = toPer (SIZE (BITSTRING []) (Elem (fromList [0..2128])) NoMarker) (BitString [1,1])
 
 
@@ -717,8 +756,11 @@ tests =
       semiIntegerTest5,
       bitStringTest1,
       bitStringTest1',
-      bitStringTest1'']
-
+      bitStringTest1'',
+      sConBitStringTest1,
+      sConBitStringTest2
+      ]
+ 
 main = runTestTT tests
 
 \end{code}
