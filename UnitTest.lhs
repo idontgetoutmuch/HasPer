@@ -502,9 +502,25 @@ bitStringTest1' =
       assertEqual "BIT STRING Test 2" eBitString1' bitString1'
    )
 
-bsTest1'' = toPer (BITSTRING []) (BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
+vBitString1'' = BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+bitString1''  = toPer tBitString1 vBitString1''
 
--- Size-constrained (BITSTRING [])
+eBitString1'' = [
+   0,0,0,1,0,0,0,0,
+   1,1,1,1,1,1,1,1,
+   1,1,1,1,1,1,1,1
+   ]
+
+bitStringTest1'' = 
+   TestCase (
+      assertEqual "BIT STRING Test 3" eBitString1'' bitString1''
+   )
+
+\end{code}
+
+\subsection{Size Constrained BIT STRING}
+
+\begin{code}
 
 bsTest2 = toPer (SIZE (BITSTRING []) (Elem (fromList [7])) NoMarker) (BitString [1,1,0,0,0,1,0,0,0,0])
 bsTest3 = toPer (SIZE (BITSTRING []) (Elem (fromList [12..15])) NoMarker)(BitString [1,1,0,0,0,1,0,0,0,0])
@@ -694,13 +710,14 @@ tests =
       unConIntegerTest1, 
       unConIntegerTest2, 
       unConIntegerTest3, 
---       unConIntegerTest4, 
+--       unConIntegerTest4,
       integerTest2,
       integerTest3,
       integerTest4,
       semiIntegerTest5,
       bitStringTest1,
-      bitStringTest1']
+      bitStringTest1',
+      bitStringTest1'']
 
 main = runTestTT tests
 
