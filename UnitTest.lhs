@@ -452,9 +452,11 @@ tInteger5 = RANGE INTEGER (Just (-1)) Nothing
 vInteger5 = 4096
 integer5  = toPer (RANGE INTEGER (Just (-1)) Nothing) 4096
 
-eInteger5 = [0,0,0,0,0,0,1,0,
-             0,0,0,1,0,0,0,0,
-             0,0,0,0,0,0,0,1]
+eInteger5 = [
+   0,0,0,0,0,0,1,0,
+   0,0,0,1,0,0,0,0,
+   0,0,0,0,0,0,0,1
+   ]
 
 semiIntegerTest5 = 
    TestCase (
