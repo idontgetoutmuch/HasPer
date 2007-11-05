@@ -531,6 +531,14 @@ bitStringTest1'' =
 
 \subsection{Tests for Size Constrained BIT STRING}
 
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      BitString1 ::= BIT STRING (SIZE (7))
+      BitString2 ::= BIT STRING (SIZE (12..15))
+   END
+\end{lstlisting}
+
 \begin{code}
 
 tSConBitString1 = SIZE (BITSTRING []) (Elem (fromList [7])) NoMarker
