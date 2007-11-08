@@ -586,15 +586,41 @@ sConBitStringTest3 =
       assertEqual "BIT STRING Test 6" eSConBitString3 sConBitString3
    )
 
--- Extensible Size-Constrained (BITSTRING [])
+tSConBitString4 = 
+   SIZE (BITSTRING []) 
+        (Elem (fromList [4..12])) 
+        (EM (Just (Elem (fromList [15]))))
+vSConBitString4 = BitString [1,1,0,0,0,1,0,0,0,0]
+sConBitString4  = toPer tSConBitString4 vSConBitString4
 
-bsTest4 = toPer (SIZE (BITSTRING []) (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
-                (BitString [1,1,0,0,0,1,0,0,0,0])
-bsTest4' = toPer (SIZE (BITSTRING []) (Elem (fromList [4..12])) (EM (Just (Elem (fromList [15])))))
-                (BitString [1,1,0,0,0,1,0,0,0,0,1,0,1])
+eSConBitString4 = [
+   0,
+   0,1,1,0,
+   1,1,0,0,0,1,0,0,
+   0,0
+   ]
+
+sConBitStringTest4 = 
+   TestCase (
+      assertEqual "BIT STRING Test 7" eSConBitString4 sConBitString4
+   )
+
+vSConBitString5 = BitString [1,1,0,0,0,1,0,0,0,0,1,0,1]
+sConBitString5  = toPer tSConBitString4 vSConBitString5
+
+eSConBitString5 = [
+   1,
+   1,0,0,1,
+   1,1,0,0,0,1,0,0,
+   0,0,1,0,1
+   ]
+
+sConBitStringTest5 = 
+   TestCase (
+      assertEqual "BIT STRING Test 8" eSConBitString5 sConBitString5
+   )
 
 \end{code}
-
 
 \begin{code}
 
@@ -779,7 +805,9 @@ tests =
       bitStringTest1'',
       sConBitStringTest1,
       sConBitStringTest2,
-      sConBitStringTest3
+      sConBitStringTest3,
+      sConBitStringTest4,
+      sConBitStringTest5
       ]
  
 main = runTestTT tests
