@@ -536,6 +536,8 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
       BitString1 ::= BIT STRING (SIZE (7))
       BitString2 ::= BIT STRING (SIZE (12..15))
+      BitString3 ::= BIT STRING (SIZE (0..2128))
+      BitString4 ::= BIT STRING (SIZE (4..12,...,15))
    END
 \end{lstlisting}
 
@@ -554,8 +556,6 @@ sConBitStringTest1 =
       assertEqual "BIT STRING Test 4" eSConBitString1 sConBitString1
    )
 
-bsTest3 = toPer (SIZE (BITSTRING []) (Elem (fromList [12..15])) NoMarker)(BitString [1,1,0,0,0,1,0,0,0,0])
-
 tSConBitString2 = SIZE (BITSTRING []) (Elem (fromList [12..15])) NoMarker
 vSConBitString2 = BitString [1,0,0,1,1,0,0,1,1,0,0,1,1]
 sConBitString2  = toPer tSConBitString2 vSConBitString2
@@ -571,8 +571,20 @@ sConBitStringTest2 =
       assertEqual "BIT STRING Test 5" eSConBitString2 sConBitString2
    )
 
-bsTest3' = toPer (SIZE (BITSTRING []) (Elem (fromList [0..2128])) NoMarker) (BitString [1,1])
+tSConBitString3 = SIZE (BITSTRING []) (Elem (fromList [0..2128])) NoMarker
+vSConBitString3 = BitString [1,1]
+sConBitString3  = toPer tSConBitString3 vSConBitString3
 
+eSConBitString3 = [
+   0,0,0,0,0,0,0,0,
+   0,0,1,0,
+   1,1
+   ]
+
+sConBitStringTest3 = 
+   TestCase (
+      assertEqual "BIT STRING Test 6" eSConBitString3 sConBitString3
+   )
 
 -- Extensible Size-Constrained (BITSTRING [])
 
@@ -766,7 +778,8 @@ tests =
       bitStringTest1',
       bitStringTest1'',
       sConBitStringTest1,
-      sConBitStringTest2
+      sConBitStringTest2,
+      sConBitStringTest3
       ]
  
 main = runTestTT tests
