@@ -95,24 +95,6 @@ integer13'2 = toPer (RANGE (RANGE INTEGER (Just 2) Nothing) (Just (-2)) (Just 3)
 
 test0 = toPer t1' 27
 
--- ENUMERATED TYPE
-
-testEnum = toPer et ev
-
-et = ENUMERATED (EnumOption (Identifier "A")
-                    (EnumOption (NamedNumber "B" 5)
-                        (EnumOption (Identifier "C")
-                            (EnumOption (NamedNumber "D" 1)
-                                (EnumExt
-                                    (EnumOption (Identifier "E")
-                                        (EnumOption (NamedNumber "F" 6) NoEnum)))))))
-
-ev = (Nothing :*:
-        (Nothing :*:
-            (Nothing :*:
-                (Nothing :*:
-                    (Nothing :*:
-                        (Just "F" :*: Empty))))))
 -- SEQUENCE
 
 test1 = toPer (SEQUENCE (Cons (ETMandatory (NamedType "" Nothing
@@ -187,22 +169,6 @@ test19a = toPer (SEQUENCE (Optional t1 (Optional t0 (Optional t01 Nil))))
                 ((Just 29):*: ((Just 19):*:(Nothing:*:Empty)))
 test19b = encodeSeqAux [] [] (Optional t1 (Optional t0 (Optional t01 Nil)))
                 ((Just 29):*: ((Just 19):*:(Nothing:*:Empty)))
--}
--- CHOICE tests
-{-
-test20c  = toPer (CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice)))))
-            (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
-
-test21c  = toPer (CHOICE (ChoiceOption t0 NoChoice)) (Just 31 :*: Empty)
-
-test22c
-  = toPer (CHOICE (ChoiceOption t0 (ChoiceOption t12 NoChoice)))
-             (Nothing :*: (Just (Just 52 :*: (Nothing :*: Empty)) :*: Empty))
-
-test23c
-    = toPer (CHOICE (ChoiceOption t11 (ChoiceOption t12 NoChoice)))
-        (Just (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
-            :*: (Nothing :*: Empty))
 -}
 
 \begin{code}
@@ -302,43 +268,6 @@ empI = VisibleString "P"
 
 emp = (empGN :*: (empI :*: (empFN :*: Empty)))
 
-
--- X691: A.4.1 Example Includes extensible type with extension addition groups.
-
-ax
-    = TYPEASS "Ax" Nothing
-        (SEQUENCE
-            (Cons (ETMandatory (NamedType "a" Nothing (RANGE INTEGER (Just 250) (Just 253))))
-                (Cons (ETMandatory (NamedType "b" Nothing BOOLEAN))
-                  (Cons (ETMandatory (NamedType "c" Nothing
-                         (CHOICE
-                          (ChoiceOption (NamedType "d" Nothing INTEGER)
-                            (ChoiceExt
-                              (ChoiceEAG
-                                (ChoiceOption (NamedType "e" Nothing BOOLEAN)
-                                  (ChoiceOption (NamedType "f" Nothing IA5STRING)
-                                     (ChoiceEAG
-                                       (ChoiceExt NoChoice))))))))))
-                    (Extens
-                        (Cons (ETExtMand (NamedType "" Nothing
-                               (EXTADDGROUP
-                                (Cons (ETExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (Elem (fromList [3])) NoMarker)))
-                                     (Cons (ETOptional (NamedType "h" Nothing BOOLEAN)) Nil)))))
-                            (Extens
-                                (Cons (ETOptional (NamedType "i" Nothing VISIBLESTRING))
-                                  (Cons (ETOptional (NamedType "j" Nothing VISIBLESTRING)) Nil)))))))))
-
-
-axVal
-    = (253 :*:
-       (True :*:
-         ((Nothing:*:
-            ((Just True):*:(Nothing:*:Empty))) :*:
-               ((Just (Just (NumericString "123") :*:(Just True :*: Empty))):*:
-                 (Nothing :*:
-                  (Nothing :*:Empty))))))
-
-axEx = toPer ax axVal
 
 -- Another test (including multiple range constraint)
 
@@ -621,6 +550,150 @@ sConBitStringTest5 =
    )
 
 \end{code}
+
+\section{Tests for ENUMERATED}
+
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      Enum1 ::= ENUMERATED {
+         red(-6), blue(20), green(-8)
+         }
+      Enum2 ::= ENUMERATED {
+         red, blue, green, ..., yellow, purple
+         }
+      EnumeratedType1 ::= ENUMERATED {
+         a, b(5), c, d(1), ..., e, f(6)
+	 }
+      enum11 Enum1 ::= red
+      enum12 Enum1 ::= blue
+      enum13 Enum1 ::= green
+      enum21 Enum2 ::= red
+      enum21 Enum2 ::= yellow
+      enum21 Enum2 ::= purple
+   END
+\end{lstlisting}
+
+\begin{code}
+
+testEnum = toPer et ev
+
+et = ENUMERATED (EnumOption (Identifier "A")
+                    (EnumOption (NamedNumber "B" 5)
+                        (EnumOption (Identifier "C")
+                            (EnumOption (NamedNumber "D" 1)
+                                (EnumExt
+                                    (EnumOption (Identifier "E")
+                                        (EnumOption (NamedNumber "F" 6) NoEnum)))))))
+
+ev = (Nothing :*:
+        (Nothing :*:
+            (Nothing :*:
+                (Nothing :*:
+                    (Nothing :*:
+                        (Just "F" :*: Empty))))))
+
+\end{code}
+
+\section{Tests for CHOICE}
+
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      Choice1 ::= 
+        CHOICE {
+          d INTEGER
+	}
+      
+      Choice2 ::= 
+        CHOICE {
+	  a INTEGER,
+          b INTEGER,
+          c INTEGER,
+          d INTEGER
+        }
+
+      Ax ::= 
+         SEQUENCE {
+            a    INTEGER (250..253),
+            b    BOOLEAN,
+            c    CHOICE {
+                    d      INTEGER,
+                    ...,
+                    [[
+                       e BOOLEAN,
+                       f IA5String
+                    ]],
+                    ...
+                 },
+            ...,
+            [[
+               g NumericString (SIZE(3)),
+               h BOOLEAN OPTIONAL
+            ]],
+            ...,
+            i    BMPString OPTIONAL,
+            j    PrintableString OPTIONAL
+         }
+   END
+\end{lstlisting}
+
+-- X691: A.4.1 Example Includes extensible type with extension addition groups.
+
+\begin{code}
+
+ax
+    = TYPEASS "Ax" Nothing
+        (SEQUENCE
+            (Cons (ETMandatory (NamedType "a" Nothing (RANGE INTEGER (Just 250) (Just 253))))
+                (Cons (ETMandatory (NamedType "b" Nothing BOOLEAN))
+                  (Cons (ETMandatory (NamedType "c" Nothing
+                         (CHOICE
+                          (ChoiceOption (NamedType "d" Nothing INTEGER)
+                            (ChoiceExt
+                              (ChoiceEAG
+                                (ChoiceOption (NamedType "e" Nothing BOOLEAN)
+                                  (ChoiceOption (NamedType "f" Nothing IA5STRING)
+                                     (ChoiceEAG
+                                       (ChoiceExt NoChoice))))))))))
+                    (Extens
+                        (Cons (ETExtMand (NamedType "" Nothing
+                               (EXTADDGROUP
+                                (Cons (ETExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (Elem (fromList [3])) NoMarker)))
+                                     (Cons (ETOptional (NamedType "h" Nothing BOOLEAN)) Nil)))))
+                            (Extens
+                                (Cons (ETOptional (NamedType "i" Nothing VISIBLESTRING))
+                                  (Cons (ETOptional (NamedType "j" Nothing VISIBLESTRING)) Nil)))))))))
+
+
+axVal
+    = (253 :*:
+       (True :*:
+         ((Nothing:*:
+            ((Just True):*:(Nothing:*:Empty))) :*:
+               ((Just (Just (NumericString "123") :*:(Just True :*: Empty))):*:
+                 (Nothing :*:
+                  (Nothing :*:Empty))))))
+
+axEx = toPer ax axVal
+
+\end{code}
+
+test20c  = toPer (CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice)))))
+            (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
+
+test21c  = toPer (CHOICE (ChoiceOption t0 NoChoice)) (Just 31 :*: Empty)
+
+test22c
+  = toPer (CHOICE (ChoiceOption t0 (ChoiceOption t12 NoChoice)))
+             (Nothing :*: (Just (Just 52 :*: (Nothing :*: Empty)) :*: Empty))
+
+test23c
+    = toPer (CHOICE (ChoiceOption t11 (ChoiceOption t12 NoChoice)))
+        (Just (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
+            :*: (Nothing :*: Empty))
+
+\section{Blah}
 
 \begin{code}
 
