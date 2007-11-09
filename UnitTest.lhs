@@ -95,12 +95,6 @@ integer13'2 = toPer (RANGE (RANGE INTEGER (Just 2) Nothing) (Just (-2)) (Just 3)
 
 test0 = toPer t1' 27
 
--- SEQUENCE
-
-test1 = toPer (SEQUENCE (Cons (ETMandatory (NamedType "" Nothing
-                (SEQUENCE (Cons (ETMandatory (NamedType "" Nothing t1'))
-            Nil)))) Nil)) ((27:*:Empty):*:Empty)
-
 \end{code}
 
 {-
@@ -569,8 +563,8 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
       enum12 Enum1 ::= blue
       enum13 Enum1 ::= green
       enum21 Enum2 ::= red
-      enum21 Enum2 ::= yellow
-      enum21 Enum2 ::= purple
+      enum22 Enum2 ::= yellow
+      enum23 Enum2 ::= purple
    END
 \end{lstlisting}
 
@@ -692,6 +686,42 @@ test23c
     = toPer (CHOICE (ChoiceOption t11 (ChoiceOption t12 NoChoice)))
         (Just (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
             :*: (Nothing :*: Empty))
+
+\section{SEQUENCE}
+
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      Seq1 ::= 
+        SEQUENCE {
+          SEQUENCE {
+             INTEGER (25..30)
+          }
+	}
+   END
+\end{lstlisting}
+
+\begin{code}
+
+tSeq1 = 
+   SEQUENCE testSeq1 
+      where
+         testSeq1     = Cons (ETMandatory (NamedType "" Nothing (SEQUENCE subSeq1))) Nil
+         subSeq1  = Cons (ETMandatory (NamedType "" Nothing consInt1)) Nil
+         consInt1 = RANGE INTEGER (Just 25) (Just 30)
+vSeq1 = (27:*:Empty):*:Empty
+sSeq1 = toPer tSeq1 vSeq1
+
+eSeq1 = [
+   0,1,0
+   ]
+
+sSeqTest1 = 
+   TestCase (
+      assertEqual "SEQUENCE Test 1" eSeq1 sSeq1
+   )
+
+\end{code}
 
 \section{Blah}
 
@@ -880,7 +910,8 @@ tests =
       sConBitStringTest2,
       sConBitStringTest3,
       sConBitStringTest4,
-      sConBitStringTest5
+      sConBitStringTest5,
+      sSeqTest1
       ]
  
 main = runTestTT tests

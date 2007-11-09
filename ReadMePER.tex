@@ -33,7 +33,6 @@ The
 {http://www.haskell.org/asn1}
 is an implementation of the ASN.1 Packed Encoding Rules (PER).
 
-
 The current release does not contain a parser for ASN.1 so you have to hand encode
 ASN.1 definitions into the Haskell ASN.1 Abstract Syntax Tree (AST). Examples of these are given
 for each ASN.1 construction supported.
@@ -41,14 +40,65 @@ for each ASN.1 construction supported.
 Haddock documentation for the library is available
 \htmladdnormallinkfoot
 {here}
-{http://www.haskell.org/asn1/doc/html}
-; alternatively, you can generate it yourself (need to give instructions on how to do this).
+{http://www.haskell.org/asn1/doc/html};
+alternatively, you can generate it yourself (need to give instructions on how to do this).
+
+The library has been designed to prevent encoding errors at compile time. However, given the nature
+of ASN.1 and Haskell, it is not possible to do this in all cases.
+
+The library comes with:
+
+\begin{enumerate}
+
+\item
+Tests for each supported type ({\em UnitTest.lhs}).
+
+\item
+Properties which are tested
+by
+\htmladdnormallinkfoot
+{QuickCheck}
+{http://www.cs.chalmers.se/~rjmh/QuickCheck/}.
+
+\item
+Tests for the examples given in
+\htmladdnormallinkfoot
+{ASN.1 Complete}
+{http://www.oss.com/asn1/larmouth.html}
+by John Larmouth.
+
+\item
+Tests for the examples given in
+\htmladdnormallinkfoot
+{ASN.1 --- Communication between heterogeneous systems}
+{http://asn1.elibel.tm.fr/en/book/index.htm}
+by Olivier Dubuisson.
+
+\item
+Tests for the examples given in Annex A of
+\htmladdnormallinkfoot
+{Information technology --- ASN.1 encoding rules: Specification of Packed Encoding Rules (PER)}
+{http://www.itu.int/rec/T-REC-X.680-X.693/e}
+also known as X.691 (07/2002).
+
+\end{enumerate}
+
+Furthermore, the library also comes with properties tested by QuickCheck of inter-operation with
+\htmladdnormallinkfoot
+{the open source ASN.1 compiler for C}
+{http://lionet.info/asn1c}
+(asn1c) subject to asn1c supporting the types supported in the Haskell
+library. In other words, arbitrary ASN.1 types and values are generated using QuickCheck,
+encoded with asn1c, decoded with the Haskell library and then checked
+to ensure that the value decoded in Haskell is the same as the value
+encoded in C (and vice versa).
 
 \section{ASN.1 Support}
 
 \subsection{BOOLEAN}
 
 \lstset{language=Haskell}
+
 \begin{lstlisting}[frame=single]
 BOOLEAN :: ASNType Bool
 
@@ -56,6 +106,12 @@ falseEncoding = toPer BOOLEAN False
 \end{lstlisting}
 
 \subsection{INTEGER}
+
+\begin{lstlisting}[frame=single]
+INTEGER :: ASNType Bool
+
+integerEncoding = toPer INTEGER 4096
+\end{lstlisting}
 
 \subsection{ENUMERATED}
 
