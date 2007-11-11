@@ -131,6 +131,28 @@ encodedBitString =
 
 We don't seem to have any named bits tests or examples.
 
+\subsection{CHOICE}
+
+\begin{lstlisting}[frame=single]
+
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      Choice1 ::= 
+        CHOICE {
+          d INTEGER,
+          e BOOLEAN
+	}
+   END
+\end{lstlisting}
+
+\begin{lstlisting}[frame=single]
+
+tooMany = 3 :+: (True :+: ASNEmpty)
+tooFew = NoValue :-: (NoValue :-: ASNEmpty)
+justRight1 = NoValue :-: (True :+: ASNEmpty)
+
+\end{lstlisting}
+
 \section{Installation Instructions}
 
 Get the sources:
