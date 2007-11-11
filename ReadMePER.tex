@@ -314,6 +314,34 @@ seqOfElem1 = RANGE INTEGER (Just 25) (Just 30)
 test8 = toPer (SEQUENCEOF seqOfElem1) [26,27,28,25]
 \end{lstlisting}
 
+\subsubsection{SIZE Constrained SEQUENCE OF}
+
+A {\em SEQUENCE OF} can have restrictions placed on the number
+of elements in it. Note that currently there it is possible to
+encode a number of elements that lie outside the restricted subset.
+In this case, the result is undefined.
+
+{\bf ASN.1}
+
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      SeqOf2 ::=
+         SEQUENCE (SIZE (2..5)) OF SeqOfElem1
+   END
+\end{lstlisting}
+
+{\bf Haskell}
+
+\begin{lstlisting}[frame=single]
+seqOft7 = 
+   SIZE (SEQUENCEOF seqOfElem1) 
+        (Elem (fromList [2..5])) 
+        NoMarker
+
+test14 = toPer seqOft7 [26,25,28,27]
+\end{lstlisting}
+
 \section{Installation Instructions}
 
 Get the sources:

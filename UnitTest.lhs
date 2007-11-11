@@ -161,11 +161,21 @@ test12
 
 \subsubsection{SIZE-CONSTRAINED SEQUENCEOF}
 
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      SeqOf2 ::=
+         SEQUENCE (SIZE (2..5)) OF SeqOfElem1
+   END
+\end{lstlisting}
+
 \begin{code}
 
 seqOft7 = SIZE (SEQUENCEOF seqOfElem1) (Elem (fromList [2..5])) NoMarker
 
 test14 = toPer seqOft7 [26,25,28,27]
+
+test14' = toPer seqOft7 [26,25,28,27,29,30]
 
 eTest14 = [
    1,0,
