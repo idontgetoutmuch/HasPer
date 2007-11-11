@@ -27,6 +27,8 @@
 
 \maketitle
 
+\section{Introduction}
+
 The 
 \htmladdnormallinkfoot
 {Haskell ASN.1 PER Library 1.0.0}
@@ -49,6 +51,9 @@ of ASN.1 and Haskell, it is not possible to do this in all cases.
 The library comes with:
 
 \begin{enumerate}
+
+\item
+A pretty printer ({\em Pretty.lhs}) for all supported ASN.1 types.
 
 \item
 Tests for each supported type ({\em UnitTest.lhs}).
@@ -91,7 +96,10 @@ Furthermore, the library also comes with properties tested by QuickCheck of inte
 library. In other words, arbitrary ASN.1 types and values are generated using QuickCheck,
 encoded with asn1c, decoded with the Haskell library and then checked
 to ensure that the value decoded in Haskell is the same as the value
-encoded in C (and vice versa).
+encoded in C (and vice versa). 
+
+As well as generating inter-operability tests,
+this can also be used to generate ``quick starts'' for C programs using asn1c.
 
 \section{ASN.1 Support}
 
@@ -241,6 +249,69 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
          {a 253, b TRUE, c e:TRUE, g "123", h TRUE}
    END
 
+\end{lstlisting}
+
+\subsection{SEQUENCE}
+
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      Seq1 ::= 
+        SEQUENCE {
+          SEQUENCE {
+             INTEGER (25..30)
+          }
+	}
+   END
+\end{lstlisting}
+
+This {\em SEQUENCE} of a {\em SEQUENCE} consisting of one element
+can be represented in the Haskell PER library as follows.
+
+\begin{lstlisting}[frame=single]
+
+tSeq1 = 
+   SEQUENCE testSeq1 
+      where
+         testSeq1  = 
+            Cons 
+               (ETMandatory 
+                  (NamedType "" Nothing (SEQUENCE subSeq1))
+                  )
+               Nil
+         subSeq1  = 
+            Cons 
+               (ETMandatory 
+                  (NamedType "" Nothing consInt1)
+                  ) 
+               Nil
+         consInt1 = 
+            RANGE INTEGER (Just 25) (Just 30)
+
+tSeq1 :: ASNType ((:*:) ((:*:) Integer Nil) Nil)
+
+vSeq1 = (27:*:Empty):*:Empty
+
+\end{lstlisting}
+
+\subsection{SEQUENCE OF}
+
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      SeqOfElem1 ::= INTEGER (25..30)
+      SeqOf ::=
+         SEQUENCE OF SeqOfElem1
+   END
+\end{lstlisting}
+
+The encoding of a {\em SEQUENCE OF} of 4 elements is shown
+below.
+
+\begin{lstlisting}[frame=single]
+seqOfElem1 = RANGE INTEGER (Just 25) (Just 30)
+
+test8 = toPer (SEQUENCEOF seqOfElem1) [26,27,28,25]
 \end{lstlisting}
 
 \section{Installation Instructions}

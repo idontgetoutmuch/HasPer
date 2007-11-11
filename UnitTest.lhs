@@ -111,10 +111,36 @@ test6 = petest2 ((Just 29):*:(Nothing:*:Empty))
 test7 = petest2 (Nothing:*:(Nothing:*:Empty))
 -}
 
+\section{SEQUENCE OF}
+
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      SeqOfElem1 ::= INTEGER (25..30)
+      SeqOf ::=
+         SEQUENCE OF SeqOfElem1
+   END
+\end{lstlisting}
+
 \begin{code}
 
--- SEQUENCEOF
-test8 = toPer (SEQUENCEOF t1') [26,27,28,25]
+seqOfElem1 = RANGE INTEGER (Just 25) (Just 30)
+
+test8 = toPer (SEQUENCEOF seqOfElem1) [26,27,28,25]
+
+eSeqOfElem1 = [
+   0,0,0,0,0,1,0,0,
+   0,0,1,
+   0,1,0,
+   0,1,1,
+   0,0,0
+   ]
+
+eSeqOfTest1 = 
+   TestCase (
+      assertEqual "SEQUENCE OF Test 1" eSeqOfElem1 test8 
+   )
+
 test9 = toPer (SEQUENCEOF t6) [29:*:(30:*:Empty),28:*:(28:*:Empty)]
 test10
     = do
@@ -131,9 +157,30 @@ test12
         c <- return (toPer (SEQUENCEOF t42) (take (93000) [3..]))
         writeFile "test15.txt" (show c)
 
--- SIZE-CONSTRAINED SEQUENCEOF
+\end{code}
 
-test14 = toPer t7 [26,25,28,27]
+\subsubsection{SIZE-CONSTRAINED SEQUENCEOF}
+
+\begin{code}
+
+seqOft7 = SIZE (SEQUENCEOF seqOfElem1) (Elem (fromList [2..5])) NoMarker
+
+test14 = toPer seqOft7 [26,25,28,27]
+
+eTest14 = [
+   1,0,
+   0,0,1,
+   0,0,0,
+   0,1,1,
+   0,1,0
+   ]
+
+eSeqOfTest2 = 
+   TestCase (
+      assertEqual "SEQUENCE OF Test 2" eTest14 test14 
+   )
+
+
 
 test15 = toPer t8 [(29:*:(30:*:Empty)),((-10):*:(2:*:Empty))]
 
@@ -287,7 +334,7 @@ seqTest = toPer seqType seqVal
 \end{code}
 
 
-\section{Tests for Unconstrained INTEGER}
+\section{Unconstrained INTEGER}
 
 \begin{code}
 
@@ -359,7 +406,7 @@ integerTest4 =
 
 \end{code}
 
-\section{Tests for Semi-Constrained INTEGER}
+\section{Semi-Constrained INTEGER}
 
 \begin{code}
 
@@ -404,7 +451,7 @@ mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 \end{code}
 
 
-\section{Tests for BIT STRING}
+\section{BIT STRING}
 
 \begin{code}
 
@@ -452,7 +499,7 @@ bitStringTest1'' =
 
 \end{code}
 
-\subsection{Tests for Size Constrained BIT STRING}
+\subsection{Size Constrained BIT STRING}
 
 \begin{lstlisting}[frame=single]
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
@@ -545,7 +592,7 @@ sConBitStringTest5 =
 
 \end{code}
 
-\section{Tests for ENUMERATED}
+\section{ENUMERATED}
 
 \begin{lstlisting}[frame=single]
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
@@ -589,7 +636,7 @@ ev = (Nothing :*:
 
 \end{code}
 
-\section{Tests for CHOICE}
+\section{CHOICE}
 
 \begin{lstlisting}[frame=single]
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
@@ -934,6 +981,8 @@ tests =
       sConBitStringTest4,
       sConBitStringTest5,
       sChoiceTest1,
+      eSeqOfTest1,
+      eSeqOfTest2,
       sSeqTest1
       ]
  
