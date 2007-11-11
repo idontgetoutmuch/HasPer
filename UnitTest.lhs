@@ -671,6 +671,28 @@ axVal
 
 axEx = toPer ax axVal
 
+eAx = [
+   1,
+   0,0,
+   1,1,
+   1,
+   1,
+   0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,1,
+   1,0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,
+   1,
+   0,0,0,0,0,0,1,0,
+   1,
+   0,0,1,0,0,0,1,1,0,1,0,0,
+   1,0,0,0,0
+   ]
+
+sChoiceTest1 = 
+   TestCase (
+      assertEqual "CHOICE Test 1" eAx axEx
+   )
+
 \end{code}
 
 test20c  = toPer (CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice)))))
@@ -911,6 +933,7 @@ tests =
       sConBitStringTest3,
       sConBitStringTest4,
       sConBitStringTest5,
+      sChoiceTest1,
       sSeqTest1
       ]
  

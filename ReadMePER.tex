@@ -29,7 +29,7 @@
 
 The 
 \htmladdnormallinkfoot
-{Haskell Cryptographic Library 1.0.0}
+{Haskell ASN.1 PER Library 1.0.0}
 {http://www.haskell.org/asn1}
 is an implementation of the ASN.1 Packed Encoding Rules (PER).
 
@@ -95,6 +95,9 @@ encoded in C (and vice versa).
 
 \section{ASN.1 Support}
 
+Note that the types are deduced automatically by the compiler are 
+reproduce here to aid understanding.
+
 \subsection{BOOLEAN}
 
 \lstset{language=Haskell}
@@ -108,16 +111,43 @@ falseEncoding = toPer BOOLEAN False
 \subsection{INTEGER}
 
 \begin{lstlisting}[frame=single]
-INTEGER :: ASNType Bool
-
+INTEGER :: ASNType Integer
 integerEncoding = toPer INTEGER 4096
+
+tInteger5 :: ASNType Integer
+tInteger5 = RANGE INTEGER (Just (-1)) Nothing
+semiConEncoding = toPer tInteger5  4096
 \end{lstlisting}
 
 \subsection{ENUMERATED}
 
+The representation for {\em ENUMERATED} has not been finalised but it is
+possible to encode examples such as the ones below (see {\em UnitTest.lhs}).
+
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      Enum1 ::= ENUMERATED {
+         red(-6), blue(20), green(-8)
+         }
+      Enum2 ::= ENUMERATED {
+         red, blue, green, ..., yellow, purple
+         }
+      EnumeratedType1 ::= ENUMERATED {
+         a, b(5), c, d(1), ..., e, f(6)
+	 }
+      enum11 Enum1 ::= red
+      enum12 Enum1 ::= blue
+      enum13 Enum1 ::= green
+      enum21 Enum2 ::= red
+      enum22 Enum2 ::= yellow
+      enum23 Enum2 ::= purple
+   END
+\end{lstlisting}
+
 \subsection{REAL}
 
-We don't currently support this. Do we want to?
+Not currently supported.
 
 \subsection{BIT STRING}
 
@@ -129,7 +159,7 @@ encodedBitString =
          (BitString [1,1,0,0,0,1,0,0,0,0])
 \end{lstlisting}
 
-We don't seem to have any named bits tests or examples.
+Named bits examples to be provided.
 
 \subsection{CHOICE}
 
@@ -145,11 +175,71 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    END
 \end{lstlisting}
 
+Attempts to encode a {\em CHOICE} with one and only one choice will 
+succeed; attempts to encode a {\em CHOICE} with too many or too few
+parameters will produce a type error (the ``sizes'' e.g. {\em Z, S Z and S (S Z)} won't match).
+
 \begin{lstlisting}[frame=single]
 
-tooMany = 3 :+: (True :+: ASNEmpty)
-tooFew = NoValue :-: (NoValue :-: ASNEmpty)
+choice1 = 
+   CHOICE 
+      (ChoiceOption 
+          (NamedType "b" Nothing INTEGER) 
+          (ChoiceOption (NamedType "a" Nothing BOOLEAN) 
+                        NoChoice
+          )
+      )
+
+choice1 :: 
+   ASNType 
+      ((:*:) (Maybe Integer) ((:*:) (Maybe Bool) Nil)) (S Z)
+
+tooMany    = 3 :+: (True :+: ASNEmpty)
+tooFew     = NoValue :-: (NoValue :-: ASNEmpty)
 justRight1 = NoValue :-: (True :+: ASNEmpty)
+
+tooMany :: 
+   ASNValue ((:*:) Integer ((:*:) Bool Nil)) (S (S Z))
+tooFew :: 
+   forall a a1. ASNValue ((:*:) a ((:*:) a1 Nil)) Z
+justRight1 :: 
+   forall a. ASNValue ((:*:) a ((:*:) Bool Nil)) (S Z)
+
+\end{lstlisting}
+
+More sophisticated examples such as the one from Annex A.4 in X.691 are
+possible. The representation for this has not been finalised but the
+current one encodes correctly (see {\em UnitTest.lhs}).
+
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      Ax ::= 
+         SEQUENCE {
+            a    INTEGER (250..253),
+            b    BOOLEAN,
+            c    CHOICE {
+                    d      INTEGER,
+                    ...,
+                    [[
+                       e BOOLEAN,
+                       f IA5String
+                    ]],
+                    ...
+                 },
+            ...,
+            [[
+               g NumericString (SIZE(3)),
+               h BOOLEAN OPTIONAL
+            ]],
+            ...,
+            i    BMPString OPTIONAL,
+            j    PrintableString OPTIONAL
+         }
+
+      axVal Ax ::= 
+         {a 253, b TRUE, c e:TRUE, g "123", h TRUE}
+   END
 
 \end{lstlisting}
 
@@ -176,6 +266,13 @@ Run the tests.
 \begin{lstlisting}[frame=single]
 cd /my/chosen/dir/bin
 ./UnitTest
+./QuickTest
+\end{lstlisting}
+
+If you want to run the inter-operability tests you will need to install asn1c.
+
+\begin{lstlisting}[frame=single]
+Instructions for installing asn1c and running the tests.
 \end{lstlisting}
 
 You can now run the examples to confirm further that everything
