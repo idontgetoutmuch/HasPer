@@ -101,6 +101,9 @@ encoded in C (and vice versa).
 As well as generating inter-operability tests,
 this can also be used to generate ``quick starts'' for C programs using asn1c.
 
+Note that no performance testing has been undertaken and there are no
+guarantees about the speed of encoding and decoding.
+
 \section{ASN.1 Support}
 
 Note that the types are deduced automatically by the compiler are 
@@ -342,6 +345,42 @@ seqOft7 =
 test14 = toPer seqOft7 [26,25,28,27]
 \end{lstlisting}
 
+\section{Decoding}
+
+The main decoding function is {\em fromPer}.
+
+\begin{lstlisting}[frame=single]
+fromPer :: 
+   (
+      MonadState (B.ByteString,Int64) m, 
+      MonadError [Char] m
+   ) 
+      =>  ASNType a -> m a
+\end{lstlisting}
+
+It necessarily returns a monadic value as errors may occur. Currently it is a state and error monad. 
+An alternative version will be supplied
+in which {\em m} is the {\em IO} monad as it is envisaged that decoding will occur mostly (but not exclusively)
+from externally supplied input.
+
+One possible way of using this decoding function is as follows.
+
+\begin{lstlisting}[frame=single]
+import ConstrainedType
+import qualified Data.ByteString.Lazy as B
+import Control.Monad.State
+import Control.Monad.Error
+import IO
+
+readPerFile (NamedType _ _ t) =
+   do h <- openFile "my.per" ReadMode
+      b <- B.hGetContents h
+      let d = runState (runErrorT (mFromPer t)) (b,0)
+      case d of
+         (Left e,s)  -> return (e ++ " " ++ show s)
+         (Right n,s) -> return (show n ++ " " ++ show s)
+\end{lstlisting}
+
 \section{Installation Instructions}
 
 Get the sources:
@@ -392,10 +431,16 @@ their final destination:
 In no particular order:
 
 \begin{itemize}
+
 \item
 Parser.
+
 \item
 Object classes.
+
+\item
+Improvement of {\em getBit} performance (the fundamental function in decoding).
+
 \end{itemize}
 
 \section{Contact}
