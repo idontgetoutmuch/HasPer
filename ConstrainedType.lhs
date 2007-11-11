@@ -149,13 +149,44 @@ that the Choice type has no PER-visible constraints.
 The constructors ChoiceExt and ChoiceEAG deal with
 extension markers and extension addition groups respectively.
 
+This is transtitional code. If you need the code prior to this then
+get version 0.0.9. This is a sufficiently big change that the next
+version will be 0.1.0.
+
+In order to enforce one and only one value for a choice,
+we introduce an extra type parameter for the CHOICE value type
+constructor.
+
 \begin{code}
+
+data Z
+
+data S n
+
+data Phantom a = NoValue
+
+data ASNValue :: * -> * -> * where
+   ASNLift  :: a -> ASNValue a (S Z)
+   ASNEmpty :: ASNValue Nil Z
+   CConsNo  :: Phantom a -> ASNValue l n -> ASNValue (a:*:l) n
+   CConsYes :: a -> ASNValue l n -> ASNValue (a:*:l) (S n)
+
+data ASNValue' :: * -> * -> * where
+   ASNEmpty' :: ASNValue' Nil Z
+   (:-:)     :: Phantom a -> ASNValue' l n -> ASNValue' (a:*:l) n
+   (:+:)     :: a -> ASNValue' l n -> ASNValue' (a:*:l) (S n)
 
 data Choice :: * -> * where
     NoChoice     :: Choice Nil
     ChoiceExt    :: Choice l -> Choice l
     ChoiceEAG    :: Choice l -> Choice l
     ChoiceOption :: NamedType a -> Choice l -> Choice ((Maybe a):*:l)
+
+data Choice' :: * -> * -> * where
+    NoChoice'     :: Choice' Nil (S Z)
+    ChoiceExt'    :: Choice' l n -> Choice' l n
+    ChoiceEAG'    :: Choice' l n -> Choice' l n
+    ChoiceOption' :: NamedType a -> Choice' l n -> Choice' ((Maybe a):*:l) n
 
 \end{code}
 
@@ -234,6 +265,16 @@ data ASNType :: * -> * where
    CHOICE          :: Choice a -> ASNType a
    FROM            :: PermittedAlphabet a => ASNType a -> a -> ASNType a
 -- WILL CHANGE 2ND ELEMENT TO cONSTRAINT cHAR FOR FROM CONSTRUCTOR
+
+data ASNType' :: * -> * -> * where
+   BOOLEAN'         :: ASNType' Bool (S Z)
+   INTEGER'         :: ASNType' Integer (S Z)
+   BITSTRING'       :: NamedBits -> ASNType' BitString  (S Z)
+   RANGE'           :: ASNType' Integer n -> Lower -> Upper -> ASNType' Integer n
+   SEQUENCE'        :: Sequence a -> ASNType' a (S Z)
+   SIZE'            :: ASNType' a n -> Constraint Integer -> EM Integer -> ASNType' a n
+   CHOICE'          :: Choice' a n -> ASNType' a n
+
 \end{code}
 
 Type aliases used when defining a range-constrained Integer.
@@ -368,6 +409,65 @@ toPer8s ct v
 
 \end{code}
 
+This is transitional until we can see whether the plan for CHOICE works.
+{\em forget} and {\em forgetChoice} allow the continued use of {\em toPer} from
+{\em toPer'} by lifting old style values to new style values.
+
+{\em toPer' sizedType1 justRight1} typechecks but both {\em toPer' sizedType1 tooMany}
+and {\em toPer' sizedType1 tooFew} both fail.
+
+{\em encodeChoice'} is currently undefined but presumably is just the same as
+{\em encodeChoice}.
+
+\begin{code}
+
+forgetChoice :: Choice' a n -> Choice a
+forgetChoice NoChoice'           = NoChoice
+forgetChoice (ChoiceExt' c)      = ChoiceExt (forgetChoice c)
+forgetChoice (ChoiceEAG' c)      = ChoiceEAG (forgetChoice c)
+forgetChoice (ChoiceOption' n c) = ChoiceOption n (forgetChoice c)
+
+forget :: ASNType' a n -> ASNType a
+forget BOOLEAN'         = BOOLEAN
+forget INTEGER'         = INTEGER
+forget (RANGE' i l u)   = RANGE (forget i) l u
+forget (BITSTRING' nbs) = BITSTRING nbs
+forget (SEQUENCE' s)    = SEQUENCE s
+forget (SIZE' t s e)    = SIZE (forget t) s e
+forget (CHOICE' t)      = CHOICE (forgetChoice t)
+
+toPer' t (ASNLift x)  = toPer (forget t) x
+toPer' (CHOICE' t) x  = encodeChoice' t x
+
+encodeChoice' :: Choice' a n -> ASNValue a n -> BitStream
+encodeChoice' (ChoiceOption' nt c) (CConsNo x y)  = undefined
+encodeChoice' (ChoiceOption' nt c) (CConsYes x y) = undefined
+
+sizedType1 = CHOICE' (ChoiceOption' (NamedType "b" Nothing INTEGER) (ChoiceOption' (NamedType "a" Nothing BOOLEAN) NoChoice'))
+
+\end{code}
+
+At the moment we have some spurious {\em Just}s. We should be able to get rid of these when we re-write {\em encodeChoice}.
+
+\begin{code}
+
+tooMany = CConsYes (Just 3) (CConsYes (Just True) ASNEmpty)
+
+tooMany' = CConsYes 3 (CConsYes True ASNEmpty)
+
+tooMany'' = 3 :+: (True :+: ASNEmpty')
+
+tooFew = CConsNo NoValue (CConsNo NoValue ASNEmpty)
+
+tooFew' = NoValue :-: (NoValue :-: ASNEmpty')
+
+justRight1 = CConsNo NoValue (CConsYes (Just True) ASNEmpty)
+
+justRight1' = CConsNo NoValue (CConsYes True ASNEmpty)
+
+justRight1'' = NoValue :-: (True :+: ASNEmpty')
+
+\end{code}
 
 toPerOpen encodes an open type value. That is:
 i. the value is encoded as ususal;
