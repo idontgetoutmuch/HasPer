@@ -68,6 +68,8 @@ prettyType(RANGE x l u) =
    prettyType x <+> outer x l u
 prettyType (SEQUENCE x) =
    text "SEQUENCE" <> space <> braces (prettySeq x)
+prettyType (FCHOICE xs) =
+   text "CHOICE" <+> braces (prettyChoice xs)
 prettyType(SIZE t s _) =
    prettyType t <+> parens (text "SIZE" <+> prettyConstraint s) -- text (show s))
 
@@ -90,6 +92,14 @@ prettySeq (Cons x xs) =
 
 prettyElem :: ElementType a -> Doc
 prettyElem (ETMandatory nt) = prettyNamedType nt
+
+prettyChoice :: FChoice a -> Doc
+prettyChoice NoFChoice =
+   empty
+prettyChoice (FChoiceOption nt NoFChoice) =
+   prettyNamedType nt
+prettyChoice (FChoiceOption nt xs) =
+   vcat [prettyNamedType nt <> comma, prettyChoice xs]
 
 prettyNamedType :: NamedType a -> Doc
 prettyNamedType (NamedType n _ ct) =

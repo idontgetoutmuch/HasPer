@@ -19,6 +19,7 @@ Note that some of the tests take a long time to run especially the one for encod
 module UnitTest where
 
 import ConstrainedType
+import Pretty
 import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
@@ -648,6 +649,8 @@ ev = (Nothing :*:
 
 \section{CHOICE}
 
+The example in X.691 section A.4.1 includes an extensible type with extension addition groups.
+
 \begin{lstlisting}[frame=single]
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
@@ -663,6 +666,12 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
           c INTEGER,
           d INTEGER
         }
+
+      SeqChoices1 ::=
+         SEQUENCE {
+            x Choice1,
+            y Choice2
+         }
 
       Ax ::= 
          SEQUENCE {
@@ -689,7 +698,87 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    END
 \end{lstlisting}
 
--- X691: A.4.1 Example Includes extensible type with extension addition groups.
+\begin{code}
+
+choice1 = 
+   FCHOICE xs 
+      where
+         xs = FChoiceOption (NamedType "a" Nothing INTEGER) NoFChoice
+
+choiceVal1 = ValueC 7 EmptyHL
+
+oldChoice1 =
+   CHOICE xs
+      where
+         xs = ChoiceOption (NamedType "a" Nothing INTEGER) NoChoice
+
+testOldChoice1 = toPer oldChoice1 (Just 31 :*: Empty)
+
+eOldChoice1 = [
+   0,0,0,0,0,0,0,1,
+   0,0,0,1,1,1,1,1
+   ]
+
+choiceTest1 = 
+   TestCase (
+      assertEqual "CHOICE Test 2" eOldChoice1 testOldChoice1
+   )
+
+choice2 = 
+   FCHOICE xs
+      where
+         xs = FChoiceOption a (FChoiceOption b (FChoiceOption c (FChoiceOption d NoFChoice)))
+         a = NamedType "a" Nothing INTEGER
+         b = NamedType "b" Nothing INTEGER
+         c = NamedType "c" Nothing INTEGER
+         d = NamedType "d" Nothing INTEGER
+
+choiceVal2 = NoValueC NoValue (NoValueC NoValue (NoValueC NoValue (ValueC 7 EmptyHL)))
+
+oldChoice2 =
+   CHOICE xs
+      where
+         xs = ChoiceOption a (ChoiceOption b (ChoiceOption c (ChoiceOption d NoChoice)))
+         a = NamedType "a" Nothing INTEGER
+         b = NamedType "b" Nothing INTEGER
+         c = NamedType "c" Nothing INTEGER
+         d = NamedType "d" Nothing INTEGER
+
+testOldChoice2 = toPer oldChoice2 (Nothing:*:((Just 27):*:(Nothing:*:(Nothing:*:Empty))))
+
+eOldChoice2 = [
+   1,0,
+   0,0,0,0,0,0,0,1,
+   0,0,0,1,1,0,1,1
+   ]
+
+choiceTest2 = 
+   TestCase (
+      assertEqual "CHOICE Test 3" eOldChoice2 testOldChoice2
+   )
+
+testOldChoice21 = toPer oldChoice2 ((Just 31):*:(Nothing:*:(Nothing:*:(Nothing:*:Empty))))
+
+eOldChoice21 = [
+   1,1,
+   0,0,0,0,0,0,0,1,
+   0,0,0,1,1,1,1,1
+   ]
+
+choiceTest21 = 
+   TestCase (
+      assertEqual "CHOICE Test 4" eOldChoice21 testOldChoice21
+   )
+
+seqChoices1 = 
+   SEQUENCE elems
+      where
+         elems = Cons x (Cons y Nil)
+         x = ETMandatory (NamedType "x" Nothing choice1)
+         y = ETMandatory (NamedType "y" Nothing choice2)
+
+\end{code}
+
 
 \begin{code}
 
@@ -785,10 +874,12 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
 tSeq1 = 
    SEQUENCE testSeq1 
       where
-         testSeq1     = Cons (ETMandatory (NamedType "" Nothing (SEQUENCE subSeq1))) Nil
+         testSeq1 = Cons (ETMandatory (NamedType "" Nothing (SEQUENCE subSeq1))) Nil
          subSeq1  = Cons (ETMandatory (NamedType "" Nothing consInt1)) Nil
          consInt1 = RANGE INTEGER (Just 25) (Just 30)
+
 vSeq1 = (27:*:Empty):*:Empty
+
 sSeq1 = toPer tSeq1 vSeq1
 
 eSeq1 = [
@@ -990,6 +1081,9 @@ tests =
       sConBitStringTest3,
       sConBitStringTest4,
       sConBitStringTest5,
+      choiceTest1,
+      choiceTest2,
+      choiceTest21,
       sChoiceTest1,
       eSeqOfTest1,
       eSeqOfTest2,

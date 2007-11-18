@@ -165,6 +165,7 @@ data S n
 
 data Phantom a = NoValue
 
+{-
 data ASNValue :: * -> * -> * where
    ASNLift  :: a -> ASNValue a (S Z)
    ASNEmpty :: ASNValue Nil Z
@@ -175,6 +176,7 @@ data ASNValue' :: * -> * -> * where
    ASNEmpty' :: ASNValue' Nil Z
    (:-:)     :: Phantom a -> ASNValue' l n -> ASNValue' (a:*:l) n
    (:+:)     :: a -> ASNValue' l n -> ASNValue' (a:*:l) (S n)
+-}
 
 data Choice :: * -> * where
     NoChoice     :: Choice Nil
@@ -182,11 +184,32 @@ data Choice :: * -> * where
     ChoiceEAG    :: Choice l -> Choice l
     ChoiceOption :: NamedType a -> Choice l -> Choice ((Maybe a):*:l)
 
+-- This choice value type mimics your type Choice
+data HL :: * -> * -> * where
+    EmptyHL :: HL Nil Z 
+    ValueC  :: a -> HL l Z -> HL (a:*:l) (S Z)
+    NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n  
+
+-- This type is very similar to the original choice type but returns a 
+-- FChoice (a:*:l) instead of a FChoice (Maybe a:*: l) since Nothing and
+-- Just v are replaced by NoValue and v for any type.
+data FChoice :: * -> *  where
+    NoFChoice     :: FChoice Nil
+    FChoiceExt    :: FChoice l -> FChoice l 
+    FChoiceEAG    :: FChoice l -> FChoice l
+    FChoiceOption :: NamedType a -> FChoice l -> FChoice (a:*:l)
+
+-- toPer is now unchanged (except it takes a FChoice c rather than a Choice c) 
+-- and the only other change is that all the types of choice encoding functions 
+-- now take an FChoice a and a HL a n, rather than a Choice a and a.
+
+{-
 data Choice' :: * -> * -> * where
     NoChoice'     :: Choice' Nil (S Z)
     ChoiceExt'    :: Choice' l n -> Choice' l n
     ChoiceEAG'    :: Choice' l n -> Choice' l n
     ChoiceOption' :: NamedType a -> Choice' l n -> Choice' ((Maybe a):*:l) n
+-}
 
 \end{code}
 
@@ -263,6 +286,9 @@ data ASNType :: * -> * where
    SET             :: Sequence a -> ASNType a
    SETOF           :: ASNType a -> ASNType [a]
    CHOICE          :: Choice a -> ASNType a
+-- In the definition of ASNType we have the constructor FCHOICE which returns the 
+-- required type (so that it matches the values with a single entry).
+   FCHOICE         :: FChoice a -> ASNType (HL a (S Z)) 
    FROM            :: PermittedAlphabet a => ASNType a -> a -> ASNType a
 -- WILL CHANGE 2ND ELEMENT TO cONSTRAINT cHAR FOR FROM CONSTRUCTOR
 
@@ -273,7 +299,7 @@ data ASNType' :: * -> * -> * where
    RANGE'           :: ASNType' Integer n -> Lower -> Upper -> ASNType' Integer n
    SEQUENCE'        :: Sequence a -> ASNType' a (S Z)
    SIZE'            :: ASNType' a n -> Constraint Integer -> EM Integer -> ASNType' a n
-   CHOICE'          :: Choice' a n -> ASNType' a n
+--    CHOICE'          :: Choice' a n -> ASNType' a n
 
 \end{code}
 
@@ -421,6 +447,8 @@ and {\em toPer' sizedType1 tooFew} both fail.
 
 \begin{code}
 
+{-
+
 forgetChoice :: Choice' a n -> Choice a
 forgetChoice NoChoice'           = NoChoice
 forgetChoice (ChoiceExt' c)      = ChoiceExt (forgetChoice c)
@@ -445,11 +473,17 @@ encodeChoice' (ChoiceOption' nt c) (CConsYes x y) = undefined
 
 sizedType1 = CHOICE' (ChoiceOption' (NamedType "b" Nothing INTEGER) (ChoiceOption' (NamedType "a" Nothing BOOLEAN) NoChoice'))
 
+-}
+
+sizedType1 = FCHOICE (FChoiceOption (NamedType "b" Nothing INTEGER) (FChoiceOption (NamedType "a" Nothing BOOLEAN) NoFChoice))
+
 \end{code}
 
 At the moment we have some spurious {\em Just}s. We should be able to get rid of these when we re-write {\em encodeChoice}.
 
 \begin{code}
+
+{-
 
 tooMany = CConsYes (Just 3) (CConsYes (Just True) ASNEmpty)
 
@@ -466,6 +500,16 @@ justRight1 = CConsNo NoValue (CConsYes (Just True) ASNEmpty)
 justRight1' = CConsNo NoValue (CConsYes True ASNEmpty)
 
 justRight1'' = NoValue :-: (True :+: ASNEmpty')
+
+-}
+
+-- tooMany = ValueC 3 (ValueC True EmptyHL)
+
+tooFew = NoValueC NoValue (NoValueC NoValue EmptyHL)
+
+justRight1 = NoValueC NoValue (ValueC True EmptyHL)
+
+justRight2 = ValueC 3 (NoValueC NoValue EmptyHL)
 
 \end{code}
 

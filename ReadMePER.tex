@@ -174,21 +174,81 @@ Named bits examples to be provided.
 
 \subsection{CHOICE}
 
-\begin{lstlisting}[frame=single]
+{\bf ASN.1}
 
+\begin{lstlisting}[frame=single]
 FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
       Choice1 ::= 
         CHOICE {
-          d INTEGER,
-          e BOOLEAN
+          d INTEGER
 	}
+      
+      Choice2 ::= 
+        CHOICE {
+	  a INTEGER,
+          b INTEGER,
+          c INTEGER,
+          d INTEGER
+        }
+
+      SeqChoices1 ::=
+         SEQUENCE {
+            x Choice1,
+            y Choice2
+         }
    END
+
 \end{lstlisting}
+
+{\bf Haskell}
 
 Attempts to encode a {\em CHOICE} with one and only one choice will 
 succeed; attempts to encode a {\em CHOICE} with too many or too few
 parameters will produce a type error (the ``sizes'' e.g. {\em Z, S Z and S (S Z)} won't match).
+
+\begin{lstlisting}[frame=single]
+
+choice1 = 
+   CHOICE xs 
+      where
+         xs = 
+            ChoiceOption 
+               (NamedType "a" Nothing INTEGER) NoFChoice
+
+choiceVal1 = ValueC 7 EmptyHL
+
+choice2 = 
+   CHOICE xs
+      where
+         xs = ChoiceOption a (
+                 ChoiceOption b (
+                    ChoiceOption c (
+                       ChoiceOption d NoFChoice
+                       )
+                    )
+                 )
+         a = NamedType "a" Nothing INTEGER
+         b = NamedType "b" Nothing INTEGER
+         c = NamedType "c" Nothing INTEGER
+         d = NamedType "d" Nothing INTEGER
+
+choiceVal2 = NoValueC NoValue (
+                NoValueC NoValue (
+                   NoValueC NoValue (ValueC 7 EmptyHL)
+                   )
+                )
+
+seqChoices1 = 
+   SEQUENCE elems
+      where
+         elems = Cons x (Cons y Nil)
+         x = ETMandatory (NamedType "x" Nothing choice1)
+         y = ETMandatory (NamedType "y" Nothing choice2)
+
+\end{lstlisting}
+
+This either needs to be updated or removed.
 
 \begin{lstlisting}[frame=single]
 
@@ -200,10 +260,6 @@ choice1 =
                         NoChoice
           )
       )
-
-choice1 :: 
-   ASNType 
-      ((:*:) (Maybe Integer) ((:*:) (Maybe Bool) Nil)) (S Z)
 
 tooMany    = 3 :+: (True :+: ASNEmpty)
 tooFew     = NoValue :-: (NoValue :-: ASNEmpty)
@@ -217,6 +273,8 @@ justRight1 ::
    forall a. ASNValue ((:*:) a ((:*:) Bool Nil)) (S Z)
 
 \end{lstlisting}
+
+\subsubsection{Extensible Type with Addition Groups}
 
 More sophisticated examples such as the one from Annex A.4 in X.691 are
 possible. The representation for this has not been finalised but the
