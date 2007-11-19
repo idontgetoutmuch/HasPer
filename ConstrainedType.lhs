@@ -30,6 +30,8 @@ Some type aliases and newtype declarations
 
 \begin{code}
 type BitStream = [Int]
+type Octet = [Int] 
+--type OctetStream = [Octet]
 
 newtype IA5String = IA5String {iA5String :: String}
 
@@ -38,6 +40,9 @@ instance Show IA5String where
 
 newtype BitString = BitString {bitString :: BitStream}
    deriving (Eq, Show)
+
+--newtype OctetString = OctetString {octetString :: OctetStream}
+--  deriving (Eq, Show)
 
 newtype PrintableString = PrintableString {printableString :: String}
 newtype NumericString = NumericString {numericString :: String}
@@ -165,51 +170,22 @@ data S n
 
 data Phantom a = NoValue
 
-{-
-data ASNValue :: * -> * -> * where
-   ASNLift  :: a -> ASNValue a (S Z)
-   ASNEmpty :: ASNValue Nil Z
-   CConsNo  :: Phantom a -> ASNValue l n -> ASNValue (a:*:l) n
-   CConsYes :: a -> ASNValue l n -> ASNValue (a:*:l) (S n)
 
-data ASNValue' :: * -> * -> * where
-   ASNEmpty' :: ASNValue' Nil Z
-   (:-:)     :: Phantom a -> ASNValue' l n -> ASNValue' (a:*:l) n
-   (:+:)     :: a -> ASNValue' l n -> ASNValue' (a:*:l) (S n)
--}
-
-data Choice :: * -> * where
-    NoChoice     :: Choice Nil
-    ChoiceExt    :: Choice l -> Choice l
-    ChoiceEAG    :: Choice l -> Choice l
-    ChoiceOption :: NamedType a -> Choice l -> Choice ((Maybe a):*:l)
-
--- This choice value type mimics your type Choice
+-- This is a type for heterogeneous lists with a constraint of one on the number of 
+-- actual values allowed.
 data HL :: * -> * -> * where
-    EmptyHL :: HL Nil Z 
-    ValueC  :: a -> HL l Z -> HL (a:*:l) (S Z)
+    EmptyHL  :: HL Nil Z 
+    ValueC   :: a -> HL l Z -> HL (a:*:l) (S Z)
     NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n  
 
 -- This type is very similar to the original choice type but returns a 
--- FChoice (a:*:l) instead of a FChoice (Maybe a:*: l) since Nothing and
+-- Choice (a:*:l) instead of a Choice (Maybe a:*: l) since Nothing and
 -- Just v are replaced by NoValue and v for any type.
-data FChoice :: * -> *  where
-    NoFChoice     :: FChoice Nil
-    FChoiceExt    :: FChoice l -> FChoice l 
-    FChoiceEAG    :: FChoice l -> FChoice l
-    FChoiceOption :: NamedType a -> FChoice l -> FChoice (a:*:l)
-
--- toPer is now unchanged (except it takes a FChoice c rather than a Choice c) 
--- and the only other change is that all the types of choice encoding functions 
--- now take an FChoice a and a HL a n, rather than a Choice a and a.
-
-{-
-data Choice' :: * -> * -> * where
-    NoChoice'     :: Choice' Nil (S Z)
-    ChoiceExt'    :: Choice' l n -> Choice' l n
-    ChoiceEAG'    :: Choice' l n -> Choice' l n
-    ChoiceOption' :: NamedType a -> Choice' l n -> Choice' ((Maybe a):*:l) n
--}
+data Choice :: * -> *  where
+    NoChoice     :: Choice Nil
+    ChoiceExt    :: Choice l -> Choice l 
+    ChoiceEAG    :: Choice l -> Choice l
+    ChoiceOption :: NamedType a -> Choice l -> Choice (a:*:l)
 
 \end{code}
 
@@ -237,11 +213,16 @@ type TagInfo    = (TagType, TagValue, TagPlicity)
 type TypeRef    = String
 type Name       = String
 
+\end{code}
+
+The type Constraint a represents size constraint values. 
+
+\begin{code}
 
 data Ord a => Constraint a
         = Elem (S.Set a)
             | Union (Constraint a) (Constraint a)
-                    | Intersection (Constraint a) (Constraint a)
+            | Intersection (Constraint a) (Constraint a)
             | Except (Constraint a) (Constraint a)
 
 evalCons :: Ord a => Constraint a -> S.Set a
@@ -250,6 +231,12 @@ evalCons (Union s t) = evalCons s `S.union` evalCons t
 evalCons (Intersection s t) = evalCons s `S.intersection` evalCons t
 evalCons (Except s t) = evalCons s `S.difference` evalCons t
 
+\end{code}
+
+The type EM a represents the existence or not of an extension marker in a size constraint.
+The Maybe stype is used because an extension marker may be followed by additional values or not.
+
+\begin{code}
 
 data EM a = NoMarker | EM (Maybe (Constraint a))
 
@@ -272,6 +259,7 @@ data ASNType :: * -> * where
    INTEGER         :: ASNType Integer
    ENUMERATED      :: Enumerate a -> ASNType a
    BITSTRING       :: NamedBits -> ASNType BitString
+--   OCTETSTRING     :: ASNTYPE OctetString
    PRINTABLESTRING :: ASNType PrintableString
    IA5STRING       :: ASNType IA5String
    VISIBLESTRING   :: ASNType VisibleString
@@ -285,21 +273,9 @@ data ASNType :: * -> * where
 -- REMOVED SizeConstraint a => from above
    SET             :: Sequence a -> ASNType a
    SETOF           :: ASNType a -> ASNType [a]
-   CHOICE          :: Choice a -> ASNType a
--- In the definition of ASNType we have the constructor FCHOICE which returns the 
--- required type (so that it matches the values with a single entry).
-   FCHOICE         :: FChoice a -> ASNType (HL a (S Z)) 
+   CHOICE          :: Choice a -> ASNType (HL a (S Z)) 
    FROM            :: PermittedAlphabet a => ASNType a -> a -> ASNType a
 -- WILL CHANGE 2ND ELEMENT TO cONSTRAINT cHAR FOR FROM CONSTRUCTOR
-
-data ASNType' :: * -> * -> * where
-   BOOLEAN'         :: ASNType' Bool (S Z)
-   INTEGER'         :: ASNType' Integer (S Z)
-   BITSTRING'       :: NamedBits -> ASNType' BitString  (S Z)
-   RANGE'           :: ASNType' Integer n -> Lower -> Upper -> ASNType' Integer n
-   SEQUENCE'        :: Sequence a -> ASNType' a (S Z)
-   SIZE'            :: ASNType' a n -> Constraint Integer -> EM Integer -> ASNType' a n
---    CHOICE'          :: Choice' a n -> ASNType' a n
 
 \end{code}
 
@@ -391,7 +367,7 @@ counter.
 
 \begin{code}
 
-toPer :: ASNType a -> a -> [Int]
+toPer :: ASNType a -> a -> BitStream
 toPer (TYPEASS tr tg ct) v                      = toPer8s ct v
 toPer (EXTADDGROUP s) x                         = toPerOpen (SEQUENCE s) x
 toPer t@BOOLEAN x                               = encodeBool t x
@@ -400,6 +376,8 @@ toPer r@(RANGE i l u) x                         = encodeInt r x
 toPer (ENUMERATED e) x                          = encodeEnum e x
 toPer t@(BITSTRING nbs) x                       = encodeBS t x
 toPer t@(SIZE (BITSTRING _) _ _) x              = encodeBS t x
+--toPer t@(OCTETSTRING nbs) x                     = encodeOS t x
+--toPer t@(SIZE (OCTETSTRING _) _ _) x            = encodeOS t x
 toPer (SEQUENCE s) x                            = encodeSeq s x
 toPer t@(SEQUENCEOF s) x                        = encodeSO t x
 toPer t@(SIZE (SEQUENCEOF c) _ _) x             = encodeSO t x
@@ -435,83 +413,6 @@ toPer8s ct v
 
 \end{code}
 
-This is transitional until we can see whether the plan for CHOICE works.
-{\em forget} and {\em forgetChoice} allow the continued use of {\em toPer} from
-{\em toPer'} by lifting old style values to new style values.
-
-{\em toPer' sizedType1 justRight1} typechecks but both {\em toPer' sizedType1 tooMany}
-and {\em toPer' sizedType1 tooFew} both fail.
-
-{\em encodeChoice'} is currently undefined but presumably is just the same as
-{\em encodeChoice}.
-
-\begin{code}
-
-{-
-
-forgetChoice :: Choice' a n -> Choice a
-forgetChoice NoChoice'           = NoChoice
-forgetChoice (ChoiceExt' c)      = ChoiceExt (forgetChoice c)
-forgetChoice (ChoiceEAG' c)      = ChoiceEAG (forgetChoice c)
-forgetChoice (ChoiceOption' n c) = ChoiceOption n (forgetChoice c)
-
-forget :: ASNType' a n -> ASNType a
-forget BOOLEAN'         = BOOLEAN
-forget INTEGER'         = INTEGER
-forget (RANGE' i l u)   = RANGE (forget i) l u
-forget (BITSTRING' nbs) = BITSTRING nbs
-forget (SEQUENCE' s)    = SEQUENCE s
-forget (SIZE' t s e)    = SIZE (forget t) s e
-forget (CHOICE' t)      = CHOICE (forgetChoice t)
-
-toPer' t (ASNLift x)  = toPer (forget t) x
-toPer' (CHOICE' t) x  = encodeChoice' t x
-
-encodeChoice' :: Choice' a n -> ASNValue a n -> BitStream
-encodeChoice' (ChoiceOption' nt c) (CConsNo x y)  = undefined
-encodeChoice' (ChoiceOption' nt c) (CConsYes x y) = undefined
-
-sizedType1 = CHOICE' (ChoiceOption' (NamedType "b" Nothing INTEGER) (ChoiceOption' (NamedType "a" Nothing BOOLEAN) NoChoice'))
-
--}
-
-sizedType1 = FCHOICE (FChoiceOption (NamedType "b" Nothing INTEGER) (FChoiceOption (NamedType "a" Nothing BOOLEAN) NoFChoice))
-
-\end{code}
-
-At the moment we have some spurious {\em Just}s. We should be able to get rid of these when we re-write {\em encodeChoice}.
-
-\begin{code}
-
-{-
-
-tooMany = CConsYes (Just 3) (CConsYes (Just True) ASNEmpty)
-
-tooMany' = CConsYes 3 (CConsYes True ASNEmpty)
-
-tooMany'' = 3 :+: (True :+: ASNEmpty')
-
-tooFew = CConsNo NoValue (CConsNo NoValue ASNEmpty)
-
-tooFew' = NoValue :-: (NoValue :-: ASNEmpty')
-
-justRight1 = CConsNo NoValue (CConsYes (Just True) ASNEmpty)
-
-justRight1' = CConsNo NoValue (CConsYes True ASNEmpty)
-
-justRight1'' = NoValue :-: (True :+: ASNEmpty')
-
--}
-
--- tooMany = ValueC 3 (ValueC True EmptyHL)
-
-tooFew = NoValueC NoValue (NoValueC NoValue EmptyHL)
-
-justRight1 = NoValueC NoValue (ValueC True EmptyHL)
-
-justRight2 = ValueC 3 (NoValueC NoValue EmptyHL)
-
-\end{code}
 
 toPerOpen encodes an open type value. That is:
 i. the value is encoded as ususal;
@@ -553,7 +454,7 @@ encodeBool t _    = [0]
 
 \end{code}
 
-10.3 -- 10.8 ENCODING THE INTEGER TYPE
+\section{10.3 -- 10.8 ENCODING THE INTEGER TYPE}
 
 \begin{code}
 
@@ -794,7 +695,7 @@ h n = (reverse . map fromInteger) (flip (curry (unfoldr g)) 7 n)
 
 \end{code}
 
- 13 ENCODING THE ENUMERATED TYPE
+\section{13. ENCODING THE ENUMERATED TYPE}
 
 There are three cases to deal with:
 
@@ -986,7 +887,14 @@ strip0s (a:r)
 strip0s [] = []
 \end{code}
 
-18 ENCODING THE SEQUENCE TYPE
+\section{15. ENCODING THE OCTETSTRING TYPE}
+
+encodeOS :: ASNType OctetString -> OctetString -> BitStream
+encodeOS t@(SIZE ty s e) x = encodeOSSz t x
+encodeOS t x               = encodeOSNoSz t x
+
+
+\section{18. ENCODING THE SEQUENCE TYPE}
 
 \begin{code}
 
@@ -1293,7 +1201,7 @@ that only one choice value is encoded.
 
 \begin{code}
 
-encodeChoice :: Choice a -> a -> BitStream
+encodeChoice :: Choice a -> HL a (S Z) -> BitStream
 encodeChoice c x
     =   let ts  = getCTags c
             (ea, ec)  = (encodeChoiceAux [] [] c x)
@@ -1340,42 +1248,48 @@ choicePred :: (TagInfo, BitStream) -> (TagInfo, BitStream) -> Bool
 choicePred (t1,_) (t2,_) = t1 < t2
 
 
-encodeChoiceAux :: [Int] -> [BitStream] -> Choice a -> a -> ([Int], [BitStream])
+encodeChoiceAux :: [Int] -> [BitStream] -> Choice a -> HL a n -> ([Int], [BitStream])
 encodeChoiceAux ext body NoChoice _ = (ext, reverse body)
 encodeChoiceAux ext body (ChoiceExt as) xs =
    encodeChoiceExtAux [0] body as xs
-encodeChoiceAux ext body (ChoiceOption a as) (Nothing:*:xs) =
+encodeChoiceAux ext body (ChoiceOption a as) (NoValueC x xs) =
    encodeChoiceAux ext ([]:body) as xs
-encodeChoiceAux ext body (ChoiceOption (NamedType n t a) as) ((Just x):*:xs) =
+encodeChoiceAux ext body (ChoiceOption (NamedType n t a) as) (ValueC x xs) =
    encodeChoiceAux' ext ((toPer a x):body) as xs
 
 
-encodeChoiceAux' :: [Int] -> [BitStream] -> Choice a -> a -> ([Int], [BitStream])
+encodeChoiceAux' :: [Int] -> [BitStream] -> Choice a -> HL a n -> ([Int], [BitStream])
 encodeChoiceAux' ext body NoChoice _ = (ext, reverse body)
 encodeChoiceAux' ext body (ChoiceExt as) xs =
    encodeChoiceExtAux' ext body as xs
-encodeChoiceAux' ext body (ChoiceOption a as) (x:*:xs) =
+encodeChoiceAux' ext body (ChoiceOption a as) (NoValueC x xs) =
+   encodeChoiceAux' ext ([]:body) as xs
+encodeChoiceAux' ext body (ChoiceOption a as) (ValueC x xs) =
    encodeChoiceAux' ext ([]:body) as xs
 
-encodeChoiceExtAux :: [Int] -> [BitStream] -> Choice a -> a -> ([Int], [BitStream])
+
+encodeChoiceExtAux :: [Int] -> [BitStream] -> Choice a -> HL a n -> ([Int], [BitStream])
 encodeChoiceExtAux ext body NoChoice _ = (ext,reverse body)
 encodeChoiceExtAux ext body (ChoiceExt as) xs =
    encodeChoiceAux ext body as xs
 encodeChoiceExtAux ext body (ChoiceEAG as) xs =
    encodeChoiceExtAux ext body as xs
-encodeChoiceExtAux ext body (ChoiceOption a as) (Nothing:*:xs) =
+encodeChoiceExtAux ext body (ChoiceOption a as) (NoValueC x xs) =
    encodeChoiceExtAux ext ([]:body) as xs
-encodeChoiceExtAux ext body (ChoiceOption (NamedType n t a) as) ((Just x):*:xs) =
+encodeChoiceExtAux ext body (ChoiceOption (NamedType n t a) as) (ValueC x xs) =
    encodeChoiceExtAux' [1]((toPerOpen a x):body) as xs
 
-encodeChoiceExtAux' :: [Int] -> [BitStream] -> Choice a -> a -> ([Int], [BitStream])
+encodeChoiceExtAux' :: [Int] -> [BitStream] -> Choice a -> HL a n -> ([Int], [BitStream])
 encodeChoiceExtAux' ext body NoChoice _ = (ext, reverse body)
 encodeChoiceExtAux' ext body (ChoiceExt as) xs =
    encodeChoiceAux' ext body as xs
 encodeChoiceExtAux' ext body (ChoiceEAG as) xs =
    encodeChoiceAux' ext body as xs
-encodeChoiceExtAux' ext body (ChoiceOption a as) (x:*:xs) =
+encodeChoiceExtAux' ext body (ChoiceOption a as) (NoValueC x xs) =
    encodeChoiceExtAux' ext body as xs
+encodeChoiceExtAux' ext body (ChoiceOption a as) (ValueC x xs) =
+   encodeChoiceExtAux' ext body as xs
+
 
 \end{code}
 
