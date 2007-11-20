@@ -70,8 +70,12 @@ t7 = SIZE (SEQUENCEOF t1') (Elem (fromList [2..5])) NoMarker
 t8 = SIZE (SEQUENCEOF t5) (Elem (fromList [2])) NoMarker
 t9 = SEQUENCE (Cons t4' (Cons t4 Nil))
 t10 = SIZE (SEQUENCEOF t9) (Elem (fromList [1..3])) NoMarker
---t11 = CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice))))
---t12 = CHOICE (ChoiceOption t04 (ChoiceOption t03 NoChoice))
+t11 = CHOICE (ChoiceOption (NamedType "" Nothing t0) 
+		 (ChoiceOption (NamedType "" Nothing t1') 
+		 (ChoiceOption (NamedType "" Nothing t01) 
+		 (ChoiceOption (NamedType "" Nothing t02) NoChoice))))
+t12 = CHOICE (ChoiceOption (NamedType "" Nothing t04) 
+		 (ChoiceOption (NamedType "" Nothing t03) NoChoice))
 
 -- Constrained INTEGER
 
@@ -712,19 +716,19 @@ oldChoice1 =
       where
          xs = ChoiceOption (NamedType "a" Nothing INTEGER) NoChoice
 
--- testOldChoice1 = toPer oldChoice1 (Just 31 :*: Empty)
+testOldChoice1 = toPer oldChoice1 (ValueC 31 EmptyHL)
 
 eOldChoice1 = [
    0,0,0,0,0,0,0,1,
    0,0,0,1,1,1,1,1
    ]
 
-{-
+
 choiceTest1 = 
    TestCase (
       assertEqual "CHOICE Test 2" eOldChoice1 testOldChoice1
    )
--}
+
 
 choice2 = 
    CHOICE xs
@@ -746,7 +750,7 @@ oldChoice2 =
          c = NamedType "c" Nothing INTEGER
          d = NamedType "d" Nothing INTEGER
 
--- testOldChoice2 = toPer oldChoice2 (Nothing:*:((Just 27):*:(Nothing:*:(Nothing:*:Empty))))
+testOldChoice2 = toPer oldChoice2 (NoValueC NoValue (ValueC 27 (NoValueC NoValue (NoValueC NoValue EmptyHL))))
 
 eOldChoice2 = [
    1,0,
@@ -754,14 +758,14 @@ eOldChoice2 = [
    0,0,0,1,1,0,1,1
    ]
 
-{-
+
 choiceTest2 = 
    TestCase (
       assertEqual "CHOICE Test 3" eOldChoice2 testOldChoice2
    )
--}
 
--- testOldChoice21 = toPer oldChoice2 ((Just 31):*:(Nothing:*:(Nothing:*:(Nothing:*:Empty))))
+
+testOldChoice21 = toPer oldChoice2 (ValueC 31 (NoValueC NoValue (NoValueC NoValue (NoValueC NoValue EmptyHL))))
 
 eOldChoice21 = [
    1,1,
@@ -769,12 +773,12 @@ eOldChoice21 = [
    0,0,0,1,1,1,1,1
    ]
 
-{-
+
 choiceTest21 = 
    TestCase (
       assertEqual "CHOICE Test 4" eOldChoice21 testOldChoice21
    )
--}
+
 
 seqChoices1 = 
    SEQUENCE elems
@@ -815,13 +819,13 @@ ax
 axVal
     = (253 :*:
        (True :*:
-         ((Nothing:*:
-            ((Just True):*:(Nothing:*:Empty))) :*:
+         ((NoValueC NoValue 
+            (ValueC True (NoValueC NoValue EmptyHL))) :*:
                ((Just (Just (NumericString "123") :*:(Just True :*: Empty))):*:
                  (Nothing :*:
                   (Nothing :*:Empty))))))
 
--- axEx = toPer ax axVal
+axEx = toPer ax axVal
 
 eAx = [
    1,
@@ -840,28 +844,35 @@ eAx = [
    1,0,0,0,0
    ]
 
-{-
+
 sChoiceTest1 = 
    TestCase (
       assertEqual "CHOICE Test 1" eAx axEx
    )
--}
 
-\end{code}
 
-test20c  = toPer (CHOICE (ChoiceOption t0 (ChoiceOption t1 (ChoiceOption t01 (ChoiceOption t02 NoChoice)))))
-            (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
 
-test21c  = toPer (CHOICE (ChoiceOption t0 NoChoice)) (Just 31 :*: Empty)
+
+test20c  = toPer (CHOICE (ChoiceOption (NamedType "" Nothing t0) 
+				 (ChoiceOption (NamedType "" Nothing t1') 
+			       (ChoiceOption (NamedType "" Nothing t01) 
+				 (ChoiceOption (NamedType "" Nothing t02) NoChoice)))))
+            (NoValueC NoValue (ValueC 27 (NoValueC NoValue (NoValueC NoValue EmptyHL))))
+
+test21c  = toPer (CHOICE (ChoiceOption (NamedType "" Nothing t0) NoChoice)) (ValueC 31 EmptyHL)
 
 test22c
-  = toPer (CHOICE (ChoiceOption t0 (ChoiceOption t12 NoChoice)))
-             (Nothing :*: (Just (Just 52 :*: (Nothing :*: Empty)) :*: Empty))
+  = toPer (CHOICE (ChoiceOption (NamedType "" Nothing t0) 
+			(ChoiceOption (NamedType "" Nothing t12) NoChoice)))
+             (NoValueC NoValue (ValueC (ValueC 52 (NoValueC NoValue EmptyHL)) EmptyHL))
 
 test23c
-    = toPer (CHOICE (ChoiceOption t11 (ChoiceOption t12 NoChoice)))
-        (Just (Nothing :*: (Just 27 :*: (Nothing :*: (Nothing :*: Empty))))
-            :*: (Nothing :*: Empty))
+    = toPer (CHOICE (ChoiceOption (NamedType "" Nothing t11) 
+		(ChoiceOption (NamedType "" Nothing t12) NoChoice)))
+        (ValueC (NoValueC NoValue (ValueC 27 (NoValueC NoValue (NoValueC NoValue EmptyHL))))
+            (NoValueC NoValue EmptyHL))
+
+\end{code}
 
 \section{SEQUENCE}
 
@@ -1089,10 +1100,10 @@ tests =
       sConBitStringTest3,
       sConBitStringTest4,
       sConBitStringTest5,
---       choiceTest1,
---       choiceTest2,
---       choiceTest21,
---       sChoiceTest1,
+      choiceTest1,
+      choiceTest2,       
+      choiceTest21,
+      sChoiceTest1,
       eSeqOfTest1,
       eSeqOfTest2,
       sSeqTest1
