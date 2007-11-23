@@ -790,6 +790,9 @@ choiceTest3 =
 We have to pad to a multiple of 8 bits otherwise the tests don't work.
 This really needs to be fixed.
 
+
+
+
 \begin{code}
 
 decodeChoice2 = mmIdem choice2 (eOldChoice21 ++ (take 6 (repeat 0)))
@@ -872,8 +875,26 @@ sChoiceTest1 =
       assertEqual "CHOICE Test 1" eAx axEx
    )
 
+\end{code}
 
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      Choice3 ::= 
+        CHOICE {
+	  a INTEGER,
+          b BIT STRING,
+        }
+   END
+\end{lstlisting}
 
+\begin{code}
+
+choice3 = TYPEASS "Choice3" Nothing (CHOICE cs)
+   where
+      cs = ChoiceOption a (ChoiceOption b NoChoice)
+      a = NamedType "a" Nothing INTEGER 
+      b = NamedType "b" Nothing (BITSTRING [])
 
 test20c  = toPer (CHOICE (ChoiceOption (NamedType "" Nothing t0) 
 				 (ChoiceOption (NamedType "" Nothing t1') 
