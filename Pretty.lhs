@@ -60,6 +60,8 @@ prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
 prettyConstraint (Elem s) = text (show s)
 
 prettyType :: ASNType a -> Doc
+prettyType (TYPEASS tr _ t) =
+   text tr <+> text "::=" <+> prettyType t
 prettyType (BITSTRING []) =
    text "BITSTRING"
 prettyType INTEGER =
