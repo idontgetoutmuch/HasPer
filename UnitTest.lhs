@@ -896,6 +896,8 @@ choice3 = TYPEASS "Choice3" Nothing (CHOICE cs)
       a = NamedType "a" Nothing INTEGER 
       b = NamedType "b" Nothing (BITSTRING [])
 
+testChoice3 = toPer choice3 (ValueC 3 (NoValueC NoValue EmptyHL))
+
 test20c  = toPer (CHOICE (ChoiceOption (NamedType "" Nothing t0) 
 				 (ChoiceOption (NamedType "" Nothing t1') 
 			       (ChoiceOption (NamedType "" Nothing t01) 
