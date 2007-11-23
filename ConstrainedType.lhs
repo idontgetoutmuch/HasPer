@@ -178,6 +178,13 @@ data HL :: * -> * -> * where
     ValueC   :: a -> HL l Z -> HL (a:*:l) (S Z)
     NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n  
 
+instance Show (HL Nil n) where
+   show _ = "EmptyHL"
+
+instance (Show a, Show (HL l n)) => Show (HL (a:*:l) n) where
+   show (ValueC x _ ) = show x
+   show (NoValueC _ xs) = show xs
+
 -- This type is very similar to the original choice type but returns a 
 -- Choice (a:*:l) instead of a Choice (Maybe a:*: l) since Nothing and
 -- Just v are replaced by NoValue and v for any type.
@@ -376,8 +383,14 @@ toPer r@(RANGE i l u) x                         = encodeInt r x
 toPer (ENUMERATED e) x                          = encodeEnum e x
 toPer t@(BITSTRING nbs) x                       = encodeBS t x
 toPer t@(SIZE (BITSTRING _) _ _) x              = encodeBS t x
+
+\end{code}
+
 --toPer t@(OCTETSTRING nbs) x                     = encodeOS t x
 --toPer t@(SIZE (OCTETSTRING _) _ _) x            = encodeOS t x
+
+\begin{code}
+
 toPer (SEQUENCE s) x                            = encodeSeq s x
 toPer t@(SEQUENCEOF s) x                        = encodeSO t x
 toPer t@(SIZE (SEQUENCEOF c) _ _) x             = encodeSO t x
@@ -892,7 +905,6 @@ strip0s [] = []
 encodeOS :: ASNType OctetString -> OctetString -> BitStream
 encodeOS t@(SIZE ty s e) x = encodeOSSz t x
 encodeOS t x               = encodeOSNoSz t x
-
 
 \section{18. ENCODING THE SEQUENCE TYPE}
 
@@ -1676,6 +1688,8 @@ fromNonNeg xs =
 
 \end{code}
 
+\section{Decoding}
+
       -- fromIntegral for now until we sort out why there's a Word8 / Int clash
 
       -- This is a space leak waiting to happen
@@ -1698,8 +1712,17 @@ mFromPer (SEQUENCE s)              =
       l (Cons (ETOptional _ ) ts) = 1+(l ts)
 mFromPer t@(SIZE (SIZE _ _ _) _ _) = 
    let nt = multiSize t in mFromPer nt
+mFromPer t@(CHOICE c) =
+   do ps <- mmGetBits ((genericLength (encodeNNBIntBits (0,(l c)))) - 1)
+      decodeChoice (map fromIntegral ps) c
+   where
+      l :: Integral n => Choice a -> n
+      l NoChoice = 0
+      l (ChoiceOption t ts) = 1+(l ts)
 
 \end{code}
+
+\subsection{SEQUENCE}
 
    -- The bitmap always matches the Sequence but we recurse the Sequence twice so this needs to be fixed
 
@@ -1722,6 +1745,33 @@ mmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
             do x <- mFromPer t
                xs <- mmFromPerSeq (tail bitmap) ts
                return ((Just x):*:xs)
+
+\end{code}
+
+\subsection{CHOICE}
+
+Note we never have negative indices so we don't need to check for $n < 0$.
+
+\begin{code}
+
+decodeChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => BitStream -> Choice a -> m (HL a (S Z))
+decodeChoice bitmap c =
+   nthChoice (fromNonNeg bitmap) c
+
+nthChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Choice a -> m (HL a (S Z))
+nthChoice n NoChoice =
+   throwError ("Unable to select component. Probable cause: index too large")
+nthChoice 0 (ChoiceOption nt@(NamedType _ _ t) cs) = 
+   do v <- mFromPer t
+      let vs = noChoice cs
+      return (ValueC v vs)
+nthChoice n (ChoiceOption nt@(NamedType _ _ t) cs) = 
+   do v <- nthChoice (n - 1) cs
+      return (NoValueC NoValue v)
+
+noChoice :: Choice a -> HL a Z
+noChoice NoChoice = EmptyHL
+noChoice (ChoiceOption v vs) = NoValueC NoValue (noChoice vs)
 
 \end{code}
 

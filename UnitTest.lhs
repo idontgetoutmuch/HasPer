@@ -764,7 +764,6 @@ choiceTest2 =
       assertEqual "CHOICE Test 3" eOldChoice2 testOldChoice2
    )
 
-
 testOldChoice21 = toPer oldChoice2 (ValueC 31 (NoValueC NoValue (NoValueC NoValue (NoValueC NoValue EmptyHL))))
 
 eOldChoice21 = [
@@ -779,6 +778,29 @@ choiceTest21 =
       assertEqual "CHOICE Test 4" eOldChoice21 testOldChoice21
    )
 
+decodeChoice1 = mmIdem choice1 eOldChoice1
+
+choiceTest3 = 
+   TestCase (
+      assertEqual "CHOICE Test 5" (show (ValueC 31 EmptyHL)) (show decodeChoice1)
+   )
+
+\end{code}
+
+We have to pad to a multiple of 8 bits otherwise the tests don't work.
+This really needs to be fixed.
+
+\begin{code}
+
+decodeChoice2 = mmIdem choice2 (eOldChoice21 ++ (take 6 (repeat 0)))
+
+choiceTest4 = 
+   TestCase (
+      assertEqual 
+         "CHOICE Test 6" 
+         (show (ValueC 31 (NoValueC (NoValue::Phantom Integer) (NoValueC (NoValue::Phantom Integer) (NoValueC (NoValue::Phantom Integer) EmptyHL)))))
+         (show decodeChoice2)
+   )
 
 seqChoices1 = 
    SEQUENCE elems
@@ -941,7 +963,7 @@ mIdem t x =
 mmIdem :: ASNType a -> BitStream -> a
 mmIdem t x =
    case runTest x 0 of
-      (Left _,_)   -> undefined
+      (Left ys,s)   -> error (show ys ++ " " ++ show s)
       (Right xs,_) -> xs
    where
       runTest x y = runState (runErrorT (mFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
@@ -1103,6 +1125,8 @@ tests =
       choiceTest1,
       choiceTest2,       
       choiceTest21,
+      choiceTest3,
+      choiceTest4,
       sChoiceTest1,
       eSeqOfTest1,
       eSeqOfTest2,
