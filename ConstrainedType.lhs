@@ -903,7 +903,7 @@ strip0s [] = []
 \section{15. ENCODING THE OCTETSTRING TYPE}
 
 encodeOS :: ASNType OctetString -> OctetString -> BitStream
-encodeOS t@(SIZE ty s e) x = encodeOSSz t x
+encodeOS t the at sign (SIZE ty s e) x = encodeOSSz t x
 encodeOS t x               = encodeOSNoSz t x
 
 \section{18. ENCODING THE SEQUENCE TYPE}
