@@ -1754,11 +1754,13 @@ Note we never have negative indices so we don't need to check for $n < 0$.
 
 \begin{code}
 
-decodeChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => BitStream -> Choice a -> m (HL a (S Z))
+decodeChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
+                   BitStream -> Choice a -> m (HL a (S Z))
 decodeChoice bitmap c =
    nthChoice (fromNonNeg bitmap) c
 
-nthChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Choice a -> m (HL a (S Z))
+nthChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
+                Integer -> Choice a -> m (HL a (S Z))
 nthChoice n NoChoice =
    throwError ("Unable to select component. Probable cause: index too large")
 nthChoice 0 (ChoiceOption nt@(NamedType _ _ t) cs) = 
