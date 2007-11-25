@@ -282,38 +282,9 @@ instance Show RepChoiceVal where
          RepChoiceVal t x ->
             render (prettyChoiceVal t x)
 
-{-
-
-instance Show RepSeqVal where
-   show r =
-      case r of
-         RepSeqVal t x ->
-            render (prettySeqVal t x)
-
-prettyElementTypeVal :: ElementType a -> a -> Doc
-prettyElementTypeVal (ETMandatory (NamedType n _ t)) x =
-   text n <+> prettyTypeVal t x
--}
-
--- data Foo = forall a . Eq a => RepFoo (Choice a) (HL a Z)
-
--- data Foo1 = forall a . Eq a => RepFoo1 (Choice a) (HL a (S Z))
-
 data Fum = forall a . Eq a => Fum (Choice a) (HL a Z)
 
 data Fee = forall a . Eq a => Fee (Choice a) (HL a (S Z))
-
--- baz x = return (RepFoo x (noChoice x)) 
-
-{-
-fud :: Eq a => Choice a -> Gen Foo
-fud a = return (RepFoo a (noChoice a))
--}
-
-{-
-arbitraryNoChoice :: Eq a => Choice a -> Gen RepNoChoiceVal
-arbitraryNoChoice a = return (RepNoChoiceVal a (noChoice a))
--}
 
 fum :: Choice a -> Gen Fum
 fum (ChoiceOption (NamedType n i t) ts) =
@@ -423,131 +394,14 @@ arbitraryChoice a =
    do n <- suchThat arbitrary (\n -> (n >= 0) && (n <= ((choiceLength a) - 1)))
       arbitraryNthChoice n a
 
-{-
-fudNth :: Eq a => Int -> Choice a -> Gen Foo
-fudNth 0 x@(ChoiceOption (NamedType n i t) cs) =
-   do u  <- arbitraryType t
-      us <- fud x
-      case us of
-         RepFoo as vs ->
-            case u of
-               RepTypeVal a v ->
-                  return (RepFoo (ChoiceOption (NamedType n i a) as) (NoValueC NoValue vs))
--}
-
-{-
-arbitraryNth :: Eq a => Int -> Choice a -> Gen RepNoChoiceVal
-arbitraryNth 0 x@(ChoiceOption (NamedType n i t) cs) =
-   do u  <- arbitraryType t
-      us <- arbitraryNoChoice x
-      case us of
-         RepNoChoiceVal as vs ->
-            case u of
-               RepTypeVal a v ->
-                  return (RepNoChoiceVal (ChoiceOption (NamedType n i a) as) (NoValueC NoValue vs))
--}
-
-{-
-fim :: (Eq a, Eq b) => Int -> NamedType a -> Choice b -> Gen RepNoChoiceVal
-fim 0 (NamedType n i t) x =
-   do u <- arbitraryType t
-      us <- arbitraryNoChoice x
-      case us of
-         RepNoChoiceVal as vs ->
-            case u of
-               RepTypeVal a v ->
-                  return (RepNoChoiceVal (ChoiceOption (NamedType n i a) as) (NoValueC NoValue vs))
--}
-
-{-
-fum :: Eq a => Int -> Choice a -> Gen RepNoChoiceVal
-fum 0 x@(ChoiceOption c cs) =
-   fim 0 c cs
--}
-
-{-
-fudMth :: Eq a => Int -> Choice a -> Gen Foo1
-fudMth 0 x@(ChoiceOption (NamedType n i t) cs) =
-   do u  <- arbitraryType t
-      us <- fud x
-      case us of
-         RepFoo as vs ->
-            case u of
-               RepTypeVal a v ->
-                  return (RepFoo1 (ChoiceOption (NamedType n i a) as) (ValueC v vs))
--}
-
-{-
-arbitraryMth :: Eq a => Int -> Choice a -> Gen RepChoiceVal
-arbitraryMth 0 x@(ChoiceOption (NamedType n i t) cs) =
-   do u  <- arbitraryType t
-      us <- arbitraryNoChoice x
-      case us of
-         RepNoChoiceVal as vs ->
-            case u of
-               RepTypeVal a v ->
-                  return (RepChoiceVal (ChoiceOption (NamedType n i a) as) (ValueC v vs))
--}
-
-{-
-arbitraryNthChoice :: Eq a => Int -> Choice a -> Gen RepChoiceVal
-arbitraryNthChoice 0 (ChoiceOption (NamedType n i t) cs) =
-   do u <- arbitraryType t
-      us <- arbitraryNoChoice cs
-      case u of
-         RepTypeVal a v ->
-            case us of
-               RepNoChoiceVal as vs ->
-                  return (RepChoiceVal (ChoiceOption (NamedType n i a) as) (ValueC v vs))
--}
-
-{-
-arbFud :: Eq a => Choice a -> Gen Foo1
-arbFud a =
-   do n <- suchThat arbitrary (\n -> (n >= 0) && (n <= choiceLength a))
-      fudMth n a
--}
-
 choiceLength :: Integral n => Choice a -> n
 choiceLength NoChoice = 0
 choiceLength (ChoiceOption _ ts) = 1 + (choiceLength ts)
-
-{-
-arbitraryChoice :: Eq a => Choice a -> Gen RepChoiceVal
-arbitraryChoice NoChoice =
-   error "arbitraryChoice generating invalid length choice"
-arbitraryChoice a =
-   do n <- suchThat arbitrary (\n -> (n >= 0) && (n <= choiceLength a))
-      arbitraryNthChoice n a
--}
 
 -- bar :: Choice a -> Gen RepNoChoiceVal
 bar x = return (foo x)   
 
 foo x = RepNoChoiceVal x (noChoice x)
-
-{-
-   do ws <- arbitraryNoChoice vs
-      case ws of
-         RepNoChoiceVal cs xs ->
-            undefined -- return (RepNoChoiceVal (ChoiceOption v cs) (NoValueC NoValue xs))
--}
-
-{-
-arbitraryChoice :: Choice a -> Gen RepChoiceVal
-arbitraryChoice Nil =
-   return (RepChoiceVal NoChoice )
-
-
-arbitrarySeq (Cons (ETMandatory (NamedType n i t)) ts) =
-   do u <- arbitraryType t
-      us <- arbitrarySeq ts
-      case u of
-         RepTypeVal a v ->
-            case us of
-               RepSeqVal bs vs ->
-                  return (RepSeqVal (Cons (ETMandatory (NamedType n i a)) bs) (v:*:vs))
--}
 
 instance Arbitrary RepSeqVal where
    arbitrary =
