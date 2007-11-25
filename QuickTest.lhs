@@ -571,7 +571,7 @@ prettyTypeVal a@INTEGER x       = text (show x)
 prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
 prettyTypeVal a@(SIZE t s e) x  = prettyTypeVal t x
 prettyTypeVal a@(SEQUENCE s) x  = braces (prettySeqVal s x)
-prettyTypeVal a@(CHOICE c) x = braces (prettyChoiceVal c x)
+prettyTypeVal a@(CHOICE c) x = prettyChoiceVal c x
 
 {-
 instance Eq RepTypeVal where
@@ -644,6 +644,14 @@ seqChoices1 =
          y = ETMandatory (NamedType "y" Nothing choice1)
 
 choice2 = ChoiceOption (NamedType "z" Nothing INTEGER) (ChoiceOption (NamedType "a" Nothing seqChoices1) NoChoice)
+
+\end{code}
+
+Try this to generate arbitrary CHOICE: in this case a mixture of INTEGER and SEQUENCE.
+
+\begin{code}
+
+generateChoice = sample (arbitraryChoice choice2)
 
 data INTEGERVal = INTEGERVal (ASNType Integer) (Maybe Integer)
 
