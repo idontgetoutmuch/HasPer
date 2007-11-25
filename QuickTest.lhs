@@ -273,6 +273,8 @@ data Foo1 = forall a . Eq a => RepFoo1 (Choice a) (HL a (S Z))
 
 data Fum = forall a . Eq a => Fum (Choice a) (HL a Z)
 
+data Fee = forall a . Eq a => Fee (Choice a) (HL a (S Z))
+
 baz x = return (RepFoo x (noChoice x)) 
 
 fud :: Eq a => Choice a -> Gen Foo
@@ -290,6 +292,26 @@ fum (ChoiceOption (NamedType n i t) ts) =
             case us of
                Fum bs vs ->
                   return (Fum (ChoiceOption (NamedType n i a) bs) (NoValueC NoValue vs))
+
+fee :: Choice a -> Gen Fee
+fee(ChoiceOption (NamedType n i t) ts) =
+   do u <- arbitraryType t
+      us <- fee ts
+      case u of
+         RepTypeVal a v ->
+            case us of
+               Fee bs vs ->
+                  return (Fee (ChoiceOption (NamedType n i a) bs) (NoValueC NoValue vs))
+
+fuu :: Choice a -> Gen Fee
+fuu (ChoiceOption (NamedType n i t) ts) =
+   do u <- arbitraryType t
+      us <- fum ts
+      case u of
+         RepTypeVal a v ->
+            case us of
+               Fum bs vs ->
+                  return (Fee (ChoiceOption (NamedType n i a) bs) (ValueC v vs))
 
 fudNth :: Eq a => Int -> Choice a -> Gen Foo
 fudNth 0 x@(ChoiceOption (NamedType n i t) cs) =
