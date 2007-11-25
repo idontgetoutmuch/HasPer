@@ -267,21 +267,25 @@ data RepChoiceVal = forall a . Eq a => RepChoiceVal (Choice a) (HL a (S Z))
 
 data RepNoChoiceVal = forall a . Eq a => RepNoChoiceVal (Choice a) (HL a Z)
 
-data Foo = forall a . Eq a => RepFoo (Choice a) (HL a Z)
+-- data Foo = forall a . Eq a => RepFoo (Choice a) (HL a Z)
 
-data Foo1 = forall a . Eq a => RepFoo1 (Choice a) (HL a (S Z))
+-- data Foo1 = forall a . Eq a => RepFoo1 (Choice a) (HL a (S Z))
 
 data Fum = forall a . Eq a => Fum (Choice a) (HL a Z)
 
 data Fee = forall a . Eq a => Fee (Choice a) (HL a (S Z))
 
-baz x = return (RepFoo x (noChoice x)) 
+-- baz x = return (RepFoo x (noChoice x)) 
 
+{-
 fud :: Eq a => Choice a -> Gen Foo
 fud a = return (RepFoo a (noChoice a))
+-}
 
+{-
 arbitraryNoChoice :: Eq a => Choice a -> Gen RepNoChoiceVal
 arbitraryNoChoice a = return (RepNoChoiceVal a (noChoice a))
+-}
 
 fum :: Choice a -> Gen Fum
 fum (ChoiceOption (NamedType n i t) ts) =
@@ -293,8 +297,18 @@ fum (ChoiceOption (NamedType n i t) ts) =
                Fum bs vs ->
                   return (Fum (ChoiceOption (NamedType n i a) bs) (NoValueC NoValue vs))
 
+arbitraryNoChoice :: Choice a -> Gen RepNoChoiceVal
+arbitraryNoChoice (ChoiceOption (NamedType n i t) ts) =
+   do u <- arbitraryType t
+      us <- arbitraryNoChoice ts
+      case u of
+         RepTypeVal a v ->
+            case us of
+               RepNoChoiceVal bs vs ->
+                  return (RepNoChoiceVal (ChoiceOption (NamedType n i a) bs) (NoValueC NoValue vs))
+
 fee :: Choice a -> Gen Fee
-fee(ChoiceOption (NamedType n i t) ts) =
+fee (ChoiceOption (NamedType n i t) ts) =
    do u <- arbitraryType t
       us <- fee ts
       case u of
@@ -302,6 +316,16 @@ fee(ChoiceOption (NamedType n i t) ts) =
             case us of
                Fee bs vs ->
                   return (Fee (ChoiceOption (NamedType n i a) bs) (NoValueC NoValue vs))
+
+arbitrary1stChoice :: Choice a -> Gen RepChoiceVal
+arbitrary1stChoice (ChoiceOption (NamedType n i t) ts) =
+   do u <- arbitraryType t
+      us <- arbitrary1stChoice ts
+      case u of
+         RepTypeVal a v ->
+            case us of
+               RepChoiceVal bs vs ->
+                  return (RepChoiceVal (ChoiceOption (NamedType n i a) bs) (NoValueC NoValue vs))
 
 fuu :: Choice a -> Gen Fee
 fuu (ChoiceOption (NamedType n i t) ts) =
@@ -313,6 +337,63 @@ fuu (ChoiceOption (NamedType n i t) ts) =
                Fum bs vs ->
                   return (Fee (ChoiceOption (NamedType n i a) bs) (ValueC v vs))
 
+arbitrary1stChoice' :: Choice a -> Gen RepChoiceVal
+arbitrary1stChoice' (ChoiceOption (NamedType n i t) ts) =
+   do u <- arbitraryType t
+      us <- arbitraryNoChoice ts
+      case u of
+         RepTypeVal a v ->
+            case us of
+               RepNoChoiceVal bs vs ->
+                  return (RepChoiceVal (ChoiceOption (NamedType n i a) bs) (ValueC v vs))
+
+mun :: Int -> Choice a -> Gen Fee
+mun 0 c =
+   fuu c
+mun 1 (ChoiceOption (NamedType n i t) ts) =
+   do u <- arbitraryType t
+      us <- fuu ts
+      case u of
+         RepTypeVal a v ->
+            case us of
+               Fee bs vs ->
+                  return (Fee (ChoiceOption (NamedType n i a) bs) (NoValueC NoValue vs))
+mun m (ChoiceOption (NamedType n i t) ts) =
+   do u <- arbitraryType t
+      us <- mun (m - 1) ts
+      case u of
+         RepTypeVal a v ->
+            case us of
+               Fee bs vs ->
+                  return (Fee (ChoiceOption (NamedType n i a) bs) (NoValueC NoValue vs))
+
+arbitraryNthChoice :: Int -> Choice a -> Gen RepChoiceVal
+arbitraryNthChoice 0 c =
+   arbitrary1stChoice' c
+arbitraryNthChoice m (ChoiceOption (NamedType n i t) ts) =
+   do u <- arbitraryType t
+      us <- arbitraryNthChoice (m - 1) ts
+      case u of
+         RepTypeVal a v ->
+            case us of
+               RepChoiceVal bs vs ->
+                  return (RepChoiceVal (ChoiceOption (NamedType n i a) bs) (NoValueC NoValue vs))
+
+arbitraryFee :: Choice a -> Gen Fee
+arbitraryFee NoChoice =
+   error "arbitraryChoice generating invalid length choice"   
+arbitraryFee a =
+   do n <- suchThat arbitrary (\n -> (n >= 0) && (n <= choiceLength a))
+      mun n a
+
+arbitraryChoice :: Choice a -> Gen RepChoiceVal
+arbitraryChoice NoChoice =
+   error "arbitraryChoice generating invalid length choice"   
+arbitraryChoice a =
+   do n <- suchThat arbitrary (\n -> (n >= 0) && (n <= choiceLength a))
+      arbitraryNthChoice n a
+
+{-
 fudNth :: Eq a => Int -> Choice a -> Gen Foo
 fudNth 0 x@(ChoiceOption (NamedType n i t) cs) =
    do u  <- arbitraryType t
@@ -322,7 +403,9 @@ fudNth 0 x@(ChoiceOption (NamedType n i t) cs) =
             case u of
                RepTypeVal a v ->
                   return (RepFoo (ChoiceOption (NamedType n i a) as) (NoValueC NoValue vs))
+-}
 
+{-
 arbitraryNth :: Eq a => Int -> Choice a -> Gen RepNoChoiceVal
 arbitraryNth 0 x@(ChoiceOption (NamedType n i t) cs) =
    do u  <- arbitraryType t
@@ -332,7 +415,9 @@ arbitraryNth 0 x@(ChoiceOption (NamedType n i t) cs) =
             case u of
                RepTypeVal a v ->
                   return (RepNoChoiceVal (ChoiceOption (NamedType n i a) as) (NoValueC NoValue vs))
+-}
 
+{-
 fim :: (Eq a, Eq b) => Int -> NamedType a -> Choice b -> Gen RepNoChoiceVal
 fim 0 (NamedType n i t) x =
    do u <- arbitraryType t
@@ -342,6 +427,7 @@ fim 0 (NamedType n i t) x =
             case u of
                RepTypeVal a v ->
                   return (RepNoChoiceVal (ChoiceOption (NamedType n i a) as) (NoValueC NoValue vs))
+-}
 
 {-
 fum :: Eq a => Int -> Choice a -> Gen RepNoChoiceVal
@@ -349,6 +435,7 @@ fum 0 x@(ChoiceOption c cs) =
    fim 0 c cs
 -}
 
+{-
 fudMth :: Eq a => Int -> Choice a -> Gen Foo1
 fudMth 0 x@(ChoiceOption (NamedType n i t) cs) =
    do u  <- arbitraryType t
@@ -358,7 +445,9 @@ fudMth 0 x@(ChoiceOption (NamedType n i t) cs) =
             case u of
                RepTypeVal a v ->
                   return (RepFoo1 (ChoiceOption (NamedType n i a) as) (ValueC v vs))
+-}
 
+{-
 arbitraryMth :: Eq a => Int -> Choice a -> Gen RepChoiceVal
 arbitraryMth 0 x@(ChoiceOption (NamedType n i t) cs) =
    do u  <- arbitraryType t
@@ -368,6 +457,7 @@ arbitraryMth 0 x@(ChoiceOption (NamedType n i t) cs) =
             case u of
                RepTypeVal a v ->
                   return (RepChoiceVal (ChoiceOption (NamedType n i a) as) (ValueC v vs))
+-}
 
 {-
 arbitraryNthChoice :: Eq a => Int -> Choice a -> Gen RepChoiceVal
@@ -381,10 +471,12 @@ arbitraryNthChoice 0 (ChoiceOption (NamedType n i t) cs) =
                   return (RepChoiceVal (ChoiceOption (NamedType n i a) as) (ValueC v vs))
 -}
 
+{-
 arbFud :: Eq a => Choice a -> Gen Foo1
 arbFud a =
    do n <- suchThat arbitrary (\n -> (n >= 0) && (n <= choiceLength a))
       fudMth n a
+-}
 
 choiceLength :: Integral n => Choice a -> n
 choiceLength NoChoice = 0
