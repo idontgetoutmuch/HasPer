@@ -263,9 +263,37 @@ Also check the encoding as there may be some duplicate there as well.
 
 \begin{code}
 
+instance Eq a => Eq (HL a (S Z))
+   
 data RepChoiceVal = forall a . Eq a => RepChoiceVal (Choice a) (HL a (S Z))
 
 data RepNoChoiceVal = forall a . Eq a => RepNoChoiceVal (Choice a) (HL a Z)
+
+prettyChoiceVal :: Choice a -> (HL a (S Z)) -> Doc
+prettyChoiceVal NoChoice _ = empty
+prettyChoiceVal (ChoiceOption (NamedType n i t) cs) (NoValueC NoValue vs) =
+   prettyChoiceVal cs vs
+prettyChoiceVal (ChoiceOption (NamedType n i t) cs) (ValueC v vs) =
+   prettyTypeVal t v
+
+instance Show RepChoiceVal where
+   show r =
+      case r of
+         RepChoiceVal t x ->
+            render (prettyChoiceVal t x)
+
+{-
+
+instance Show RepSeqVal where
+   show r =
+      case r of
+         RepSeqVal t x ->
+            render (prettySeqVal t x)
+
+prettyElementTypeVal :: ElementType a -> a -> Doc
+prettyElementTypeVal (ETMandatory (NamedType n _ t)) x =
+   text n <+> prettyTypeVal t x
+-}
 
 -- data Foo = forall a . Eq a => RepFoo (Choice a) (HL a Z)
 
@@ -298,6 +326,8 @@ fum (ChoiceOption (NamedType n i t) ts) =
                   return (Fum (ChoiceOption (NamedType n i a) bs) (NoValueC NoValue vs))
 
 arbitraryNoChoice :: Choice a -> Gen RepNoChoiceVal
+arbitraryNoChoice NoChoice = 
+   return (RepNoChoiceVal NoChoice EmptyHL)
 arbitraryNoChoice (ChoiceOption (NamedType n i t) ts) =
    do u <- arbitraryType t
       us <- arbitraryNoChoice ts
@@ -390,7 +420,7 @@ arbitraryChoice :: Choice a -> Gen RepChoiceVal
 arbitraryChoice NoChoice =
    error "arbitraryChoice generating invalid length choice"   
 arbitraryChoice a =
-   do n <- suchThat arbitrary (\n -> (n >= 0) && (n <= choiceLength a))
+   do n <- suchThat arbitrary (\n -> (n >= 0) && (n <= ((choiceLength a) - 1)))
       arbitraryNthChoice n a
 
 {-
@@ -541,6 +571,7 @@ prettyTypeVal a@INTEGER x       = text (show x)
 prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
 prettyTypeVal a@(SIZE t s e) x  = prettyTypeVal t x
 prettyTypeVal a@(SEQUENCE s) x  = braces (prettySeqVal s x)
+prettyTypeVal a@(CHOICE c) x = braces (prettyChoiceVal c x)
 
 {-
 instance Eq RepTypeVal where
@@ -594,6 +625,25 @@ arbitraryType (SEQUENCE s) =
       case r of
          RepSeqVal as vs ->
             return (RepTypeVal (SEQUENCE as) vs)
+arbitraryType (CHOICE c) =
+   do r <- arbitraryChoice c
+      case r of
+         RepChoiceVal as vs ->
+            return (RepTypeVal (CHOICE as) vs)
+
+choice1 = 
+   CHOICE xs 
+      where
+         xs = ChoiceOption (NamedType "a" Nothing INTEGER) NoChoice
+
+seqChoices1 = 
+   SEQUENCE elems
+      where
+         elems = Cons x (Cons y Nil)
+         x = ETMandatory (NamedType "x" Nothing choice1)
+         y = ETMandatory (NamedType "y" Nothing choice1)
+
+choice2 = ChoiceOption (NamedType "z" Nothing INTEGER) (ChoiceOption (NamedType "a" Nothing seqChoices1) NoChoice)
 
 data INTEGERVal = INTEGERVal (ASNType Integer) (Maybe Integer)
 
