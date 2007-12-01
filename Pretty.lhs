@@ -256,6 +256,15 @@ instance (Eq a, Eq b) => Eq (a:*:b) where
    x:*:xs == y:*:ys =
       x == y && xs == ys
 
+instance Eq (HL Nil (S Z)) where
+   _ == _ = True
+
+instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
+   ValueC   _ _ == NoValueC _ _ = False
+   NoValueC _ _ == ValueC _ _   = False
+   NoValueC _ xs == NoValueC _ ys = xs == ys
+   ValueC x _ == ValueC y _ = x == y
+   
 data RepSeqVal = forall a . Eq a => RepSeqVal (Sequence a) a
 
 prettySeqVal :: Sequence a -> a -> Doc
