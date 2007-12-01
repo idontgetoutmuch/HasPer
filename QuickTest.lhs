@@ -261,13 +261,24 @@ arbitrarySeq (Cons (ETMandatory (NamedType n i t)) ts) =
 There's some duplicate code here and where CHOICE gets decoded.
 Also check the encoding as there may be some duplicate there as well.
 
+Two values of a CHOICE type are equal if their values are in the head
+of the heterogeneous list or if the tails of the heterogeneous list are
+equal.
+
 \begin{code}
 
-instance Eq a => Eq (HL a (S Z))
-   
-data RepChoiceVal = forall a . Eq a => RepChoiceVal (Choice a) (HL a (S Z))
+instance Eq (HL Nil (S Z)) where
+   _ == _ = True
 
-data RepNoChoiceVal = forall a . Eq a => RepNoChoiceVal (Choice a) (HL a Z)
+instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
+   ValueC   _ _ == NoValueC _ _ = False
+   NoValueC _ _ == ValueC _ _   = False
+   NoValueC _ xs == NoValueC _ ys = xs == ys
+   ValueC x _ == ValueC y _ = x == y
+   
+data RepChoiceVal = forall a . Eq (HL a (S Z))=> RepChoiceVal (Choice a) (HL a (S Z))
+
+data RepNoChoiceVal = forall a . Eq (HL a (S Z)) => RepNoChoiceVal (Choice a) (HL a Z)
 
 prettyChoiceVal :: Choice a -> (HL a (S Z)) -> Doc
 prettyChoiceVal NoChoice _ = empty
