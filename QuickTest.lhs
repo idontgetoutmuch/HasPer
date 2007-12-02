@@ -158,7 +158,10 @@ data RepChoice = forall t . RepChoice (Choice t)
 instance Arbitrary RepChoice where
    arbitrary =
       oneof [
-         return (RepChoice NoChoice),
+         do name <- arbitrary
+            r    <- arbitrary
+            let (OnlyINTEGER t) = r
+            return (RepChoice (ChoiceOption (NamedType (elementName name) Nothing t) NoChoice)),
          do x  <- arbitrary
             xs <- arbitrary
             case x of
