@@ -90,7 +90,11 @@ instance Arbitrary RepType where
                RepElementType u ->
                   case y of
                      RepSeq v ->
-                        return (RepType (SEQUENCE (Cons u v)))
+                        return (RepType (SEQUENCE (Cons u v))),
+         do x <- arbitrary
+            case x of
+               RepChoice u ->
+                  return (RepType (CHOICE u))
          ]
 
 instance Show RepType where
@@ -142,6 +146,27 @@ instance Arbitrary RepSeq where
                         return (RepSeq (Cons u us))
          ]
 
+\end{code}
+
+Currently, we generate the invalid {\em NoChoice}, an illegal {\em CHOICE} of
+no elements! A {\em CHOICE} has to have at least one element --- find the reference!!!
+
+\begin{code}
+
+data RepChoice = forall t . RepChoice (Choice t)
+
+instance Arbitrary RepChoice where
+   arbitrary =
+      oneof [
+         return (RepChoice NoChoice),
+         do x  <- arbitrary
+            xs <- arbitrary
+            case x of
+               RepNamedType u ->
+                  case xs of
+                     RepChoice us ->
+                        return (RepChoice (ChoiceOption u us))
+         ]
 
 range :: ASNType Integer -> Maybe (Maybe Integer,Maybe Integer)
 range INTEGER = return (Nothing,Nothing)
