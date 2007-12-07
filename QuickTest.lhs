@@ -151,6 +151,8 @@ instance Arbitrary RepSeq where
 Currently, we generate the invalid {\em NoChoice}, an illegal {\em CHOICE} of
 no elements! A {\em CHOICE} has to have at least one element --- find the reference!!!
 
+Now we can generate {\em CHOICE} where the last element is always some form of {\em INTEGER}.
+
 \begin{code}
 
 data RepChoice = forall t . RepChoice (Choice t)
@@ -192,6 +194,12 @@ h1 (Just x) (Just y)
    | x > y = Nothing
    | otherwise = Just (Just x,Just y)
 
+\end{code}
+
+A word of explanation. This will do for now but arbitrary {\em Integer}s aren't very arbitrary;
+in fact, they are rather small. Furthermore, we now never generate {\em MIN} or {\em MAX}.
+
+\begin{code}
 
 data OnlyINTEGER = OnlyINTEGER (ASNType Integer)
 
@@ -204,17 +212,16 @@ instance Arbitrary OnlyINTEGER where
       where
          onlyINTEGER 0 = return (OnlyINTEGER INTEGER)
          onlyINTEGER n | n > 0 =
-            do l <- arbitrary
-               u <- suchThat arbitrary (fromMaybe True . (g l))
-               t <- subOnlyINTEGER
-               return (f t l u)
+            do t <- subOnlyINTEGER
+               case t of
+                  OnlyINTEGER s ->
+                     do let (l,u) = fromJust (range s)
+                        l' <- suchThat arbitrary (f2 l u)        
+                        u' <- suchThat arbitrary (f2 (Just l') u)
+                        return (f t (Just l') (Just u'))
             where
                subOnlyINTEGER = onlyINTEGER (n `div` 2)
          f (OnlyINTEGER x) l u = OnlyINTEGER (RANGE x l u)
-         g l u =
-            do m <- l
-               n <- u
-               return (n >= m)
 
 instance Show OnlyINTEGER where
    show r =
@@ -546,6 +553,19 @@ Try this to generate arbitrary CHOICE: in this case a mixture of INTEGER and SEQ
 
 generateChoice = sample (arbitraryChoice choice2)
 
+\end{code}
+
+\section{INTEGER}
+
+The generated INTEGER type should be valid?
+
+\begin{code}
+
+prop_validINTEGER t =
+   case t of
+      OnlyINTEGER u ->
+         isJust (range u)
+
 data INTEGERVal = INTEGERVal (ASNType Integer) (Maybe Integer)
 
 instance Show INTEGERVal where
@@ -583,7 +603,6 @@ prop_WithinRange (INTEGERVal t (Just n)) =
       Just (x,y) ->
          f2 x y n
 
-
 prop_2scomplement1 x =
    x == from2sComplement (to2sComplement x)
 
@@ -597,28 +616,10 @@ prop_2scomplement2 x =
    length (bitString x) `mod` 8 == 0 && (not (null (bitString x))) ==> 
       x == (BitString . to2sComplement . from2sComplement .bitString) x
 
-valid :: ASNType a -> a -> Bool
-valid r@(RANGE t l u) n
-    = case range r of
-        Nothing -> False
-        Just (x,y) ->
-         f2 x y n
-valid (SEQUENCE (Cons (ETMandatory (NamedType n t a)) as)) (x:*:xs)
-    = valid a x && valid (SEQUENCE as) xs
-valid (SEQUENCE (Cons (ETExtMand (NamedType n t a)) as)) (Just x:*:xs)
-    = valid a x && valid (SEQUENCE as) xs
-valid (SEQUENCE (Cons (ETDefault (NamedType n t a) v) as)) (Just x:*:xs)
-    = valid a x && valid (SEQUENCE as) xs
-valid (SEQUENCE (Extens as)) xs
-    = valid (SEQUENCE as) xs
-valid _ _ = True
-
 prop_fromPerToPer x =
    case x of
       RepTypeVal t y ->
-        if valid t y
-          then y == runFromPer t (toPer8s t y)
-           else True
+          y == runFromPer t (toPer8s t y)
    where
       runFromPer :: ASNType a -> BitStream -> a
       runFromPer t x =
@@ -629,6 +630,7 @@ prop_fromPerToPer x =
 
 main =
    do quickCheck prop_fromPerToPer
+      quickCheck prop_validINTEGER
       quickCheck prop_WithinRange
       quickCheck prop_2scomplement1
       quickCheck prop_2scomplement2
