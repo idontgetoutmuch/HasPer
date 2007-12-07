@@ -919,6 +919,30 @@ test23c
 
 \end{code}
 
+Tests arising from QuickCheck property failures. It looks like the failure was caused
+by the encoding not being a multiple of 8 bits.
+
+\begin{code}
+
+quickFailType1 = 
+   CHOICE xs
+      where
+         xs = ChoiceOption p (ChoiceOption n NoChoice)
+         p = NamedType "p" Nothing INTEGER
+         n = NamedType "n" Nothing INTEGER
+
+quickFailVal1 = NoValueC NoValue (ValueC   0       EmptyHL)
+quickFailVal2 = ValueC   0       (NoValueC NoValue EmptyHL)
+
+qF1 = mmIdem quickFailType1 (toPer8s quickFailType1 quickFailVal1)
+
+qFTest1 = 
+   TestCase (
+      assertEqual "CHOICE Test 7" quickFailVal1 qF1
+   )
+
+\end{code}
+
 \section{SEQUENCE}
 
 \begin{lstlisting}[frame=single]
@@ -1150,6 +1174,7 @@ tests =
       choiceTest21,
       choiceTest3,
       choiceTest4,
+      qFTest1,
       sChoiceTest1,
       eSeqOfTest1,
       eSeqOfTest2,

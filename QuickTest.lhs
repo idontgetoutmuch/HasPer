@@ -320,7 +320,7 @@ prettyChoiceVal NoChoice _ = empty
 prettyChoiceVal (ChoiceOption (NamedType n i t) cs) (NoValueC NoValue vs) =
    prettyChoiceVal cs vs
 prettyChoiceVal (ChoiceOption (NamedType n i t) cs) (ValueC v vs) =
-   prettyTypeVal t v
+   text n <> colon <> prettyTypeVal t v
 
 instance Show RepChoiceVal where
    show r =
@@ -503,18 +503,29 @@ instance Arbitrary RepTypeVal where
             do r <- arbitrary
                case r of
                   RepSeqVal s xs ->
-                     return (RepTypeVal (SEQUENCE s) xs)
+                     return (RepTypeVal (SEQUENCE s) xs),
+            do r <- arbitrary
+               case r of
+                  RepChoice c ->
+                     do a <- arbitraryChoice c
+                        case a of
+                           RepChoiceVal t v ->
+                              return (RepTypeVal (CHOICE t) v)
          ]
 
 arbitraryType :: ASNType a -> Gen RepTypeVal
 arbitraryType INTEGER =
    do n <- arbitrary
       return (RepTypeVal INTEGER n)
-arbitraryType (RANGE x l u) =
+arbitraryType t@(RANGE x l u) =
+   do y <- arbitraryINTEGER (OnlyINTEGER t)
+      return (RepTypeVal t (fromJust y))
+{-
    do y <- arbitraryType x
       case y of
          RepTypeVal INTEGER n ->
-            undefined
+            error "Foo" -- undefined
+-}
    where
       g l u =
          do m <- l
@@ -552,6 +563,18 @@ Try this to generate arbitrary CHOICE: in this case a mixture of INTEGER and SEQ
 \begin{code}
 
 generateChoice = sample (arbitraryChoice choice2)
+
+quickFailType1 = 
+   CHOICE xs
+      where
+         xs = ChoiceOption p (ChoiceOption n NoChoice)
+         p = NamedType "p" Nothing INTEGER
+         n = NamedType "n" Nothing INTEGER
+
+quickFailVal1 = NoValueC NoValue (ValueC   0       EmptyHL)
+quickFailVal2 = ValueC   0       (NoValueC NoValue EmptyHL)
+
+
 
 \end{code}
 
@@ -626,7 +649,7 @@ prop_fromPerToPer x =
         case runTest t x 0 of
              (Left e,_)   -> error ("Left " ++ e ++ ": Type = " ++ (render (prettyType t)) ++ " BitStream = " ++ show x)
              (Right xs,_) -> xs
-      runTest t x y = runState (runErrorT (myMFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
+      runTest t x y = runState (runErrorT (mFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
 
 main =
    do quickCheck prop_fromPerToPer
@@ -634,49 +657,6 @@ main =
       quickCheck prop_WithinRange
       quickCheck prop_2scomplement1
       quickCheck prop_2scomplement2
-
-\end{code}
-
-\begin{code}
-
-myMFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
-myMFromPer t@INTEGER       = mmUntoPerInt t
-myMFromPer r@(RANGE i l u) = mmUntoPerInt r
-myMFromPer t@(BITSTRING []) = 
-   (liftM (BitString . map fromIntegral) . fromPerBitString) t
-myMFromPer t@(SIZE (BITSTRING _) _ _) = 
-   (liftM (BitString . map fromIntegral) . fromPerBitString) t
-myMFromPer (SEQUENCE s)    =
-   do ps <- mmGetBits (l s)
-      myMmFromPerSeq (map fromIntegral ps) s
-   where
-      l :: Integral n => Sequence a -> n
-      l Nil = 0
-      l (Cons (ETMandatory _) ts) = l ts
-      l (Cons (ETOptional _ ) ts) = 1+(l ts)
-myMFromPer t@(SIZE (SIZE _ _ _) _ _) = 
-   let nt = multiSize t in myMFromPer nt
-myMFromPer t = error ("This case is not handled in myMFromPer: " ++ render (prettyType t))
-
-\end{code}
-
-\begin{code}
-
-myMmFromPerSeq :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => BitStream -> Sequence a -> m a
-myMmFromPerSeq _ Nil = return Empty
-myMmFromPerSeq bitmap (Cons (ETMandatory (NamedType _ _ t)) ts) =
-   do x <- myMFromPer t
-      xs <- myMmFromPerSeq bitmap ts
-      return (x:*:xs)
-myMmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
-   do if (head bitmap) == 0
-         then
-            do xs <- myMmFromPerSeq (tail bitmap) ts
-               return (Nothing:*:xs)
-         else
-            do x <- myMFromPer t
-               xs <- myMmFromPerSeq (tail bitmap) ts
-               return ((Just x):*:xs)
 
 \end{code}
 
