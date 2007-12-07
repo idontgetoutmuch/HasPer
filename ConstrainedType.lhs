@@ -1257,7 +1257,7 @@ getCTags (ChoiceOption (NamedType n (Just t) a) xs)
         = t : getCTags xs
 
 choicePred :: (TagInfo, BitStream) -> (TagInfo, BitStream) -> Bool
-choicePred (t1,_) (t2,_) = t1 < t2
+choicePred (t1,_) (t2,_) = t1 <= t2
 
 
 encodeChoiceAux :: [Int] -> [BitStream] -> Choice a -> HL a n -> ([Int], [BitStream])
