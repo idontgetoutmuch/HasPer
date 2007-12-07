@@ -753,7 +753,7 @@ oldChoice2 =
 testOldChoice2 = toPer oldChoice2 (NoValueC NoValue (ValueC 27 (NoValueC NoValue (NoValueC NoValue EmptyHL))))
 
 eOldChoice2 = [
-   1,0,
+   0,1,
    0,0,0,0,0,0,0,1,
    0,0,0,1,1,0,1,1
    ]
@@ -767,7 +767,7 @@ choiceTest2 =
 testOldChoice21 = toPer oldChoice2 (ValueC 31 (NoValueC NoValue (NoValueC NoValue (NoValueC NoValue EmptyHL))))
 
 eOldChoice21 = [
-   1,1,
+   0,0,
    0,0,0,0,0,0,0,1,
    0,0,0,1,1,1,1,1
    ]
@@ -939,6 +939,26 @@ qF1 = mmIdem quickFailType1 (toPer8s quickFailType1 quickFailVal1)
 qFTest1 = 
    TestCase (
       assertEqual "CHOICE Test 7" quickFailVal1 qF1
+   )
+
+quickFailType2 =
+   CHOICE xs
+      where
+         xs  = ChoiceOption x (ChoiceOption omu NoChoice)
+         x   = NamedType "x" Nothing s
+         omu = NamedType "omu" Nothing r1
+         r1  = RANGE r2 (Just 3) (Just 3)
+         r2  = RANGE r3 (Just 2) (Just 3)
+         r3  = RANGE INTEGER (Just (-2)) (Just 7)
+         s   = SEQUENCE (Cons (ETMandatory (NamedType "y" Nothing INTEGER)) Nil)
+
+quickFailVal3 = ValueC ((-2) :*: Empty) (NoValueC NoValue EmptyHL)
+
+qF2 = mmIdem quickFailType2 (toPer8s quickFailType2 quickFailVal3)
+
+qFTest2 = 
+   TestCase (
+      assertEqual "CHOICE Test 8" quickFailVal3 qF2
    )
 
 \end{code}
@@ -1175,6 +1195,7 @@ tests =
       choiceTest3,
       choiceTest4,
       qFTest1,
+      qFTest2,
       sChoiceTest1,
       eSeqOfTest1,
       eSeqOfTest2,

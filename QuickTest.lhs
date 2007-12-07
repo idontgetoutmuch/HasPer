@@ -508,7 +508,18 @@ quickFailType1 =
 quickFailVal1 = NoValueC NoValue (ValueC   0       EmptyHL)
 quickFailVal2 = ValueC   0       (NoValueC NoValue EmptyHL)
 
+quickFailType2 =
+   CHOICE xs
+      where
+         xs  = ChoiceOption x (ChoiceOption omu NoChoice)
+         x   = NamedType "x" Nothing s
+         omu = NamedType "omu" Nothing r1
+         r1  = RANGE r2 (Just 3) (Just 3)
+         r2  = RANGE r3 (Just 2) (Just 3)
+         r3  = RANGE INTEGER (Just (-2)) (Just 7)
+         s   = SEQUENCE (Cons (ETMandatory (NamedType "y" Nothing INTEGER)) Nil)
 
+quickFailVal3 = ValueC ((-2) :*: Empty) (NoValueC NoValue EmptyHL)
 
 \end{code}
 
