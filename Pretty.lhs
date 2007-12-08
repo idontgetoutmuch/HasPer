@@ -7,7 +7,9 @@
 \begin{code}
 module Pretty(
    prettyType,
-   prettyTypeVal
+   prettyTypeVal,
+   pretty,
+   prettyVal
    )  where
 
 import Text.PrettyPrint
