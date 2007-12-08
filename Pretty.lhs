@@ -52,8 +52,14 @@ prettyConstraint (Elem s) = text (show s)
 class Pretty a where
    pretty :: a -> Doc
 
+class PrettyVal a b where
+   prettyVal :: a -> b -> Doc
+
 instance Pretty (ASNType a) where
    pretty = prettyType
+
+instance PrettyVal (ASNType a) a where
+   prettyVal = prettyTypeVal
 
 prettyType :: ASNType a -> Doc
 prettyType (TYPEASS tr _ t) =
@@ -91,6 +97,9 @@ outer (RANGE t l u) x y = outer t x y
 instance Pretty (Sequence a) where
    pretty = prettySeq
 
+instance PrettyVal (Sequence a) a where
+   prettyVal = prettySeqVal
+
 prettySeq :: Sequence a -> Doc
 prettySeq Nil =
    empty
@@ -109,6 +118,9 @@ prettySeqVal (Cons e l) (x:*:xs) =
 instance Pretty (ElementType a) where
    pretty = prettyElem
 
+instance PrettyVal (ElementType a) a where
+   prettyVal = prettyElementTypeVal
+
 prettyElem :: ElementType a -> Doc
 prettyElem (ETMandatory nt) = prettyNamedType nt
 
@@ -119,6 +131,9 @@ prettyElementTypeVal (ETMandatory (NamedType n _ t)) x =
 instance Pretty (Choice a) where
    pretty = prettyChoice
 
+instance PrettyVal (Choice a) (HL a (S Z)) where
+   prettyVal = prettyChoiceVal
+
 prettyChoice :: Choice a -> Doc
 prettyChoice NoChoice =
    empty
@@ -126,6 +141,13 @@ prettyChoice (ChoiceOption nt NoChoice) =
    prettyNamedType nt
 prettyChoice (ChoiceOption nt xs) =
    vcat [prettyNamedType nt <> comma, prettyChoice xs]
+
+prettyChoiceVal :: Choice a -> (HL a (S Z)) -> Doc
+prettyChoiceVal NoChoice _ = empty
+prettyChoiceVal (ChoiceOption (NamedType n i t) cs) (NoValueC NoValue vs) =
+   prettyChoiceVal cs vs
+prettyChoiceVal (ChoiceOption (NamedType n i t) cs) (ValueC v vs) =
+   text n <> colon <> prettyTypeVal t v
 
 instance Pretty (NamedType a) where
    pretty = prettyNamedType
