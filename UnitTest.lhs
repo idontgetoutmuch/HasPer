@@ -961,6 +961,26 @@ qFTest2 =
       assertEqual "CHOICE Test 8" quickFailVal3 qF2
    )
 
+quickFailType2a =
+   CHOICE xs
+      where
+         xs  = ChoiceOption x (ChoiceOption zmu NoChoice)
+         x   = NamedType "x" Nothing s
+         zmu = NamedType "zmu" Nothing r1
+         r1  = RANGE r2 (Just 3) (Just 3)
+         r2  = RANGE r3 (Just 2) (Just 3)
+         r3  = RANGE INTEGER (Just (-2)) (Just 7)
+         s   = SEQUENCE (Cons (ETMandatory (NamedType "y" Nothing INTEGER)) Nil)
+
+quickFailVal3a = ValueC ((-2) :*: Empty) (NoValueC NoValue EmptyHL)
+
+qF2a = mmIdem quickFailType2a (toPer8s quickFailType2a quickFailVal3a)
+
+qFTest2a = 
+   TestCase (
+      assertEqual "CHOICE Test 8a" quickFailVal3a qF2a
+   )
+
 \end{code}
 
 \section{SEQUENCE}
@@ -1196,6 +1216,7 @@ tests =
       choiceTest4,
       qFTest1,
       qFTest2,
+      qFTest2a,
       sChoiceTest1,
       eSeqOfTest1,
       eSeqOfTest2,
