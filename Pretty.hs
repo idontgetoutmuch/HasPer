@@ -1,10 +1,3 @@
-\documentclass{article}
-%include polycode.fmt
-\begin{document}
-
-\section{The Code}
-
-\begin{code}
 module Pretty(
    prettyType,
    prettyTypeVal,
@@ -59,9 +52,6 @@ outer INTEGER Nothing (Just y)  = parens (text "MIN"    <> text ".." <> text (sh
 outer INTEGER (Just x) Nothing  = parens (text (show x) <> text ".." <> text "MAX")
 outer INTEGER (Just x) (Just y) = parens (text (show x) <> text ".." <> text (show y))
 outer (RANGE t l u) x y = outer t x y
-\end{code}
-
-\begin{code}
 
 instance Pretty (Sequence a) where
    pretty = prettySeq
@@ -140,7 +130,3 @@ instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
    NoValueC _ _ == ValueC _ _   = False
    NoValueC _ xs == NoValueC _ ys = xs == ys
    ValueC x _ == ValueC y _ = x == y
-
-\end{code}
-
-\end{document}
