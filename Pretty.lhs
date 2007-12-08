@@ -2,39 +2,6 @@
 %include polycode.fmt
 \begin{document}
 
-\section{Introduction}
-Some notes:
-
-\begin{enumerate}
-
-\item
-ASN.1 is an abstract way of representing data and concrete representations (in terms of bits).
-\item
-We represent ASN.1 as an Abstract Syntax Tree.
-This can either be displayed as the original ASN.1 or it can be displayed as a DTD
-(I think this is possible --- that's what asn1c can do).
-It's also possible to display it as C code which uses asn1c (http://lionet.info/asn1c).
-\end{enumerate}
-
-\section{Test Strategy}
-\begin{enumerate}
-\item
-Download and install the asn1c software.
-\item
-Create some ASN.1 types using the Haskell AST.
-\item
-Run Pretty.hs to format them as ASN.1.
-\item
-Run asn1c to generate the C code to handle those ASN.1 types.
-\item
-Run Asn1cTest.hs to generate a C program which encodes values of the ASN.1 types.
-\item
-Compile and run the C program. This will encode some values.
-\item
-Run Test.lhs with the ASN.1 types to decode the values encoded with the C program.
-These should be the values you first thought of.
-\end{enumerate}
-
 \section{The Code}
 
 \begin{code}
