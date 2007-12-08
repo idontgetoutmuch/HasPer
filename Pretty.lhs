@@ -39,21 +39,21 @@ These should be the values you first thought of.
 
 \begin{code}
 module Pretty(
-   prettyType
+   prettyType,
+   prettyTypeVal
    )  where
 
 import Text.PrettyPrint
 import ConstrainedType
-import Language.ASN1 hiding (NamedType, BitString)
-import Data.Char
-import Data.Maybe
-import Data.Monoid
-import Data.List hiding (groupBy)
-import qualified Data.Set as S
-import Data.Int
 
 prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
 prettyConstraint (Elem s) = text (show s)
+
+class Pretty a where
+   pretty :: a -> Doc
+
+instance Pretty (ASNType a) where
+   pretty = prettyType
 
 prettyType :: ASNType a -> Doc
 prettyType (TYPEASS tr _ t) =
@@ -71,6 +71,13 @@ prettyType (CHOICE xs) =
 prettyType(SIZE t s _) =
    prettyType t <+> parens (text "SIZE" <+> prettyConstraint s) -- text (show s))
 
+prettyTypeVal :: ASNType a -> a -> Doc
+prettyTypeVal a@(BITSTRING []) x     = text (show x)
+prettyTypeVal a@INTEGER x       = text (show x)
+prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
+prettyTypeVal a@(SIZE t s e) x  = prettyTypeVal t x
+prettyTypeVal a@(SEQUENCE s) x  = braces (prettySeqVal s x)
+
 outer :: ASNType a -> Maybe a -> Maybe a -> Doc
 outer INTEGER Nothing  Nothing  = parens (text "MIN"    <> text ".." <> text "MAX")
 outer INTEGER Nothing (Just y)  = parens (text "MIN"    <> text ".." <> text (show y))
@@ -80,6 +87,10 @@ outer (RANGE t l u) x y = outer t x y
 \end{code}
 
 \begin{code}
+
+instance Pretty (Sequence a) where
+   pretty = prettySeq
+
 prettySeq :: Sequence a -> Doc
 prettySeq Nil =
    empty
@@ -88,8 +99,25 @@ prettySeq (Cons x Nil) =
 prettySeq (Cons x xs) =
    vcat [prettyElem x <> comma, prettySeq xs]
 
+prettySeqVal :: Sequence a -> a -> Doc
+prettySeqVal Nil _ = empty
+prettySeqVal (Cons e Nil) (x:*:Empty) =
+   prettyElementTypeVal e x
+prettySeqVal (Cons e l) (x:*:xs) =
+   prettyElementTypeVal e x <> comma $$ prettySeqVal l xs
+
+instance Pretty (ElementType a) where
+   pretty = prettyElem
+
 prettyElem :: ElementType a -> Doc
 prettyElem (ETMandatory nt) = prettyNamedType nt
+
+prettyElementTypeVal :: ElementType a -> a -> Doc
+prettyElementTypeVal (ETMandatory (NamedType n _ t)) x =
+   text n <+> prettyTypeVal t x
+
+instance Pretty (Choice a) where
+   pretty = prettyChoice
 
 prettyChoice :: Choice a -> Doc
 prettyChoice NoChoice =
@@ -98,6 +126,9 @@ prettyChoice (ChoiceOption nt NoChoice) =
    prettyNamedType nt
 prettyChoice (ChoiceOption nt xs) =
    vcat [prettyNamedType nt <> comma, prettyChoice xs]
+
+instance Pretty (NamedType a) where
+   pretty = prettyNamedType
 
 prettyNamedType :: NamedType a -> Doc
 prettyNamedType (NamedType n _ ct) =
@@ -118,24 +149,6 @@ instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
    NoValueC _ _ == ValueC _ _   = False
    NoValueC _ xs == NoValueC _ ys = xs == ys
    ValueC x _ == ValueC y _ = x == y
-  
-prettySeqVal :: Sequence a -> a -> Doc
-prettySeqVal Nil _ = empty
-prettySeqVal (Cons e Nil) (x:*:Empty) =
-   prettyElementTypeVal e x
-prettySeqVal (Cons e l) (x:*:xs) =
-   prettyElementTypeVal e x <> comma $$ prettySeqVal l xs
-
-prettyElementTypeVal :: ElementType a -> a -> Doc
-prettyElementTypeVal (ETMandatory (NamedType n _ t)) x =
-   text n <+> prettyTypeVal t x
-
-prettyTypeVal :: ASNType a -> a -> Doc
-prettyTypeVal a@(BITSTRING []) x     = text (show x)
-prettyTypeVal a@INTEGER x       = text (show x)
-prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
-prettyTypeVal a@(SIZE t s e) x  = prettyTypeVal t x
-prettyTypeVal a@(SEQUENCE s) x  = braces (prettySeqVal s x)
 
 \end{code}
 
