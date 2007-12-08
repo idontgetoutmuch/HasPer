@@ -15,6 +15,7 @@ import Test.QuickCheck
 import Text.PrettyPrint
 import Control.Monad.State
 import ConstrainedType
+import Pretty
 import Language.ASN1 hiding (NamedType, BitString)
 import Data.Char
 import Data.Maybe
@@ -28,53 +29,9 @@ import Data.Int
 prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
 prettyConstraint (Elem s) = text (show s)
 
-prettyType :: ASNType a -> Doc
-prettyType (TYPEASS tr _ t) =
-   text tr <+> text "::=" <+> prettyType t
-prettyType (BITSTRING []) =
-   text "BITSTRING"
-prettyType INTEGER =
-   text "INTEGER"
-prettyType(RANGE x l u) =
-   prettyType x <+> outer x l u
-prettyType (SEQUENCE x) =
-   text "SEQUENCE" <> space <> braces (prettySeq x)
-prettyType (CHOICE xs) =
-   text "CHOICE" <+> braces (prettyChoice xs)
-prettyType(SIZE t s _) =
-   prettyType t <+> parens (text "SIZE" <+> prettyConstraint s) -- text (show s))
-
-outer :: ASNType a -> Maybe a -> Maybe a -> Doc
-outer INTEGER Nothing  Nothing  = parens (text "MIN"    <> text ".." <> text "MAX")
-outer INTEGER Nothing (Just y)  = parens (text "MIN"    <> text ".." <> text (show y))
-outer INTEGER (Just x) Nothing  = parens (text (show x) <> text ".." <> text "MAX")
-outer INTEGER (Just x) (Just y) = parens (text (show x) <> text ".." <> text (show y))
-outer (RANGE t l u) x y = outer t x y
 \end{code}
 
 \begin{code}
-prettySeq :: Sequence a -> Doc
-prettySeq Nil =
-   empty
-prettySeq (Cons x Nil) =
-   prettyElem x
-prettySeq (Cons x xs) =
-   vcat [prettyElem x <> comma, prettySeq xs]
-
-prettyElem :: ElementType a -> Doc
-prettyElem (ETMandatory nt) = prettyNamedType nt
-
-prettyChoice :: Choice a -> Doc
-prettyChoice NoChoice =
-   empty
-prettyChoice (ChoiceOption nt NoChoice) =
-   prettyNamedType nt
-prettyChoice (ChoiceOption nt xs) =
-   vcat [prettyNamedType nt <> comma, prettyChoice xs]
-
-prettyNamedType :: NamedType a -> Doc
-prettyNamedType (NamedType n _ ct) =
-   text n <+> prettyType ct
 
 data RepType = forall t . RepType (ASNType t)
 
@@ -253,31 +210,13 @@ arbitraryINTEGER x =
       g _ _ Nothing  = False
       g x y (Just z) = f x y z
 
-instance Eq Nil where
-  _ == _ = True
-
-instance (Eq a, Eq b) => Eq (a:*:b) where
-   x:*:xs == y:*:ys =
-      x == y && xs == ys
-
 data RepSeqVal = forall a . Eq a => RepSeqVal (Sequence a) a
-
-prettySeqVal :: Sequence a -> a -> Doc
-prettySeqVal Nil _ = empty
-prettySeqVal (Cons e Nil) (x:*:Empty) =
-   prettyElementTypeVal e x
-prettySeqVal (Cons e l) (x:*:xs) =
-   prettyElementTypeVal e x <> comma $$ prettySeqVal l xs
 
 instance Show RepSeqVal where
    show r =
       case r of
          RepSeqVal t x ->
-            render (prettySeqVal t x)
-
-prettyElementTypeVal :: ElementType a -> a -> Doc
-prettyElementTypeVal (ETMandatory (NamedType n _ t)) x =
-   text n <+> prettyTypeVal t x
+            render (prettyVal t x)
 
 arbitrarySeq :: Sequence a -> Gen RepSeqVal
 arbitrarySeq Nil =
@@ -302,31 +241,15 @@ equal.
 
 \begin{code}
 
-instance Eq (HL Nil (S Z)) where
-   _ == _ = True
-
-instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
-   ValueC   _ _ == NoValueC _ _ = False
-   NoValueC _ _ == ValueC _ _   = False
-   NoValueC _ xs == NoValueC _ ys = xs == ys
-   ValueC x _ == ValueC y _ = x == y
-   
 data RepChoiceVal = forall a . Eq (HL a (S Z))=> RepChoiceVal (Choice a) (HL a (S Z))
 
 data RepNoChoiceVal = forall a . Eq (HL a (S Z)) => RepNoChoiceVal (Choice a) (HL a Z)
-
-prettyChoiceVal :: Choice a -> (HL a (S Z)) -> Doc
-prettyChoiceVal NoChoice _ = empty
-prettyChoiceVal (ChoiceOption (NamedType n i t) cs) (NoValueC NoValue vs) =
-   prettyChoiceVal cs vs
-prettyChoiceVal (ChoiceOption (NamedType n i t) cs) (ValueC v vs) =
-   text n <> colon <> prettyTypeVal t v
 
 instance Show RepChoiceVal where
    show r =
       case r of
          RepChoiceVal t x ->
-            render (prettyChoiceVal t x)
+            render (prettyVal t x)
 
 arbitraryNoChoice :: Choice a -> Gen RepNoChoiceVal
 arbitraryNoChoice NoChoice = 
@@ -399,24 +322,6 @@ instance Arbitrary RepSeqVal where
 
 data RepTypeVal = forall a . Eq a => RepTypeVal (ASNType a) a
 
-prettyTypeVal :: ASNType a -> a -> Doc
-prettyTypeVal a@(BITSTRING []) x     = text (show x)
-prettyTypeVal a@INTEGER x       = text (show x)
-prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
-prettyTypeVal a@(SIZE t s e) x  = prettyTypeVal t x
-prettyTypeVal a@(SEQUENCE s) x  = braces (prettySeqVal s x)
-prettyTypeVal a@(CHOICE c) x = prettyChoiceVal c x
-
-{-
-instance Eq RepTypeVal where
-   r == s =
-      case r of
-         RepTypeVal t x ->
-            case s of
-               RepTypeVal u y ->
-                  True
--}
-
 instance Show RepTypeVal where
    show r =
       case r of
@@ -475,51 +380,6 @@ arbitraryType (CHOICE c) =
       case r of
          RepChoiceVal as vs ->
             return (RepTypeVal (CHOICE as) vs)
-
-choice1 = 
-   CHOICE xs 
-      where
-         xs = ChoiceOption (NamedType "a" Nothing INTEGER) NoChoice
-
-seqChoices1 = 
-   SEQUENCE elems
-      where
-         elems = Cons x (Cons y Nil)
-         x = ETMandatory (NamedType "x" Nothing choice1)
-         y = ETMandatory (NamedType "y" Nothing choice1)
-
-choice2 = ChoiceOption (NamedType "z" Nothing INTEGER) (ChoiceOption (NamedType "a" Nothing seqChoices1) NoChoice)
-
-\end{code}
-
-Try this to generate arbitrary CHOICE: in this case a mixture of INTEGER and SEQUENCE.
-
-\begin{code}
-
-generateChoice = sample (arbitraryChoice choice2)
-
-quickFailType1 = 
-   CHOICE xs
-      where
-         xs = ChoiceOption p (ChoiceOption n NoChoice)
-         p = NamedType "p" Nothing INTEGER
-         n = NamedType "n" Nothing INTEGER
-
-quickFailVal1 = NoValueC NoValue (ValueC   0       EmptyHL)
-quickFailVal2 = ValueC   0       (NoValueC NoValue EmptyHL)
-
-quickFailType2 =
-   CHOICE xs
-      where
-         xs  = ChoiceOption x (ChoiceOption omu NoChoice)
-         x   = NamedType "x" Nothing s
-         omu = NamedType "omu" Nothing r1
-         r1  = RANGE r2 (Just 3) (Just 3)
-         r2  = RANGE r3 (Just 2) (Just 3)
-         r3  = RANGE INTEGER (Just (-2)) (Just 7)
-         s   = SEQUENCE (Cons (ETMandatory (NamedType "y" Nothing INTEGER)) Nil)
-
-quickFailVal3 = ValueC ((-2) :*: Empty) (NoValueC NoValue EmptyHL)
 
 \end{code}
 
@@ -684,14 +544,6 @@ instance Arbitrary BITSTRINGVal where
          case r of
             OnlyBITSTRING t ->
                return (BITSTRINGVal t x)
-
-\end{code}
-
-\begin{code}
-
-t3 = NamedType "T3" Nothing (SEQUENCE (
-        Cons (ETMandatory (NamedType "first" Nothing INTEGER)) (
-           Cons (ETMandatory (NamedType "second" Nothing INTEGER)) Nil)))
 
 \end{code}
 

@@ -185,6 +185,22 @@ instance (Show a, Show (HL l n)) => Show (HL (a:*:l) n) where
    show (ValueC x _ ) = show x
    show (NoValueC _ xs) = show xs
 
+instance Eq Nil where
+  _ == _ = True
+
+instance (Eq a, Eq b) => Eq (a:*:b) where
+   x:*:xs == y:*:ys =
+      x == y && xs == ys
+
+instance Eq (HL Nil (S Z)) where
+   _ == _ = True
+
+instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
+   ValueC   _ _ == NoValueC _ _ = False
+   NoValueC _ _ == ValueC _ _   = False
+   NoValueC _ xs == NoValueC _ ys = xs == ys
+   ValueC x _ == ValueC y _ = x == y
+
 -- This type is very similar to the original choice type but returns a 
 -- Choice (a:*:l) instead of a Choice (Maybe a:*: l) since Nothing and
 -- Just v are replaced by NoValue and v for any type.

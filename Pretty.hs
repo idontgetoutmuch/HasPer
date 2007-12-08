@@ -45,6 +45,7 @@ prettyTypeVal a@INTEGER x       = text (show x)
 prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
 prettyTypeVal a@(SIZE t s e) x  = prettyTypeVal t x
 prettyTypeVal a@(SEQUENCE s) x  = braces (prettySeqVal s x)
+prettyTypeVal a@(CHOICE c) x = prettyChoiceVal c x
 
 outer :: ASNType a -> Maybe a -> Maybe a -> Doc
 outer INTEGER Nothing  Nothing  = parens (text "MIN"    <> text ".." <> text "MAX")
@@ -114,19 +115,3 @@ instance Pretty (NamedType a) where
 prettyNamedType :: NamedType a -> Doc
 prettyNamedType (NamedType n _ ct) =
    text n <+> prettyType ct
-
-instance Eq Nil where
-  _ == _ = True
-
-instance (Eq a, Eq b) => Eq (a:*:b) where
-   x:*:xs == y:*:ys =
-      x == y && xs == ys
-
-instance Eq (HL Nil (S Z)) where
-   _ == _ = True
-
-instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
-   ValueC   _ _ == NoValueC _ _ = False
-   NoValueC _ _ == ValueC _ _   = False
-   NoValueC _ xs == NoValueC _ ys = xs == ys
-   ValueC x _ == ValueC y _ = x == y
