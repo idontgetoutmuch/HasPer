@@ -11,11 +11,11 @@ import ConstrainedType
 import qualified Data.ByteString.Lazy as B
 import Control.Monad.State
 import Control.Monad.Error
+import Test (type9, val9, val91)
 import IO
 
 runTest f =
    runCommands [
-      ("pwd","Failure in pwd"),
       ("asn1c -gen-PER " ++ f, "Failure in asn1c"),
       ("mv converter-sample.c converter-sample.c.old", "Failure in mv of converter-sample.c"),
       ("gcc -I. -o test *.c",  "Failure in gcc"),
@@ -49,13 +49,15 @@ genASN1 t =
         )
 
 main = 
-   do t <- getCurrentTime
+   do d <- getCurrentDirectory
+      t <- getCurrentTime
       let u = "asn1c." ++ show (utctDay t) ++ "." ++ show (utctDayTime t)
-      runCommands [("mkdir " ++ u,"Failure in mkdir")]
-      d <- getCurrentDirectory
+      createDirectory u
       setCurrentDirectory u
-      writeFile "generated.asn1" (render (genASN1 type7))
-      writeFile "generated.c" (render (genC type7 val7))
+      c <- getCurrentDirectory
+      putStrLn c
+      writeFile "generated.asn1" (render (genASN1 type9))
+      writeFile "generated.c" (render (genC type9 val91))
       runTest "generated.asn1"
       r <- readGen type7
       putStrLn r
