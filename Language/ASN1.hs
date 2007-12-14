@@ -30,7 +30,7 @@ module Language.ASN1 (
    IA5String(..),
    DirectoryString(..),
    OID(..),
-   NULL,
+   NULL(..),
    OctetString(..),
    BitString(..),
    SetOf(..),

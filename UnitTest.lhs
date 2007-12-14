@@ -729,6 +729,29 @@ choiceTest1 =
       assertEqual "CHOICE Test 2" eOldChoice1 testOldChoice1
    )
 
+xsChoice2 = xs
+   where
+      xs = ChoiceOption a (ChoiceOption b (ChoiceOption c (ChoiceOption d NoChoice)))
+      a = NamedType "a" (Just (Context,5,Implicit)) INTEGER
+      b = NamedType "b" (Just (Context,2,Implicit)) INTEGER
+      c = NamedType "c" (Just (Context,7,Implicit)) INTEGER
+      d = NamedType "d" (Just (Context,1,Implicit)) INTEGER
+
+xsChoice3 = xs
+   where
+      xs = ChoiceOption a (ChoiceOption b (ChoiceOption c (ChoiceOption d NoChoice)))
+      a  = NamedType "a" (Just (Context,5,Implicit)) INTEGER
+      b  = NamedType "b" (Just (Context,7,Implicit)) ys
+      c  = NamedType "c" (Just (Context,3,Implicit)) INTEGER
+      d  = NamedType "d" (Just (Context,2,Implicit)) INTEGER
+      ys = CHOICE (ChoiceOption e (ChoiceOption f (ChoiceOption g (ChoiceOption h NoChoice))))
+      e = NamedType "e" (Just (Context,3,Implicit)) INTEGER
+      f = NamedType "f" (Just (Context,13,Implicit)) INTEGER
+      g = NamedType "g" (Just (Context,17,Implicit)) INTEGER
+      h = NamedType "h" (Just (Context,19,Implicit)) INTEGER
+
+xVal = NoValueC NoValue (ValueC      yVal (NoValueC NoValue (NoValueC NoValue EmptyHL)))
+yVal = ValueC         7 (NoValueC NoValue (NoValueC NoValue (NoValueC NoValue EmptyHL)))
 
 choice2 = 
    CHOICE xs
@@ -920,7 +943,9 @@ test23c
 \end{code}
 
 Tests arising from QuickCheck property failures. It looks like the failure was caused
-by the encoding not being a multiple of 8 bits.
+by the encoding not being a multiple of 8 bits. Wrong! They were caused by DJS' misunderstanding
+of the bit mask for CHOICE. This test is updated to be valide ASN.1 in which tags
+are used to disambiguate which alternative of the CHOICE is being encoded / decoded.
 
 \begin{code}
 
@@ -928,8 +953,8 @@ quickFailType1 =
    CHOICE xs
       where
          xs = ChoiceOption p (ChoiceOption n NoChoice)
-         p = NamedType "p" Nothing INTEGER
-         n = NamedType "n" Nothing INTEGER
+         p = NamedType "p" (Just (Context,0,Implicit)) INTEGER
+         n = NamedType "n" (Just (Context,1,Implicit)) INTEGER
 
 quickFailVal1 = NoValueC NoValue (ValueC   0       EmptyHL)
 quickFailVal2 = ValueC   0       (NoValueC NoValue EmptyHL)
@@ -980,6 +1005,84 @@ qFTest2a =
    TestCase (
       assertEqual "CHOICE Test 8a" quickFailVal3a qF2a
    )
+
+\end{code}
+
+\begin{lstlisting}[frame=single]
+FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
+   BEGIN
+      Choice9a ::= 
+         CHOICE {
+            a CHOICE {
+               b INTEGER,
+               c SEQUENCE {}
+               },
+            d SEQUENCE {
+               e INTEGER,
+               f BIT STRING
+               }
+            }
+
+      Choice9b ::= 
+         CHOICE {
+            a CHOICE {
+               b INTEGER,
+               c BOOLEAN
+               },
+            d SEQUENCE {
+               e INTEGER,
+               f BIT STRING
+               }
+            }
+   END
+\end{lstlisting}
+
+
+\begin{code}
+
+xsChoice9 = xs
+   where
+      xs = ChoiceOption a (ChoiceOption d NoChoice)
+      a  = NamedType "a" Nothing (CHOICE (ChoiceOption b (ChoiceOption c NoChoice)))
+      b  = NamedType "b" Nothing INTEGER
+      c  = NamedType "c" Nothing (SEQUENCE Nil)
+      d  = NamedType "d" Nothing (SEQUENCE (Cons e (Cons f Nil)))
+      e  = ETMandatory (NamedType "e" Nothing INTEGER)
+      f  = ETMandatory (NamedType "f" Nothing (BITSTRING []))
+
+xsChoiceVal91 = NoValueC NoValue (ValueC d EmptyHL)
+   where
+      d = 3 :*: ((BitString [1,1,1,0,1,1,0,1]) :*: Empty)
+
+xsChoiceVal92 = ValueC a (NoValueC NoValue EmptyHL)
+   where
+      a = ValueC 9 (NoValueC NoValue EmptyHL)
+
+xsChoiceVal93 = ValueC a (NoValueC NoValue EmptyHL)
+   where
+      a = NoValueC NoValue (ValueC Empty EmptyHL)
+
+xsChoice9b = xs
+   where
+      xs = ChoiceOption a (ChoiceOption d NoChoice)
+      a  = NamedType "a" Nothing (CHOICE (ChoiceOption b (ChoiceOption c NoChoice)))
+      b  = NamedType "b" Nothing INTEGER
+      c  = NamedType "c" Nothing BOOLEAN
+      d  = NamedType "d" Nothing (SEQUENCE (Cons e (Cons f Nil)))
+      e  = ETMandatory (NamedType "e" Nothing INTEGER)
+      f  = ETMandatory (NamedType "f" Nothing (BITSTRING []))
+
+xsChoiceVal9b1 = NoValueC NoValue (ValueC d EmptyHL)
+   where
+      d = 3 :*: ((BitString [1]) :*: Empty)
+
+xsChoiceVal9b2 = ValueC a (NoValueC NoValue EmptyHL)
+   where
+      a = ValueC 9 (NoValueC NoValue EmptyHL)
+
+xsChoiceVal9b3 = ValueC a (NoValueC NoValue EmptyHL)
+   where
+      a = NoValueC NoValue (ValueC True EmptyHL)
 
 \end{code}
 
