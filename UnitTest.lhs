@@ -1037,7 +1037,6 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    END
 \end{lstlisting}
 
-
 \begin{code}
 
 xsChoice9 = xs
