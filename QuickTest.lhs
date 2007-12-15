@@ -547,4 +547,32 @@ instance Arbitrary BITSTRINGVal where
 
 \end{code}
 
+\section{Tags}
+
+\begin{code}
+
+data Baz = Baz String Int
+   deriving (Eq, Show)
+
+g2 :: MonadState Int m => m (Gen Int)
+g2 =
+   do x <- get
+      put (x + 1)
+      return (return x)
+
+f :: MonadState Int m => Int -> m (Gen [Baz])
+f 0 = return (return [])
+f n =
+   do x <- g2
+      xs <- f (n - 1)
+      let z = do u <- x
+                 us <- xs
+                 v <- arbitrary
+                 return ((Baz ("t" ++ (show u)) v):us)
+      return z
+
+main1 = let (q,p) = runState (f 10) 1 in sample q
+
+\end{code}
+
 \end{document}
