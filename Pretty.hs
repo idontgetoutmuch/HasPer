@@ -7,6 +7,7 @@ module Pretty(
 
 import Text.PrettyPrint
 import ConstrainedType
+import Language.ASN1 (TagType(..), TagPlicity(..))
 
 prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
 prettyConstraint (Elem s) = text (show s)
@@ -112,6 +113,29 @@ prettyChoiceVal (ChoiceOption (NamedType n i t) cs) (ValueC v vs) =
 instance Pretty (NamedType a) where
    pretty = prettyNamedType
 
+{-
+[UNIVERSAL 29]   tag-value 29, "universal" class
+[APPLICATION 10] tag-value 10, "application" class
+[PRIVATE 0]      tag-value 0,  "private" class
+[3]              tag-value 3,  "context-specific" class
+
+integer1 INTEGER ::= 72
+integer2 [1] IMPLICIT INTEGER ::= 72
+integer3 [APPLICATION 27] EXPLICIT INTEGER ::= 72
+-}
+
+prettyPlicity :: TagPlicity -> Doc
+prettyPlicity Implicit = text "IMPLICIT"
+prettyPlicity Explicit = text "EXPLICIT"
+
 prettyNamedType :: NamedType a -> Doc
-prettyNamedType (NamedType n _ ct) =
-   text n <+> prettyType ct
+prettyNamedType (NamedType n ti ct) =
+   case ti of
+      Nothing ->
+         text n <+> prettyType ct
+      Just (tt, tv, tp) ->
+         case tt of
+            Context ->
+               text n <+> brackets (text (show tv)) <+> prettyPlicity tp <+> prettyType ct
+            _ ->
+               text n <+> brackets (text (show tt) <+> text (show tv)) <+> prettyPlicity tp <+> prettyType ct

@@ -573,6 +573,25 @@ f n =
 
 main1 = let (q,p) = runState (f 10) 1 in sample q
 
+f3 0 = return (return [])
+f3 n =
+   do x <- g2
+      xs <- f3 (n - 1)
+      let z = do u <- x
+                 us <- xs
+                 name <- arbitrary
+                 r    <- arbitrary
+                 let (OnlyINTEGER t) = r
+                 let tag = (Context, (fromIntegral u), Implicit)
+                 return ((RepChoice (ChoiceOption (NamedType (elementName name) (Just tag) t) NoChoice)):us)
+      return z
+
+instance Show RepChoice where
+   show x =
+      case x of
+         RepChoice y ->
+            render (pretty y)
+
 \end{code}
 
 \end{document}
