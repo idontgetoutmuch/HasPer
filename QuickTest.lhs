@@ -597,11 +597,13 @@ type Label = Maybe Int
 data Rose = Leaf Label String | Branch Label [Rose]
    deriving Show
 
+{-
 myLabel :: Int -> Rose -> Rose
 myLabel n (Leaf Nothing s) = (Leaf (Just n) s)
 myLabel n (Leaf       x s) = error "Trying to relabel already labelled leaf"
 myLabel n (Branch Nothing rs) = zipWith ($) (zipWith ($) (repeat myLabel) [0..]) rs
 myLabel n (Branch       x rs) = error "Trying to relable already labelled branch" 
+-}
 
 \end{code}
 
