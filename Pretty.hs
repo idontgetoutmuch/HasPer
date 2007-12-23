@@ -31,6 +31,8 @@ prettyType (BITSTRING []) =
    text "BITSTRING"
 prettyType INTEGER =
    text "INTEGER"
+prettyType BOOLEAN =
+   text "BOOLEAN"
 prettyType(RANGE x l u) =
    prettyType x <+> outer x l u
 prettyType (SEQUENCE x) =
