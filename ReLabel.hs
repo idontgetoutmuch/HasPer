@@ -107,9 +107,31 @@ sTagInfoFoldMap = foldMap . g
 instance Foldable (Shadow a) where
    foldMap = shadowFoldMap
 
+shadowTraverse :: Applicative f => (b -> f c) -> Shadow a b -> f (Shadow a c)
+shadowTraverse g SINTEGER = pure SINTEGER
+shadowTraverse g SBOOLEAN = pure SBOOLEAN
+shadowTraverse g (SSEQUENCE xs) = SSEQUENCE <$> sSequenceTraverse g xs
+
+sSequenceTraverse :: Applicative f => (b -> f c) -> SSequence a b -> f (SSequence a c)
+sSequenceTraverse g SNil = pure SNil
+sSequenceTraverse g (SCons se ss) = SCons <$> sElementTraverse g se <*> sSequenceTraverse g ss
+
+sElementTraverse :: Applicative f => (b -> f c) -> SElementType a b -> f (SElementType a c)
+sElementTraverse g (SETMandatory snt) = SETMandatory <$> sNamedTypeTraverse g snt
+
+sNamedTypeTraverse :: Applicative f => (b -> f c) -> SNamedType a b -> f (SNamedType a c)
+sNamedTypeTraverse g (SNamedType n mti t) = SNamedType <$> pure n <*> sTagInfoTraverse g mti <*> shadowTraverse g t
+
+sTagInfoTraverse :: Applicative f => (b -> f c) -> Maybe (STagInfo b) -> f (Maybe (STagInfo c))
+sTagInfoTraverse = traverse . g
+   where g f (STagInfo tt tv tp) = STagInfo <$> pure tt <*> f tv <*> pure tp
+
+instance Traversable (Shadow a) where
+   traverse = shadowTraverse
+
 testMap = prettyType . unShadow . fmap (+1) . shadow
 
-testFold = undefined
+testFold = getSum . fold . fmap Sum . shadow
 
 n1 =ETMandatory (NamedType "Baz" (Just (Context, 7, Implicit)) BOOLEAN)
 
@@ -125,6 +147,8 @@ seq5 = Cons n1 seq2
 
 n2 = ETMandatory (NamedType "Faz" (Just (Context, 11, Implicit)) (SEQUENCE seq5))
 
+n3 = ETMandatory (NamedType "Bof" Nothing BOOLEAN)
+
 testType1 = SEQUENCE (Cons (ETMandatory (NamedType "Foo" (Just (Context, 3, Implicit)) BOOLEAN)) Nil)
 
 testType2 = SEQUENCE (Cons n1 seq2)
@@ -133,7 +157,9 @@ testType3 = SEQUENCE seq4
 
 testType4 = SEQUENCE (Cons n2 seq5)
 
-update :: MonadState Int m => m Int
+testType5 = SEQUENCE (Cons n3 Nil)
+
+update :: (Num a, MonadState a m) => m a
 update =
    do x <- get
       put (x + 1)
