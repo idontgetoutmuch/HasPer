@@ -39,17 +39,29 @@ shadow (SEQUENCE xs) = SSEQUENCE (shadowSequence xs)
 unShadow :: Shadow a TagValue -> ASNType a
 unShadow SBOOLEAN = BOOLEAN
 unShadow SINTEGER = INTEGER
+unShadow (SSEQUENCE xs) = SEQUENCE (unSSequence xs)
 
 shadowSequence :: Sequence a -> SSequence a TagValue
 shadowSequence Nil = SNil
 shadowSequence (Cons e s) = SCons (shadowElement e) (shadowSequence s)
 
+unSSequence :: SSequence a TagValue -> Sequence a
+unSSequence SNil = Nil
+unSSequence (SCons se ss) = Cons (unSElement se) (unSSequence ss)
+
 shadowElement :: ElementType a -> SElementType a TagValue
 shadowElement (ETMandatory n) = SETMandatory (shadowNamedType n)
+
+unSElement :: SElementType a TagValue -> ElementType a
+unSElement (SETMandatory n) = ETMandatory (unSNamedType n)
 
 shadowNamedType :: NamedType a -> SNamedType a TagValue
 shadowNamedType (NamedType n Nothing at) = SNamedType n Nothing (shadow at)
 shadowNamedType (NamedType n (Just (tt, tv, tp)) at) = SNamedType n (Just (STagInfo tt tv tp)) (shadow at)
+
+unSNamedType :: SNamedType a TagValue -> NamedType a
+unSNamedType (SNamedType n Nothing s) = NamedType n Nothing (unShadow s)
+unSNamedType (SNamedType n (Just (STagInfo tt tv tp)) s) = NamedType n (Just (tt, tv, tp)) (unShadow s)
 
 shadowMap :: (b -> c) -> Shadow a b -> Shadow a c
 shadowMap f SBOOLEAN = SBOOLEAN
@@ -72,6 +84,54 @@ sTagInfoMap = fmap . g
 
 instance Functor (Shadow a) where
    fmap = shadowMap
+
+shadowFoldMap :: Monoid m => (b -> m) -> Shadow a b -> m
+shadowFoldMap f SINTEGER = mempty
+shadowFoldMap f SBOOLEAN = mempty
+shadowFoldMap f (SSEQUENCE xs) = sSequenceFoldMap f xs
+
+sSequenceFoldMap :: Monoid m => (b -> m) -> SSequence a b -> m
+sSequenceFoldMap f SNil = mempty
+sSequenceFoldMap f (SCons se ss) = (sElementFoldMap f se) `mappend` (sSequenceFoldMap f ss)
+
+sElementFoldMap :: Monoid m => (b -> m) -> SElementType a b -> m
+sElementFoldMap f (SETMandatory snt) = sNamedTypeFoldMap f snt
+
+sNamedTypeFoldMap :: Monoid m => (b -> m) -> SNamedType a b -> m
+sNamedTypeFoldMap f (SNamedType n mti t) = (sTagInfoFoldMap f mti) `mappend` (shadowFoldMap f t)
+
+sTagInfoFoldMap :: Monoid m => (b -> m) -> Maybe (STagInfo b) -> m
+sTagInfoFoldMap = foldMap . g
+   where g f (STagInfo tt tv tp) = f tv
+
+instance Foldable (Shadow a) where
+   foldMap = shadowFoldMap
+
+testMap = prettyType . unShadow . fmap (+1) . shadow
+
+testFold = undefined
+
+n1 =ETMandatory (NamedType "Baz" (Just (Context, 7, Implicit)) BOOLEAN)
+
+seq1 = Cons (ETMandatory (NamedType "Foo" (Just (Context, 3, Implicit)) BOOLEAN)) Nil
+
+seq2 = Cons (ETMandatory (NamedType "Bar" (Just (Context, 5, Implicit)) INTEGER)) Nil
+
+seq3 = Cons n1 seq1
+
+seq4 = Cons n1 seq3
+
+seq5 = Cons n1 seq2
+
+n2 = ETMandatory (NamedType "Faz" (Just (Context, 11, Implicit)) (SEQUENCE seq5))
+
+testType1 = SEQUENCE (Cons (ETMandatory (NamedType "Foo" (Just (Context, 3, Implicit)) BOOLEAN)) Nil)
+
+testType2 = SEQUENCE (Cons n1 seq2)
+
+testType3 = SEQUENCE seq4
+
+testType4 = SEQUENCE (Cons n2 seq5)
 
 update :: MonadState Int m => m Int
 update =
