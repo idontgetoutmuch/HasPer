@@ -25,6 +25,7 @@ import qualified Data.Set as S
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
 import Data.Int
+import Relabel hiding (Empty)
 
 prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
 prettyConstraint (Elem s) = text (show s)
@@ -75,9 +76,10 @@ instance Arbitrary RepNamedType where
    arbitrary =
       do name <- arbitrary
          rct   <- arbitrary
+         tv <- arbitrary
          case rct of
             RepType ct ->
-               return (RepNamedType (NamedType (elementName name) Nothing ct))
+               return (RepNamedType (NamedType (elementName name) (Just (Context, tv, Implicit)) ct))
 
 newtype ElementName = ElementName {elementName :: String}
    deriving Show
@@ -163,8 +165,8 @@ data OnlyINTEGER = OnlyINTEGER (ASNType Integer)
 instance Arbitrary OnlyINTEGER where
    arbitrary =
       oneof [
-         return (OnlyINTEGER INTEGER),
-         sized onlyINTEGER
+         return (OnlyINTEGER INTEGER) -- ,
+--          sized onlyINTEGER
          ]
       where
          onlyINTEGER 0 = return (OnlyINTEGER INTEGER)
@@ -447,7 +449,8 @@ prop_2scomplement2 x =
 prop_fromPerToPer x =
    case x of
       RepTypeVal t y ->
-          y == runFromPer t (toPer8s t y)
+         let t' = legalise t in    
+            y == runFromPer t' (toPer8s t' y)
    where
       runFromPer :: ASNType a -> BitStream -> a
       runFromPer t x =
@@ -461,7 +464,7 @@ main =
       quickCheck prop_validINTEGER
       quickCheck prop_WithinRange
       quickCheck prop_2scomplement1
-      quickCheck prop_2scomplement2
+--       quickCheck prop_2scomplement2
 
 \end{code}
 
@@ -592,18 +595,8 @@ instance Show RepChoice where
          RepChoice y ->
             render (pretty y)
 
-type Label = Maybe Int
-
-data Rose = Leaf Label String | Branch Label [Rose]
-   deriving Show
-
-{-
-myLabel :: Int -> Rose -> Rose
-myLabel n (Leaf Nothing s) = (Leaf (Just n) s)
-myLabel n (Leaf       x s) = error "Trying to relabel already labelled leaf"
-myLabel n (Branch Nothing rs) = zipWith ($) (zipWith ($) (repeat myLabel) [0..]) rs
-myLabel n (Branch       x rs) = error "Trying to relable already labelled branch" 
--}
+legalise :: ASNType a -> ASNType a
+legalise = unShadow . testRelabel . shadow
 
 \end{code}
 

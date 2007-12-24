@@ -1,3 +1,5 @@
+module Relabel where
+
 import Prelude hiding (mapM)
 import Control.Applicative hiding (empty)
 import Data.Foldable
@@ -35,19 +37,29 @@ shadow :: ASNType a -> Shadow a TagValue
 shadow BOOLEAN = SBOOLEAN
 shadow INTEGER = SINTEGER
 shadow (SEQUENCE xs) = SSEQUENCE (shadowSequence xs)
+shadow (CHOICE xs) = SCHOICE (shadowChoice xs)
 
 unShadow :: Shadow a TagValue -> ASNType a
 unShadow SBOOLEAN = BOOLEAN
 unShadow SINTEGER = INTEGER
 unShadow (SSEQUENCE xs) = SEQUENCE (unSSequence xs)
+unShadow (SCHOICE xs) = CHOICE (unSChoice xs)
 
 shadowSequence :: Sequence a -> SSequence a TagValue
 shadowSequence Nil = SNil
 shadowSequence (Cons e s) = SCons (shadowElement e) (shadowSequence s)
 
+shadowChoice :: Choice a -> SChoice a TagValue
+shadowChoice NoChoice = SNoChoice
+shadowChoice (ChoiceOption n cs) = SChoiceOption (shadowNamedType n) (shadowChoice cs)
+
 unSSequence :: SSequence a TagValue -> Sequence a
 unSSequence SNil = Nil
 unSSequence (SCons se ss) = Cons (unSElement se) (unSSequence ss)
+
+unSChoice :: SChoice a TagValue -> Choice a
+unSChoice SNoChoice = NoChoice
+unSChoice (SChoiceOption n cs) = ChoiceOption (unSNamedType n) (unSChoice cs)
 
 shadowElement :: ElementType a -> SElementType a TagValue
 shadowElement (ETMandatory n) = SETMandatory (shadowNamedType n)
@@ -67,10 +79,15 @@ shadowMap :: (b -> c) -> Shadow a b -> Shadow a c
 shadowMap f SBOOLEAN = SBOOLEAN
 shadowMap f SINTEGER = SINTEGER
 shadowMap f (SSEQUENCE xs) = SSEQUENCE (sSequenceMap f xs)
+shadowMap f (SCHOICE xs) = SCHOICE (sChoiceMap f xs)
 
 sSequenceMap :: (b -> c) -> SSequence a b -> SSequence a c
 sSequenceMap f SNil  = SNil
 sSequenceMap f (SCons e s) = SCons (sElementMap f e) (sSequenceMap f s)
+
+sChoiceMap :: (b -> c) -> SChoice a b -> SChoice a c
+sChoiceMap f SNoChoice = SNoChoice
+sChoiceMap f (SChoiceOption n cs) = SChoiceOption (sNamedTypeMap f n) (sChoiceMap f cs)
 
 sElementMap :: (b -> c) -> SElementType a b -> SElementType a c
 sElementMap f (SETMandatory n) = SETMandatory (sNamedTypeMap f n)
@@ -89,10 +106,15 @@ shadowFoldMap :: Monoid m => (b -> m) -> Shadow a b -> m
 shadowFoldMap f SINTEGER = mempty
 shadowFoldMap f SBOOLEAN = mempty
 shadowFoldMap f (SSEQUENCE xs) = sSequenceFoldMap f xs
+shadowFoldMap f (SCHOICE xs) = sChoiceFoldMap f xs
 
 sSequenceFoldMap :: Monoid m => (b -> m) -> SSequence a b -> m
 sSequenceFoldMap f SNil = mempty
 sSequenceFoldMap f (SCons se ss) = (sElementFoldMap f se) `mappend` (sSequenceFoldMap f ss)
+
+sChoiceFoldMap :: Monoid m => (b -> m) -> SChoice a b -> m
+sChoiceFoldMap f SNoChoice = mempty
+sChoiceFoldMap f (SChoiceOption n cs) = (sNamedTypeFoldMap f n) `mappend` (sChoiceFoldMap f cs)
 
 sElementFoldMap :: Monoid m => (b -> m) -> SElementType a b -> m
 sElementFoldMap f (SETMandatory snt) = sNamedTypeFoldMap f snt
@@ -111,10 +133,15 @@ shadowTraverse :: Applicative f => (b -> f c) -> Shadow a b -> f (Shadow a c)
 shadowTraverse g SINTEGER = pure SINTEGER
 shadowTraverse g SBOOLEAN = pure SBOOLEAN
 shadowTraverse g (SSEQUENCE xs) = SSEQUENCE <$> sSequenceTraverse g xs
+shadowTraverse g (SCHOICE xs) = SCHOICE <$> sChoiceTraverse g xs
 
 sSequenceTraverse :: Applicative f => (b -> f c) -> SSequence a b -> f (SSequence a c)
 sSequenceTraverse g SNil = pure SNil
 sSequenceTraverse g (SCons se ss) = SCons <$> sElementTraverse g se <*> sSequenceTraverse g ss
+
+sChoiceTraverse :: Applicative f => (b -> f c) -> SChoice a b -> f (SChoice a c)
+sChoiceTraverse g SNoChoice = pure SNoChoice
+sChoiceTraverse g (SChoiceOption n cs) = SChoiceOption <$> sNamedTypeTraverse g n <*> sChoiceTraverse g cs
 
 sElementTraverse :: Applicative f => (b -> f c) -> SElementType a b -> f (SElementType a c)
 sElementTraverse g (SETMandatory snt) = SETMandatory <$> sNamedTypeTraverse g snt
@@ -134,6 +161,8 @@ testMap = prettyType . unShadow . fmap (+1) . shadow
 testFold = getSum . fold . fmap Sum . shadow
 
 n1 =ETMandatory (NamedType "Baz" (Just (Context, 7, Implicit)) BOOLEAN)
+
+n1' = NamedType "Baz" (Just (Context, 7, Implicit)) BOOLEAN
 
 seq1 = Cons (ETMandatory (NamedType "Foo" (Just (Context, 3, Implicit)) BOOLEAN)) Nil
 
@@ -158,6 +187,28 @@ testType3 = SEQUENCE seq4
 testType4 = SEQUENCE (Cons n2 seq5)
 
 testType5 = SEQUENCE (Cons n3 Nil)
+
+testType6 = CHOICE (ChoiceOption n1' NoChoice)
+
+testType7 = 
+   CHOICE 
+      (ChoiceOption 
+         (NamedType "T1" (Just (Context, 13, Implicit)) testType1)
+         (ChoiceOption
+            (NamedType "T2" (Just (Context, 17, Implicit)) testType2)
+            NoChoice
+          )
+      )
+
+testType8 =
+   CHOICE
+      (ChoiceOption
+         (NamedType "T1" (Just (Context, 1, Implicit)) INTEGER)
+         (ChoiceOption
+            (NamedType "T2" Nothing INTEGER)
+            NoChoice
+         )
+      )
 
 update :: (Num a, MonadState a m) => m a
 update =

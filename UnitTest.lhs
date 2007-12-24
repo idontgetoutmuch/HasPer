@@ -1006,6 +1006,59 @@ qFTest2a =
       assertEqual "CHOICE Test 8a" quickFailVal3a qF2a
    )
 
+quickFailType10 =
+   CHOICE
+      (ChoiceOption
+         (NamedType "yn" (Just (Context, 0, Implicit)) INTEGER)
+         (ChoiceOption
+            (NamedType "h" Nothing INTEGER)
+            NoChoice
+         )
+      )
+
+quickFailVal10 = NoValueC NoValue (ValueC (-2) EmptyHL)
+
+qF10 = mmIdem quickFailType10 (toPer8s quickFailType10 quickFailVal10)
+
+qFTest10 =
+   TestCase (
+      assertEqual "CHOICE Test 10" quickFailVal10 qF10
+   )
+
+{-
+CHOICE {wa [0] IMPLICIT SEQUENCE {c [0] IMPLICIT INTEGER},
+        a [0] IMPLICIT CHOICE {p INTEGER},
+        j INTEGER}: wa:{c 0}
+-}
+
+quickFailType11 =
+   CHOICE
+      (ChoiceOption
+         (NamedType "wa" (Just (Context, 0, Implicit)) seq11)
+         (ChoiceOption
+            (NamedType "a" (Just (Context, 2, Implicit)) choice11)
+            (ChoiceOption 
+               (NamedType "j" Nothing INTEGER)
+               NoChoice
+            )
+         )
+      )
+   where
+      seq11 = SEQUENCE (Cons (ETMandatory (NamedType "c" (Just (Context, 1, Implicit)) INTEGER)) Nil)
+      choice11 = CHOICE (ChoiceOption (NamedType "p" Nothing INTEGER) NoChoice)
+
+quickFailVal11 = 
+   ValueC wa (NoValueC NoValue (NoValueC NoValue EmptyHL))
+   where
+      wa =  0 :*: Empty
+
+qF11 = mmIdem quickFailType11 (toPer8s quickFailType11 quickFailVal11)
+
+qFTest11 =
+   TestCase (
+      assertEqual "CHOICE Test 11" quickFailVal11 qF11
+   )
+
 \end{code}
 
 \begin{lstlisting}[frame=single]
@@ -1319,6 +1372,8 @@ tests =
       qFTest1,
       qFTest2,
       qFTest2a,
+      qFTest10,
+      qFTest11,
       sChoiceTest1,
       eSeqOfTest1,
       eSeqOfTest2,

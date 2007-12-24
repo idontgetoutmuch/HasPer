@@ -1729,7 +1729,7 @@ mFromPer (SEQUENCE s)              =
 mFromPer t@(SIZE (SIZE _ _ _) _ _) = 
    let nt = multiSize t in mFromPer nt
 mFromPer t@(CHOICE c) =
-   do ps <- mmGetBits ((genericLength (encodeNNBIntBits (0,(l c)))) - 1)
+   do ps <- mmGetBits ((genericLength (encodeNNBIntBits (0,(l c) - 1))))
       decodeChoice (map fromIntegral ps) c
    where
       l :: Integral n => Choice a -> n
@@ -1770,13 +1770,6 @@ Note we never have negative indices so we don't need to check for $n < 0$.
 
 \begin{code}
 
-data Foo = Foo TagInfo
-   deriving (Eq, Show)
-
-instance Ord Foo where
-   Foo (_,x,_) <= Foo (_,y,_) = x <= y
-
-
 decodeChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
                    BitStream -> Choice a -> m (HL a (S Z))
 decodeChoice bitmap c =
@@ -1785,7 +1778,7 @@ decodeChoice bitmap c =
       Just k ->
          nthChoice k c
       where
-         ts = map Foo (getCTags c)
+         ts = getCTags c
          us = sort ts
          n  = fromNonNeg bitmap
          m  = lookup (us!!n) (zip ts [0..])
