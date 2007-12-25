@@ -25,7 +25,7 @@ import qualified Data.Set as S
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
 import Data.Int
-import Relabel hiding (Empty)
+import Relabel
 
 prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
 prettyConstraint (Elem s) = text (show s)
@@ -596,7 +596,7 @@ instance Show RepChoice where
             render (pretty y)
 
 legalise :: ASNType a -> ASNType a
-legalise = unShadow . testRelabel . shadow
+legalise = unShadow . relabel . shadow
 
 \end{code}
 
