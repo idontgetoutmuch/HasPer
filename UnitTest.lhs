@@ -24,6 +24,7 @@ import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
 import Data.Set hiding (map)
+import Data.List hiding (groupBy)
 import IO
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
 import qualified Data.Set as S
@@ -131,7 +132,11 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
 
 seqOfElem1 = RANGE INTEGER (Just 25) (Just 30)
 
-test8 = toPer (SEQUENCEOF seqOfElem1) [26,27,28,25]
+seqOfType1 = SEQUENCEOF seqOfElem1
+
+seqOfVal1 = [26,27,28,25]
+
+test8 = toPer seqOfType1 seqOfVal1
 
 eSeqOfElem1 = [
    0,0,0,0,0,1,0,0,
@@ -145,6 +150,32 @@ eSeqOfTest1 =
    TestCase (
       assertEqual "SEQUENCE OF Test 1" eSeqOfElem1 test8 
    )
+
+dSeqOf1 = mmIdem seqOfType1 (toPer8s seqOfType1 seqOfVal1)
+
+eSeqOfTest3 = 
+   TestCase (
+      assertEqual "SEQUENCE OF Test 3" seqOfVal1 dSeqOf1 
+   )
+
+seqOfVal1a = take 127 (cycle [25..30])
+
+dSeqOf1a = mmIdem seqOfType1 (toPer8s seqOfType1 seqOfVal1a)
+
+eSeqOfTest3a = 
+   TestCase (
+      assertEqual "SEQUENCE OF Test 3a" seqOfVal1 dSeqOf1a 
+   )
+
+eSeqOfTests3 n =
+   TestCase (
+      assertEqual ("SEQUENCE OF Test 3b" ++ show n) (seqOfVals3 n) (dSeqOfs3 n)
+   )
+
+
+seqOfVals3 n = genericTake n (cycle [25..30])
+
+dSeqOfs3 n = mmIdem seqOfType1 (toPer8s seqOfType1 (seqOfVals3 n))
 
 test9 = toPer (SEQUENCEOF t6) [29:*:(30:*:Empty),28:*:(28:*:Empty)]
 test10
@@ -171,6 +202,8 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
    BEGIN
       SeqOf2 ::=
          SEQUENCE (SIZE (2..5)) OF SeqOfElem1
+      SeqOf3 ::=
+         SEQUENCE (SIZE (4..4)) OF SeqOfElem1
    END
 \end{lstlisting}
 
@@ -178,9 +211,11 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
 
 seqOft7 = SIZE (SEQUENCEOF seqOfElem1) (Elem (fromList [2..5])) NoMarker
 
-test14 = toPer seqOft7 [26,25,28,27]
+seqOfType3 = SIZE (SEQUENCEOF seqOfElem1) (Elem (fromList [4..4])) NoMarker
 
-test14' = toPer seqOft7 [26,25,28,27,29,30]
+seqOfVal7 = [26,25,28,27]
+
+test14 = toPer seqOft7 seqOfVal7
 
 eTest14 = [
    1,0,
@@ -195,7 +230,55 @@ eSeqOfTest2 =
       assertEqual "SEQUENCE OF Test 2" eTest14 test14 
    )
 
+dSeqOf7 = mmIdem seqOft7 (toPer8s seqOft7 seqOfVal7)
 
+dSeqOf3 = mmIdem seqOfType3 (toPer8s seqOfType3 seqOfVal7)
+
+eSeqOfTest4 = 
+   TestCase (
+      assertEqual "SEQUENCE OF Test 4" seqOfVal7 dSeqOf7 
+   )
+
+eSeqOfTest5 = 
+   TestCase (
+      assertEqual "SEQUENCE OF Test 5" seqOfVal7 dSeqOf3 
+   )
+
+\end{code}
+
+\subsection{Dubuisson page 439}
+
+\begin{quote}
+
+A frame of 147,457 units is therefore fragmented
+as follows:
+
+11000100 65,536 units 11000100 65,536 units 11000001 16,384 units 00000001 1 unit
+
+\end{quote}
+
+\begin{code}
+
+dub439e1 =
+   TestCase (
+      assertEqual "Dubuisson page 439 first length" (take 8 $ toPer seqOfType1 (seqOfVals3 147457)) [1,1,0,0,0,1,0,0]
+   )
+
+{-
+
+*UnitTest> take 8 $ drop (3*64*(2^10)) $ drop 8 $ toPer seqOfType1 (seqOfVals3 147457)
+[1,1,0,0,0,1,0,0]
+
+*UnitTest> take 8 $ drop (3*64*(2^10)) $ drop 8 $ drop (3*64*(2^10)) $ drop 8 $ toPer
+seqOfType1 (seqOfVals3 147457)
+[1,1,0,0,0,0,1,0]
+^^^^^^^^^^^^^^^^^ Does not match.
+
+*UnitTest> take 8 $ drop (3*16*(2^10)) $ drop 8 $ drop (3*64*(2^10)) $ drop 8 $ drop
+(3*64*(2^10)) $ drop 8 $ toPer seqOfType1 (seqOfVals3 147457)
+[0,0,0,0,0,0,0,1]
+
+-}
 
 test15 = toPer t8 [(29:*:(30:*:Empty)),((-10):*:(2:*:Empty))]
 
@@ -1347,40 +1430,44 @@ foo (NamedType _ _ t) =
          (Right n,s) -> return (show n ++ " " ++ show s)
 
 tests = 
-   TestList [
-      unConIntegerTest1, 
-      unConIntegerTest2, 
-      unConIntegerTest3, 
---       unConIntegerTest4,
-      integerTest2,
-      integerTest3,
-      integerTest4,
-      semiIntegerTest5,
-      bitStringTest1,
-      bitStringTest1',
-      bitStringTest1'',
-      sConBitStringTest1,
-      sConBitStringTest2,
-      sConBitStringTest3,
-      sConBitStringTest4,
-      sConBitStringTest5,
-      choiceTest1,
-      choiceTest2,       
-      choiceTest21,
-      choiceTest3,
-      choiceTest4,
-      qFTest1,
-      qFTest2,
-      qFTest2a,
-      qFTest10,
-      qFTest11,
-      sChoiceTest1,
-      eSeqOfTest1,
-      eSeqOfTest2,
-      sSeqTest1
-      ]
+   [
+   unConIntegerTest1, 
+   unConIntegerTest2, 
+   unConIntegerTest3, 
+--    unConIntegerTest4,
+   integerTest2,
+   integerTest3,
+   integerTest4,
+   semiIntegerTest5,
+   bitStringTest1,
+   bitStringTest1',
+   bitStringTest1'',
+   sConBitStringTest1,
+   sConBitStringTest2,
+   sConBitStringTest3,
+   sConBitStringTest4,
+   sConBitStringTest5,
+   choiceTest1,
+   choiceTest2,       
+   choiceTest21,
+   choiceTest3,
+   choiceTest4,
+   qFTest1,
+   qFTest2,
+   qFTest2a,
+   qFTest10,
+   qFTest11,
+   sChoiceTest1,
+   eSeqOfTest1,
+   eSeqOfTest2,
+   eSeqOfTest3,
+   eSeqOfTest4,
+   eSeqOfTest5,
+   sSeqTest1
+   ]
+
  
-main = runTestTT tests
+main = runTestTT (TestList (tests ++ (map eSeqOfTests3 [127,128,129])))
 
 \end{code}
 
