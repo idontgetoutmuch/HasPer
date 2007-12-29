@@ -319,6 +319,20 @@ lar303e1 =
          dLarSeqOf1
    )
 
+larSeqOfT2 = SIZE (SEQUENCEOF seqOfElem1) (Elem (fromList [5..20])) NoMarker
+
+larSeqOf2 = [0,0,0,1,0,0,0,0,0,1,0,1,0,0,1,1,1,0,0,1,0,1,0,0]
+
+dLarSeqOf2 = mmIdem larSeqOfT2 larSeqOf2
+
+lar303e2 =
+   TestCase (
+      assertEqual 
+         "Larmouth page 303 Example 2" 
+         [25,26,27,28,29,30]
+         dLarSeqOf2
+   )
+
 test15 = toPer t8 [(29:*:(30:*:Empty)),((-10):*:(2:*:Empty))]
 
 test16 = toPer t10 [(Just (-10):*:(2:*:Empty))]
@@ -1473,7 +1487,7 @@ tests =
    unConIntegerTest1, 
    unConIntegerTest2, 
    unConIntegerTest3, 
---    unConIntegerTest4,
+   unConIntegerTest4,
    integerTest2,
    integerTest3,
    integerTest4,
@@ -1504,7 +1518,8 @@ tests =
    eSeqOfTest5,
    sSeqTest1,
    dub439e1,
-   lar303e1
+   lar303e1,
+   lar303e2
    ]
 
  
