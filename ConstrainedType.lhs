@@ -1520,28 +1520,7 @@ mmGetBits n =
 
 \begin{code}
 
-mmDecodeWithLengthDeterminant k =
-   do p <- mmGetBit
-      case p of
-         0 ->
-            do j <- mmGetBits 7
-               let l = fromNonNeg j
-               mmGetBits (l*k)
-         1 ->
-            do q <- mmGetBit
-               case q of
-                  0 ->
-                     do j <- mmGetBits 14
-                        let l = fromNonNeg j
-                        mmGetBits (l*k)
-                  1 ->
-                     do j <- mmGetBits 6
-                        let fragSize = fromNonNeg j
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
-                           else do frag <- mmGetBits (fragSize*n16k*k)
-                                   rest <- mmDecodeWithLengthDeterminant k
-                                   return (frag ++ rest)
+mmDecodeWithLengthDeterminant k = decodeWithLengthDeterminant (flip (const (mmGetBits . (*k)))) undefined
 
 \end{code}
 
@@ -1555,7 +1534,12 @@ The lowest the lower bound can be is $0$. Therefore we can assume that decodeSiz
 ever gets called with a constraint of the form Constraint (Just n) \_.
 
 
+29th December 2007: this decodeSizedSemi and decodeSizedSemi' need some more thought before
+replacing the former with the latter.
+
 \begin{code}
+
+decodeSizedSemi' k lb = decodeWithLengthDeterminant (flip (const (mmGetBits . (*k) . (+lb)))) undefined
 
 decodeSizedSemi :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Integer -> m [Word8]
 decodeSizedSemi k lb =
@@ -1730,7 +1714,7 @@ mFromPer (SEQUENCE s)              =
 mFromPer t@(SIZE (SIZE _ _ _) _ _) = 
    let nt = multiSize t in mFromPer nt
 mFromPer (SEQUENCEOF u)        = fromPerSeqOf u
-mFromPer t@(SIZE (SEQUENCEOF u) _ _) = fromPerSizedSeqOf (sizeLimit t) u
+mFromPer t@(SIZE (SEQUENCEOF u) _ _) = fromPerSizedSeqOf (sizeLimit t) nSequenceOfElements u
 mFromPer t@(CHOICE c) =
    do ps <- mmGetBits ((genericLength (encodeNNBIntBits (0,(l c) - 1))))
       decodeChoice (map fromIntegral ps) c
@@ -1800,64 +1784,27 @@ decodeWithLengthDeterminant f t =
 
 nSequenceOfElements n = sequence . genericTake n . repeat . mFromPer
 
-{-
-
-decodeSizedSemi k lb =
-   do p <- mmGetBit
-      case p of
-         0 ->
-            do j <- mmGetBits 7
-               let l = fromNonNeg j
-               mmGetBits ((l + lb) * k)
-         1 ->
-            do q <- mmGetBit
-               case q of
-                  0 ->
-                     do j <- mmGetBits 14
-                        let l = fromNonNeg j
-                        mmGetBits ((l + lb) * k)
-                  1 ->
-                     do j <- mmGetBits 6
-                        let fragSize = fromNonNeg j
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
-                           else do frag <- mmGetBits (fragSize * n16k * k)
-                                   rest <- decodeSizedSemi k lb
-                                   return (frag ++ rest)
-
-
-   fromPerSizedSeqOf (Constrained (Just 0) Nothing) t
-
-!!!The above is WRONG!!!
-
-!!!and so is fromPerSizedSeqOf - think what happens when the ub > 64k!!!
-
--}
-
 \end{code}
 
 \begin{enumerate}
 
 \item
+
 The first condition deals with 19.5.
 
 \end{enumerate}
 
 \begin{code}
 
-fromPerSizedSeqOf :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Constrained Integer -> ASNType a -> m [a]
-fromPerSizedSeqOf (Constrained lb ub) t
-   | ub /= Nothing && ub <= (Just n64k) && ub == lb = f (fromJust ub) t
-   | otherwise = do l <- mFromPer (RANGE INTEGER lb ub)
-                    f l t
-   where
-      f n = sequence . genericTake n . repeat . mFromPer
+fromPerSizedSeqOf :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Constrained Integer -> (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
+fromPerSizedSeqOf (Constrained lb ub) f t
+   | ub /= Nothing && ub == lb = f (fromJust ub) t
+   | ub == Nothing = decodeWithLengthDeterminant f t
+   | ub <= (Just n64k) = do l <- mFromPer (RANGE INTEGER lb ub)
+                            f l t
+   | otherwise = decodeWithLengthDeterminant f t
 
 \end{code}
-
-{-
--}
-
 
 \begin{code}
 

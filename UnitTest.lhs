@@ -261,8 +261,28 @@ as follows:
 
 dub439e1 =
    TestCase (
-      assertEqual "Dubuisson page 439 first length" (take 8 $ toPer seqOfType1 (seqOfVals3 147457)) [1,1,0,0,0,1,0,0]
+      assertEqual 
+         "Dubuisson page 439 Example 1" 
+         [
+            [1,1,0,0,0,1,0,0],
+            [1,1,0,0,0,1,0,0],
+            [1,1,0,0,0,0,0,1],
+            [0,0,0,0,0,0,0,1]
+         ]
+         [
+            take 8 x,
+            take 8 y,
+            take 8 z,
+            take 8 a
+         ]
    )
+   where
+      x = toPer seqOfType1 (seqOfVals3 147457)
+      y = drop (3*64*(2^10)) (drop 8 x)
+      z = drop (3*64*(2^10)) (drop 8 y)
+      a = drop (3*16*(2^10)) (drop 8 z)
+
+\end{code}
 
 {-
 
@@ -279,6 +299,25 @@ seqOfType1 (seqOfVals3 147457)
 [0,0,0,0,0,0,0,1]
 
 -}
+
+\subsection{Larmouth}
+
+
+\begin{code}
+
+larSeqOfT1 = SIZE (SEQUENCEOF seqOfElem1) (Elem (fromList [6..6])) NoMarker
+
+larSeqOf1 = [0,0,0,0,0,1,0,1,0,0,1,1,1,0,0,1,0,1,0,0,0,0,0,0]
+
+dLarSeqOf1 = mmIdem larSeqOfT1 larSeqOf1
+
+lar303e1 =
+   TestCase (
+      assertEqual 
+         "Larmouth page 303 Example 1" 
+         [25,26,27,28,29,30]
+         dLarSeqOf1
+   )
 
 test15 = toPer t8 [(29:*:(30:*:Empty)),((-10):*:(2:*:Empty))]
 
@@ -1463,7 +1502,9 @@ tests =
    eSeqOfTest3,
    eSeqOfTest4,
    eSeqOfTest5,
-   sSeqTest1
+   sSeqTest1,
+   dub439e1,
+   lar303e1
    ]
 
  
