@@ -1533,38 +1533,6 @@ We don't capture this for now.
 The lowest the lower bound can be is $0$. Therefore we can assume that decodeSized only
 ever gets called with a constraint of the form Constraint (Just n) \_.
 
-
-29th December 2007: this decodeSizedSemi and decodeSizedSemi' need some more thought before
-replacing the former with the latter.
-
-\begin{code}
-
-decodeSizedSemi' k lb = decodeWithLengthDeterminant (flip (const (mmGetBits . (*k) . (+lb)))) undefined
-
-decodeSizedSemi :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Integer -> Integer -> m [Word8]
-decodeSizedSemi k lb =
-   do p <- mmGetBit
-      case p of
-         0 ->
-            do j <- mmGetBits 7
-               let l = fromNonNeg j
-               mmGetBits ((l + lb) * k)
-         1 ->
-            do q <- mmGetBit
-               case q of
-                  0 ->
-                     do j <- mmGetBits 14
-                        let l = fromNonNeg j
-                        mmGetBits ((l + lb) * k)
-                  1 ->
-                     do j <- mmGetBits 6
-                        let fragSize = fromNonNeg j
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
-                           else do frag <- mmGetBits (fragSize * n16k * k)
-                                   rest <- decodeSizedSemi k lb
-                                   return (frag ++ rest)
-
 \end{code}
 
 \begin{enumerate}
@@ -1639,26 +1607,7 @@ There is no case for f Nothing (Just\_) as this case cannot arise CHECK THIS!!!
 
 \begin{code}
 
-fromPerBitString t =
-   f s
-   where
-      s = sizeLimit t
-      f (Constrained _ (Just 0)) = return []
-      f (Constrained (Just lb) (Just ub))
-         | lb == ub && ub <= 16 =
-            mmGetBits ub
-         | lb == ub && ub <= n64k =
-            mmGetBits ub
-         | ub <= n64k =
-            do let n = genericLength (encodeNNBIntBits (ub - lb, ub - lb))
-               j <- mmGetBits n
-               mmGetBits (lb + (fromNonNeg j))
-         | otherwise =
-            decodeSizedSemi 1 lb
-      f (Constrained (Just lb) Nothing) =
-         decodeSizedSemi 1 lb
-      f (Constrained Nothing Nothing) =
-         decodeSizedSemi 1 0
+fromPerBitString t = fromPerSizedSeqOf (sizeLimit t) (flip (const mmGetBits)) undefined
 
 \end{code}
 
