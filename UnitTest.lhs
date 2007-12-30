@@ -347,6 +347,71 @@ lar303e3 =
          dLarSeqOf3
    )
 
+larSeqOfT4 = SEQUENCEOF seqOfElem1
+
+larSeqOf4 = [0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,1,0,0,1,1,1,0,0,1,0,1,0,0,0,0,0,1]
+
+dLarSeqOf4 = mmIdem larSeqOfT4 larSeqOf4
+
+lar303e4 =
+   TestCase (
+      assertEqual 
+         "Larmouth page 303 Example 4" 
+         [25,26,27,28,29,30,25,26]
+         dLarSeqOf4
+   )
+
+larSeqOfT6 = SIZE (SEQUENCEOF seqOfElem1) (Elem (fromList [65534..65535])) NoMarker
+
+larSeqOf6 = (0:(genericTake (65534*3) (cycle [0,0,0,0,0,1,0,1,0,0,1,1,1,0,0,1,0,1,0,0,0,0,0,1]))) ++ [0,0,0,0,0]
+
+dLarSeqOf6 = mmIdem larSeqOfT6 larSeqOf6
+
+lar303e6 =
+   TestCase (
+      assertEqual 
+         "Larmouth page 303 Example 6" 
+         (genericTake 65534 (cycle [25,26,27,28,29,30,25,26]))
+         dLarSeqOf6
+   )
+
+larSeqOfT7 = SIZE (SEQUENCEOF seqOfElem1) (Elem (fromList [65537..65537])) NoMarker
+
+larSeqOf7 = 
+   [1,1,0,0,0,1,0,0] ++ firstBlock ++ [0,0,0,0,0,0,0,1] ++ secondBlock ++ [0,0,0,0,0]
+   where
+      infContent  = cycle [0,0,0,0,0,1,0,1,0,0,1,1,1,0,0,1,0,1]
+      firstBlock  = genericTake l infContent
+      secondBlock = take 3 (genericDrop l infContent)
+      l           = 65536*3
+
+dLarSeqOf7 = mmIdem larSeqOfT7 larSeqOf7
+
+lar303e7a =
+   TestCase (
+      assertEqual 
+         "Larmouth page 303 Example 7a" 
+         eSample1
+         aSample1
+   )
+   where
+      eSample1 = take 6 expected
+      aSample1 = take 6 actual
+      expected = genericTake 65537 (cycle [25,26,27,28,29,30])
+      actual   = dLarSeqOf7
+
+lar303e7b =
+   TestCase (
+      assertEqual 
+         "Larmouth page 303 Example 7b" 
+         eSample2
+         aSample2
+   )
+   where
+      eSample2 = take 7 (genericDrop 65530 expected)
+      aSample2 = take 7 (genericDrop 65530 actual)
+      expected = genericTake 65537 (cycle [25,26,27,28,29,30])
+      actual   = dLarSeqOf7
 
 test15 = toPer t8 [(29:*:(30:*:Empty)),((-10):*:(2:*:Empty))]
 
@@ -1502,7 +1567,7 @@ tests =
    unConIntegerTest1, 
    unConIntegerTest2, 
    unConIntegerTest3, 
-   unConIntegerTest4,
+--    unConIntegerTest4,
    integerTest2,
    integerTest3,
    integerTest4,
@@ -1532,10 +1597,14 @@ tests =
    eSeqOfTest4,
    eSeqOfTest5,
    sSeqTest1,
-   dub439e1,
+--    dub439e1,
    lar303e1,
    lar303e2,
-   lar303e2
+   lar303e3,
+   lar303e4,
+   lar303e6
+--    lar303e7a,
+--    lar303e7b
    ]
 
  

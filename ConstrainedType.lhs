@@ -1747,7 +1747,7 @@ The first condition deals with 19.5.
 
 fromPerSizedSeqOf :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Constrained Integer -> (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
 fromPerSizedSeqOf (Constrained lb ub) f t
-   | ub /= Nothing && ub == lb = f (fromJust ub) t
+   | ub /= Nothing && ub == lb && ub <= (Just n64k) = f (fromJust ub) t
    | ub == Nothing = decodeWithLengthDeterminant f t
    | ub <= (Just n64k) = do l <- mFromPer (RANGE INTEGER lb ub)
                             f l t
