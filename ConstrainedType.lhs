@@ -1506,6 +1506,46 @@ mmGetBits n =
 
 \end{code}
 
+\section{Length Determinant}
+
+This function decodes the length determinant for unconstrained length or large "ub". 
+See 10.9.4 and 10.9.3.4 -- 10.9.3.8.4 for further details. Note that we don't currently
+cover 10.9.3.4!!! It does so by taking a function which itself takes an iteration count,
+an ASN.1 type and returns a (monadic) list of decoded values which may or may not be
+values of the ASN.1 type.
+
+\begin{code}
+
+decodeLargeLengthDeterminant :: 
+   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
+      (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
+decodeLargeLengthDeterminant f t =
+   do p <- mmGetBit
+      case p of
+         0 ->
+            do j <- mmGetBits 7
+               let l = fromNonNeg j
+               f l t
+         1 ->
+            do q <- mmGetBit
+               case q of
+                  0 ->
+                     do j <- mmGetBits 14
+                        let l = fromNonNeg j
+                        f l t
+                  1 ->
+                     do j <- mmGetBits 6
+                        let fragSize = fromNonNeg j
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
+                           else do frag <- f (fragSize * n16k) t
+                                   rest <- decodeLargeLengthDeterminant f t
+                                   return (frag ++ rest)
+
+\end{code}
+
+\section{Bargh}
+
 \begin{enumerate}
 \item
          -- 10.9.3.6
@@ -1520,7 +1560,7 @@ mmGetBits n =
 
 \begin{code}
 
-mmDecodeWithLengthDeterminant k = decodeWithLengthDeterminant (flip (const (mmGetBits . (*k)))) undefined
+mmDecodeWithLengthDeterminant k = decodeLargeLengthDeterminant (flip (const (mmGetBits . (*k)))) undefined
 
 \end{code}
 
@@ -1705,31 +1745,7 @@ mmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
 \begin{code}
 
 fromPerSeqOf :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m [a]
-fromPerSeqOf = decodeWithLengthDeterminant nSequenceOfElements
-
-decodeWithLengthDeterminant :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
-decodeWithLengthDeterminant f t =
-   do p <- mmGetBit
-      case p of
-         0 ->
-            do j <- mmGetBits 7
-               let l = fromNonNeg j
-               f l t
-         1 ->
-            do q <- mmGetBit
-               case q of
-                  0 ->
-                     do j <- mmGetBits 14
-                        let l = fromNonNeg j
-                        f l t
-                  1 ->
-                     do j <- mmGetBits 6
-                        let fragSize = fromNonNeg j
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
-                           else do frag <- f (fragSize * n16k) t
-                                   rest <- decodeWithLengthDeterminant f t
-                                   return (frag ++ rest)
+fromPerSeqOf = decodeLargeLengthDeterminant nSequenceOfElements
 
 nSequenceOfElements n = sequence . genericTake n . repeat . mFromPer
 
@@ -1748,10 +1764,10 @@ The first condition deals with 19.5.
 fromPerSizedSeqOf :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Constrained Integer -> (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
 fromPerSizedSeqOf (Constrained lb ub) f t
    | ub /= Nothing && ub == lb && ub <= (Just n64k) = f (fromJust ub) t
-   | ub == Nothing = decodeWithLengthDeterminant f t
+   | ub == Nothing = decodeLargeLengthDeterminant f t
    | ub <= (Just n64k) = do l <- mFromPer (RANGE INTEGER lb ub)
                             f l t
-   | otherwise = decodeWithLengthDeterminant f t
+   | otherwise = decodeLargeLengthDeterminant f t
 
 \end{code}
 
