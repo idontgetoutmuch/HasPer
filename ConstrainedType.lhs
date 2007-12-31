@@ -1506,7 +1506,7 @@ mmGetBits n =
 
 \end{code}
 
-\section{Length Determinant}
+\subsection{Length Determinant}
 
 This function decodes the length determinant for unconstrained length or large "ub". 
 See 10.9.4 and 10.9.3.4 -- 10.9.3.8.4 for further details. Note that we don't currently
@@ -1537,10 +1537,12 @@ decodeLargeLengthDeterminant f t =
                      do j <- mmGetBits 6
                         let fragSize = fromNonNeg j
                         if fragSize <= 0 || fragSize > 4
-                           then throwError ("Unable to decode with fragment size of " ++ show fragSize)
+                           then throwError (fragError ++ show fragSize)
                            else do frag <- f (fragSize * n16k) t
                                    rest <- decodeLargeLengthDeterminant f t
                                    return (frag ++ rest)
+                        where
+                           fragError = "Unable to decode with fragment size of "
 
 \end{code}
 
@@ -1744,7 +1746,9 @@ mmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
 
 \begin{code}
 
-fromPerSeqOf :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m [a]
+fromPerSeqOf :: 
+   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
+      ASNType a -> m [a]
 fromPerSeqOf = decodeLargeLengthDeterminant nSequenceOfElements
 
 nSequenceOfElements n = sequence . genericTake n . repeat . mFromPer
