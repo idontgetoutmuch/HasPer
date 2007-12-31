@@ -1508,6 +1508,20 @@ mmGetBits n =
 
 \subsection{Length Determinant}
 
+\begin{code}
+
+decodeLengthDeterminant :: 
+   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
+      Constrained Integer -> (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
+decodeLengthDeterminant (Constrained lb ub) f t
+   | ub /= Nothing && ub == lb && ub <= (Just n64k) = f (fromJust ub) t
+   | ub == Nothing = decodeLargeLengthDeterminant f t
+   | ub <= (Just n64k) = do l <- mFromPer (RANGE INTEGER lb ub)
+                            f l t
+   | otherwise = decodeLargeLengthDeterminant f t
+
+\end{code}
+
 This function decodes the length determinant for unconstrained length or large "ub". 
 See 10.9.4 and 10.9.3.4 -- 10.9.3.8.4 for further details. Note that we don't currently
 cover 10.9.3.4!!! It does so by taking a function which itself takes an iteration count,
@@ -1614,6 +1628,9 @@ mmUntoPerInt t =
 
 \end{code}
 
+
+\subsection{BIT STRING}
+
 \begin{enumerate}
 
 \item
@@ -1649,7 +1666,7 @@ There is no case for f Nothing (Just\_) as this case cannot arise CHECK THIS!!!
 
 \begin{code}
 
-fromPerBitString t = fromPerSizedSeqOf (sizeLimit t) (flip (const mmGetBits)) undefined
+fromPerBitString t = decodeLengthDeterminant (sizeLimit t) (flip (const mmGetBits)) undefined
 
 \end{code}
 
@@ -1705,7 +1722,7 @@ mFromPer (SEQUENCE s)              =
 mFromPer t@(SIZE (SIZE _ _ _) _ _) = 
    let nt = multiSize t in mFromPer nt
 mFromPer (SEQUENCEOF u)        = fromPerSeqOf u
-mFromPer t@(SIZE (SEQUENCEOF u) _ _) = fromPerSizedSeqOf (sizeLimit t) nSequenceOfElements u
+mFromPer t@(SIZE (SEQUENCEOF u) _ _) = decodeLengthDeterminant (sizeLimit t) nSequenceOfElements u
 mFromPer t@(CHOICE c) =
    do ps <- mmGetBits ((genericLength (encodeNNBIntBits (0,(l c) - 1))))
       decodeChoice (map fromIntegral ps) c
@@ -1759,25 +1776,10 @@ nSequenceOfElements n = sequence . genericTake n . repeat . mFromPer
 
 \item
 
+
 The first condition deals with 19.5.
 
 \end{enumerate}
-
-\begin{code}
-
-fromPerSizedSeqOf :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => Constrained Integer -> (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
-fromPerSizedSeqOf (Constrained lb ub) f t
-   | ub /= Nothing && ub == lb && ub <= (Just n64k) = f (fromJust ub) t
-   | ub == Nothing = decodeLargeLengthDeterminant f t
-   | ub <= (Just n64k) = do l <- mFromPer (RANGE INTEGER lb ub)
-                            f l t
-   | otherwise = decodeLargeLengthDeterminant f t
-
-\end{code}
-
-\begin{code}
-
-\end{code}
 
 \subsection{CHOICE}
 
