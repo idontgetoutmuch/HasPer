@@ -1508,6 +1508,13 @@ mmGetBits n =
 
 \subsection{Length Determinant}
 
+This function decodes the length determinant as defined in 10.9.
+It does not currently cover 10.9.3.4: the determinant being a normally small length.
+
+Note that it assumes that the ASN.1 type makes semantic sense.
+For example, if the upper bound of the size constraint ("ub") is 0 and the
+lower bound ("lb") is negative, then the result is undefined. 
+
 \begin{code}
 
 decodeLengthDeterminant :: 

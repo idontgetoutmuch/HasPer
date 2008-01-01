@@ -701,6 +701,13 @@ bitStringTest1 =
       assertEqual "BIT STRING Test 1" eBitString1 bitString1 
    )
 
+dBitString1 = mmIdem tBitString1 (toPer8s tBitString1 vBitString1)
+
+bitStringTest1a =
+   TestCase (
+      assertEqual "BIT STRING Test 1a" dBitString1 vBitString1 
+   )
+
 vBitString1' = BitString [1,1]
 bitString1'  = toPer tBitString1 vBitString1'
 
@@ -712,6 +719,13 @@ eBitString1' = [
 bitStringTest1' = 
    TestCase (
       assertEqual "BIT STRING Test 2" eBitString1' bitString1'
+   )
+
+dBitString1' = mmIdem tBitString1 (toPer8s tBitString1 vBitString1')
+
+bitStringTest1a' =
+   TestCase (
+      assertEqual "BIT STRING Test 2a" dBitString1' vBitString1' 
    )
 
 vBitString1'' = BitString [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
@@ -726,6 +740,13 @@ eBitString1'' = [
 bitStringTest1'' = 
    TestCase (
       assertEqual "BIT STRING Test 3" eBitString1'' bitString1''
+   )
+
+dBitString1'' = mmIdem tBitString1 (toPer8s tBitString1 vBitString1'')
+
+bitStringTest1a'' =
+   TestCase (
+      assertEqual "BIT STRING Test 3a" dBitString1'' vBitString1'' 
    )
 
 \end{code}
@@ -757,6 +778,13 @@ sConBitStringTest1 =
       assertEqual "BIT STRING Test 4" eSConBitString1 sConBitString1
    )
 
+dSConBitString1 = mmIdem tSConBitString1 (toPer8s tSConBitString1 vSConBitString1)
+
+sConBitStringTest1a =
+   TestCase (
+      assertEqual "BIT STRING Test 4a" dSConBitString1 vSConBitString1 
+   )
+
 tSConBitString2 = SIZE (BITSTRING []) (Elem (fromList [12..15])) NoMarker
 vSConBitString2 = BitString [1,0,0,1,1,0,0,1,1,0,0,1,1]
 sConBitString2  = toPer tSConBitString2 vSConBitString2
@@ -772,6 +800,13 @@ sConBitStringTest2 =
       assertEqual "BIT STRING Test 5" eSConBitString2 sConBitString2
    )
 
+dSConBitString2 = mmIdem tSConBitString2 (toPer8s tSConBitString2 vSConBitString2)
+
+sConBitStringTest2a =
+   TestCase (
+      assertEqual "BIT STRING Test 5a" dSConBitString2 vSConBitString2 
+   )
+
 tSConBitString3 = SIZE (BITSTRING []) (Elem (fromList [0..2128])) NoMarker
 vSConBitString3 = BitString [1,1]
 sConBitString3  = toPer tSConBitString3 vSConBitString3
@@ -785,6 +820,13 @@ eSConBitString3 = [
 sConBitStringTest3 = 
    TestCase (
       assertEqual "BIT STRING Test 6" eSConBitString3 sConBitString3
+   )
+
+dSConBitString3 = mmIdem tSConBitString3 (toPer8s tSConBitString3 vSConBitString3)
+
+sConBitStringTest3a =
+   TestCase (
+      assertEqual "BIT STRING Test 6a" dSConBitString2 vSConBitString2 
    )
 
 tSConBitString4 = 
@@ -1567,17 +1609,23 @@ tests =
    unConIntegerTest1, 
    unConIntegerTest2, 
    unConIntegerTest3, 
---    unConIntegerTest4,
+   unConIntegerTest4, -- 
    integerTest2,
    integerTest3,
    integerTest4,
    semiIntegerTest5,
    bitStringTest1,
+   bitStringTest1a,
    bitStringTest1',
+   bitStringTest1a',
    bitStringTest1'',
+   bitStringTest1a'',
    sConBitStringTest1,
+   sConBitStringTest1a,
    sConBitStringTest2,
+   sConBitStringTest2a,
    sConBitStringTest3,
+   sConBitStringTest3a,
    sConBitStringTest4,
    sConBitStringTest5,
    choiceTest1,
@@ -1597,14 +1645,14 @@ tests =
    eSeqOfTest4,
    eSeqOfTest5,
    sSeqTest1,
---    dub439e1,
+   dub439e1, -- 
    lar303e1,
    lar303e2,
    lar303e3,
    lar303e4,
-   lar303e6
---    lar303e7a,
---    lar303e7b
+   lar303e6, --
+   lar303e7a, -- 
+   lar303e7b -- 
    ]
 
  
