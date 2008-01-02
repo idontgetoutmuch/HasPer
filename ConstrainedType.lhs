@@ -639,11 +639,12 @@ ulWrapper fn op inp lf (x:xs)
    | l == 1 && lm <  l1b = Just (us,[])
    | otherwise           = Just (vs,[])
    where
-      bl  = genericLength x
       l   = length x
       m   = x!!(l-1)
       lm  = length m
-      ws  = abs1 fn op (inp bl r)
+      ws y = abs1 fn op (inp (genericLength y) r) y
+
+
       us  = lf (genericLength m) ++ fn m
       vs  = if lm == l1b then
                ws x ++ lf 0
