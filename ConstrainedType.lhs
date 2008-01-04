@@ -470,7 +470,7 @@ toPerOpen t v
                     then enc
                     else enc ++ take (8-bts) [0,0..]
       in
-        encodeWithLengthDeterminant pad
+        encodeOctetsWithLength pad
 
 \end{code}
 
@@ -569,54 +569,42 @@ encodeNNBIntOctets =
 
  10.7 Encoding of a semi-constrained whole number. The integer
  is encoded in the minimum number of octets with an explicit
- length encoding. In the larger cases there may be fragmentation
- of the number encoding.
+ length encoding.
 
 \begin{code}
 
 encodeSCInt :: Integer -> Integer -> BitStream
 encodeSCInt v lb
-    = encodeWithLengthDeterminant (encodeNNBIntOctets (v-lb))
+    = encodeOctetsWithLength (encodeNNBIntOctets (v-lb))
 
 \end{code}
 
  10.8 Encoding of an unconstrained integer. The integer is
  encoded as a 2's-complement-binary-integer with an explicit
- length encoding. In the larger cases there may be fragmentation
- of the number encoding.
+ length encoding.
 
 \begin{code}
 
 encodeUInt :: Integer -> BitStream
-encodeUInt x = encodeWithLengthDeterminant (to2sComplement x)
+encodeUInt x = encodeOctetsWithLength (to2sComplement x)
 
 \end{code}
 
 10.9 General rules for encoding a length determinant
 10.9.4, 10.9.4.2 and 10.9.3.4 to 10.9.3.8.4.
 
-encodeInsert is a HOF which manages the fragmentation and
-encoding of a value with an unconstrained length.
+encodeWithLength takes a list of values (could be bits, octets or
+any ASN.1 type), and groups them first in 16k batches, and then in
+batches of 4. The input value-encoding function is then supplied as
+an input to the function addUncLen which manages the interleaving of
+length and value encodings -- it encodes the length and values of
+each batch and concatenates their resulting bitstreams together.
+Note the values are encoded using the input function.
 
 \begin{code}
 
-encodeInsert :: (t -> [[[t1]]] -> [[a]]) -> t -> [t1] -> [a]
-encodeInsert f s = concat . f s . groupBy 4 . groupBy (16*(2^10))
-
-\end{code}
-
-encodeWithLengthDeterminant adds a length determinant (in octets) to an
-encoding. It applied any required fragmentation.
-encodeWithLengthDeterminantBits does the same except where one is
-measuring the length of bits.
-
-\begin{code}
-
-encodeWithLengthDeterminant :: [Int] -> [Int]
-encodeWithLengthDeterminant = concat . encodeInsert unfoldr addLengths . groupBy 8
-
-encodeWithLengthDeterminantBits :: [Int] -> [Int]
-encodeWithLengthDeterminantBits = concat . encodeInsert unfoldr addLengths.(map (:[]))
+encodeWithLength :: ([t] -> [Int]) -> [t] -> [Int]
+encodeWithLength fun = addUncLen fun . groupBy 4 . groupBy (16*(2^10))
 
 groupBy :: Int -> [t] -> [[t]]
 groupBy n =
@@ -627,50 +615,55 @@ groupBy n =
 
 \end{code}
 
-HOFs of use when encoding values with an unconstrained length
-where the length value has to be interspersed with value encoding.
+addUncLen is a HOF which encodes a value with an unconstrained
+length i.e. it either has no upper bound on the size of the value,
+or the upper bound is at least 64k. The inputs are the value encoding
+function and the value represented as a collection of 4*16k
+blocks.
+
+lastLen encodes the length remainder modulo 16k and blocklen
+encodes the length of a block (1 to 4).
 
 \begin{code}
-ulWrapper :: (Num t) => ([a] -> [a1]) -> (t1 -> [a1] -> [a1]) -> (Integer -> t -> t1)
-                    -> (Integer -> [a1]) -> [[[a]]] -> Maybe ([a1], [[[a]]])
-ulWrapper fn op inp lf [] = Nothing
-ulWrapper fn op inp lf (x:xs)
-   | l == n && lm == l1b = Just (ws x,xs)
-   | l == 1 && lm <  l1b = Just (us,[])
-   | otherwise           = Just (vs,[])
-   where
-      l   = length x
-      m   = x!!(l-1)
-      lm  = length m
-      ws y = abs1 fn op (inp (genericLength y) r) y
+
+addUncLen :: ([b] -> [Int]) -> [[[b]]] -> [Int]
+addUncLen encFun [] = lastLen 0
+addUncLen encFun (x:xs)
+    | l == 4 && last16 == k16 = blockLen 4 63 ++ (concat . map encFun) x
+                                              ++ addUncLen encFun xs
+    | l == 1 && last16 < k16  = lastLen ((genericLength . head) x) ++ encFun (head x)
+    | otherwise               = if last16 == k16
+                                    then blockLen l 63 ++ (concat . map encFun) x ++ lastLen 0
+                                    else blockLen (l-1) 63 ++ (concat . map encFun) (init x)
+                                                           ++ lastLen ((genericLength.last) x)
+                                                           ++ encFun (last x)
+    where
+        l      = genericLength x
+        last16 = (genericLength . last) x
+        k16    = 16*(2^10)
 
 
-      us  = lf (genericLength m) ++ fn m
-      vs  = if lm == l1b then
-               ws x ++ lf 0
-            else
-               ws (take (l-1) x) ++ lf (genericLength m) ++ fn m
-      n   = 4
-      l1b = 16*(2^10)
-      r = 2^6 - 1
+lastLen :: Integer -> [Int]
+lastLen n
+   | n <= 127       = 0:(encodeNNBIntBits (n, 127))
+   | n < 16*(2^10)  = 1:0:(encodeNNBIntBits (n, (16*(2^10)-1)))
 
-abs1 :: (a1 -> [a]) -> (t -> [a] -> t1) -> t -> [a1] -> t1
-abs1 f op x y
-    = x `op` (concat . map f) y
-
-arg1 :: Integer -> Integer -> [Int]
-arg1 x y = (1:1:(encodeNNBIntBits (x,y)))
+blockLen :: Integer -> Integer -> [Int]
+blockLen x y = (1:1:(encodeNNBIntBits (x,y)))
 
 \end{code}
 
-addLengths adds length encoding to a sectioned bitstream. Note
-that the input bits are unchanged as the first argument to ulWrapper is the
-identity function.
+encodeOctetsWithLength encodes a collection of octets with
+unconstrained length. encodeBitsWithLength does the same except
+for a collection of bits.
 
 \begin{code}
 
-addLengths :: [[[BitStream]]] -> Maybe ([BitStream], [[[BitStream]]])
-addLengths = ulWrapper id (:) arg1 ld
+encodeOctetsWithLength :: [Int] -> [Int]
+encodeOctetsWithLength = encodeWithLength (concat . id) . groupBy 8
+
+encodeBitsWithLength :: [Int] -> [Int]
+encodeBitsWithLength = encodeWithLength id
 
 \end{code}
 
@@ -689,21 +682,13 @@ Note there is no clause for $>= 16*(2^10)$ as we have groupBy $16*(2^10)$
 
 \end{enumerate}
 
-\begin{code}
-
-ld :: Integer -> [BitStream]
-ld n
-   | n <= 127       = [0:(encodeNNBIntBits (n, 127))]
-   | n < 16*(2^10)  = [1:0:(encodeNNBIntBits (n, (16*(2^10)-1)))]
-
-\end{code}
 
 \section{Two's Complement Arithmetic}
 
 10.4 Encoding as a 2's-complement-binary-integer is used when
 encoding an integer with no lower bound (10.8) as in the final
 case of encodeInt. The encoding of the integer is accompanied
-by the encoding of its length using encodeWithLengthDeterminant
+by the encoding of its length using encodeOctetsWithLength
 (10.8.3)
 
 \begin{code}
@@ -872,7 +857,7 @@ bsCode nbs s m xs
                        then exs
                        else if u <= 65536
                             then encodeNNBIntBits ((ln-l), (u-l)) ++ exs
-                            else encodeWithLengthDeterminantBits exs
+                            else encodeBitsWithLength exs
 
 
 editBS :: Integer -> Integer -> BitStream -> BitStream
@@ -907,7 +892,7 @@ encodeBSNoSz (BITSTRING nbs) (BitString bs)
             else rbs
           ln = genericLength rem0
        in
-        encodeWithLengthDeterminantBits (reverse rem0)
+        encodeBitsWithLength (reverse rem0)
 
 
 
@@ -951,7 +936,7 @@ lengthAdds ap
     = let la = genericLength ap
        in if la <= 63
         then 0:encodeNNBIntBits (la-1, 63) ++ concat ap
-        else 1:encodeWithLengthDeterminant (encodeNNBIntOctets la) ++ concat ap
+        else 1:encodeOctetsWithLength (encodeNNBIntOctets la) ++ concat ap
 
 \end{code}
 
@@ -1030,7 +1015,7 @@ encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETDefault (NamedType n t a) d) as) (Just 
 encodeSO implements the encoding of an unconstrained
 sequence-of value. This requires both the encoding of
 each of the components, and in most cases the encoding
-of the length of the sequence of (which may require
+of the length of the sequence-of (which may require
 fragmentation into 64K blocks).
 
 \begin{code}
@@ -1041,9 +1026,27 @@ encodeSO t x = encodeSeqOf t x
 
 \end{code}
 
-encodeSeqSz encodes a size-constrained SEQUENCEOF.
+encodeSeqSz encodes a size-constrained SEQUENCEOF and encodeSeqOf encodes an
+unconstrained SEQUENCEOF value. manageExtremes implements
+19.5-19.6 which state that no length encoding is used when the
+length is known and less than 64k, the length is encoded as an
+semi-constrained whole number if the upper bound is unset (does
+not exist or at least 64k) and as a constrained whole number
+otherwise.
 
 \begin{code}
+
+encodeSeqSz :: ASNType [a] -> [a] -> BitStream
+encodeSeqSz (SIZE ty s e) x
+        =   let l = S.findMin (evalCons s)
+                u = S.findMax (evalCons s)
+            in
+                manageExtremes (encodeNoL ty) (encodeSeqOf ty) l u x
+
+
+encodeSeqOf :: ASNType [a] -> [a] -> BitStream
+encodeSeqOf (SEQUENCEOF s) xs
+    = encodeSOWithLength s xs
 
 manageExtremes :: ([a] -> BitStream) -> ([a] -> BitStream) -> Integer -> Integer -> [a] -> BitStream
 manageExtremes fn1 fn2 l u x
@@ -1055,49 +1058,17 @@ manageExtremes fn1 fn2 l u x
                    then fn2 x
                    else encodeNNBIntBits ((genericLength x-l),range-1) ++ fn1 x
 
-encodeSeqSz :: ASNType [a] -> [a] -> BitStream
-encodeSeqSz (SIZE ty s e) x
-        =   let l = S.findMin (evalCons s)
-                u = S.findMax (evalCons s)
-            in
-                manageExtremes (encodeNoL ty) (encodeSeqOf ty) l u x
-
-
-encodeSeqOf :: ASNType a -> a -> BitStream
-encodeSeqOf (SEQUENCEOF s) xs
-    = encodeWithLD s xs
-
 \end{code}
 
-encodeWithLD splits the components into 16K blocks, and then
-splits these into blocks of 4 (thus a maximum of 64K in each
-block). insertL then manages the interleaving of the length-value
-encoding of the components.
+encodeSOWithLength encodes a sequence-of value with the appropriate
+length encoding.
 
 \begin{code}
-
-encodeWithLD :: ASNType a -> [a] -> BitStream
-encodeWithLD s
-    = encodeInsert insertL s
-
-insertL :: ASNType a -> [[[a]]] -> [BitStream]
-insertL s = unfoldr (soLengths s)
+encodeSOWithLength :: ASNType a -> [a] -> BitStream
+encodeSOWithLength s = encodeWithLength (concat . map (toPer s))
 
 \end{code}
 
-soLengths adds length values to encodings of SEQUENCEOF
-components.
-
-\begin{code}
-
-soLengths :: ASNType a -> [[[a]]] -> Maybe (BitStream, [[[a]]])
-soLengths t = ulWrapper (concat . map (toPer t)) (++) arg1 ld2
-
-ld2 n
-   | n <= 127       = 0:(encodeNNBIntBits (n, 127))
-   | n < 16*(2^10)  = 1:0:(encodeNNBIntBits (n, (16*(2^10)-1)))
-
-\end{code}
 
 No length encoding of SEQUENCEOF
 
@@ -1250,7 +1221,7 @@ encodeChoice c x
                     else
                 if length ec <= 63
                     then ea ++ 0:encodeNNBIntBits (fst fr, 63) ++ (snd.snd) fr
-                    else ea ++ 1:encodeWithLengthDeterminant (encodeNNBIntOctets (fst fr)) ++ (snd.snd) fr
+                    else ea ++ 1:encodeOctetsWithLength (encodeNNBIntOctets (fst fr)) ++ (snd.snd) fr
 
 \end{code}
 
@@ -1340,20 +1311,8 @@ encodeVisSz t@(SIZE ty s _) x@(VisibleString xs)
 
 encodeVis :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVis vs (VisibleString s)
-    = encodeInsert insertLVS vs s
+    = encodeWithLength encS s
 
-insertLVS :: ASNType VisibleString -> [[String]] -> [BitStream]
-insertLVS s = unfoldr (vsLengths s)
-
-\end{code}
-
- vsLengths adds lengths values to encoding of sections of
- VISIBLESTRING.
-
-\begin{code}
-
-vsLengths :: ASNType VisibleString -> [[String]] -> Maybe (BitStream, [[String]])
-vsLengths s = ulWrapper encS (++) arg1 ld2
 
 encC c  = encodeNNBIntBits ((toInteger . ord) c, 94)
 encS s  = (concat . map encC) s
@@ -1379,20 +1338,7 @@ encodeVisSzF (SIZE ty@(FROM cv pac) s e) x@(VisibleString xs)
 
 encodeVisF :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVisF vs@(FROM cv pac) (VisibleString s)
-    = encodeInsert (insertLVSF pac) vs s
-
-insertLVSF :: VisibleString -> t -> [[String]] -> [BitStream]
-insertLVSF p s = unfoldr (vsLengthsF s p)
-
-\end{code}
-
-vsLengths adds lengths values to encoding of sections of
-VISIBLESTRING.
-
-\begin{code}
-
-vsLengthsF :: t -> VisibleString -> [[String]] -> Maybe (BitStream, [[String]])
-vsLengthsF s p = ulWrapper (encSF p) (++) arg1 ld2
+    = encodeWithLength (encSF pac) s
 
 encSF (VisibleString p) str
     = let sp  = sort p
@@ -1452,20 +1398,7 @@ encodeNumSz t@(SIZE ty s _) x@(NumericString xs)
 
 encodeNum :: ASNType NumericString -> NumericString -> BitStream
 encodeNum ns (NumericString s)
-    = encodeInsert insertLNS ns s
-
-insertLNS :: ASNType NumericString -> [[String]] -> [BitStream]
-insertLNS s = unfoldr (nsLengths s)
-
-\end{code}
-
- vsLengths adds lengths values to encoding of sections of
- VISIBLESTRING.
-
-\begin{code}
-
-nsLengths :: ASNType NumericString -> [[String]] -> Maybe (BitStream, [[String]])
-nsLengths s = ulWrapper encNS (++) arg1 ld2
+    = encodeWithLength encNS s
 
 encNC c  = encodeNNBIntBits ((toInteger . (posInStr 0 " 0123456789")) c, 10)
 encNS s  = (concat . map encNC) s
@@ -1514,12 +1447,12 @@ It does not currently cover 10.9.3.4: the determinant being a normally small len
 
 Note that it assumes that the ASN.1 type makes semantic sense.
 For example, if the upper bound of the size constraint ("ub") is 0 and the
-lower bound ("lb") is negative, then the result is undefined. 
+lower bound ("lb") is negative, then the result is undefined.
 
 \begin{code}
 
-decodeLengthDeterminant :: 
-   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
+decodeLengthDeterminant ::
+   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) =>
       Constrained Integer -> (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
 decodeLengthDeterminant (Constrained lb ub) f t
    | ub /= Nothing && ub == lb && ub <= (Just n64k) = f (fromJust ub) t
@@ -1530,7 +1463,7 @@ decodeLengthDeterminant (Constrained lb ub) f t
 
 \end{code}
 
-This function decodes the length determinant for unconstrained length or large "ub". 
+This function decodes the length determinant for unconstrained length or large "ub".
 See 10.9.4 and 10.9.3.4 -- 10.9.3.8.4 for further details. Note that we don't currently
 cover 10.9.3.4!!! It does so by taking a function which itself takes an iteration count,
 an ASN.1 type and returns a (monadic) list of decoded values which may or may not be
@@ -1538,8 +1471,8 @@ values of the ASN.1 type.
 
 \begin{code}
 
-decodeLargeLengthDeterminant :: 
-   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
+decodeLargeLengthDeterminant ::
+   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) =>
       (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
 decodeLargeLengthDeterminant f t =
    do p <- mmGetBit
@@ -1717,7 +1650,7 @@ mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType 
 mFromPer t@INTEGER                 = mmUntoPerInt t
 mFromPer r@(RANGE i l u)           = mmUntoPerInt r
 mFromPer t@(BITSTRING _)           = (liftM (BitString . map fromIntegral) . fromPerBitString) t
-mFromPer t@(SIZE (BITSTRING _) _ _) = 
+mFromPer t@(SIZE (BITSTRING _) _ _) =
    (liftM (BitString . map fromIntegral) . fromPerBitString) t
 mFromPer (SEQUENCE s)              =
    do ps <- mmGetBits (l s)
@@ -1727,7 +1660,7 @@ mFromPer (SEQUENCE s)              =
       l Nil = 0
       l (Cons (ETMandatory _) ts) = l ts
       l (Cons (ETOptional _ ) ts) = 1+(l ts)
-mFromPer t@(SIZE (SIZE _ _ _) _ _) = 
+mFromPer t@(SIZE (SIZE _ _ _) _ _) =
    let nt = multiSize t in mFromPer nt
 mFromPer (SEQUENCEOF u)        = fromPerSeqOf u
 mFromPer t@(SIZE (SEQUENCEOF u) _ _) = decodeLengthDeterminant (sizeLimit t) nSequenceOfElements u
@@ -1771,8 +1704,8 @@ mmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
 
 \begin{code}
 
-fromPerSeqOf :: 
-   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
+fromPerSeqOf ::
+   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) =>
       ASNType a -> m [a]
 fromPerSeqOf = decodeLargeLengthDeterminant nSequenceOfElements
 
@@ -1795,7 +1728,7 @@ Note we never have negative indices so we don't need to check for $n < 0$.
 
 \begin{code}
 
-decodeChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
+decodeChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) =>
                    BitStream -> Choice a -> m (HL a (S Z))
 decodeChoice bitmap c =
    case m of
@@ -1808,15 +1741,15 @@ decodeChoice bitmap c =
          n  = fromNonNeg bitmap
          m  = lookup (us!!n) (zip ts [0..])
 
-nthChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => 
+nthChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) =>
                 Integer -> Choice a -> m (HL a (S Z))
 nthChoice n NoChoice =
    throwError ("Unable to select component. Probable cause: index too large")
-nthChoice 0 (ChoiceOption nt@(NamedType _ _ t) cs) = 
+nthChoice 0 (ChoiceOption nt@(NamedType _ _ t) cs) =
    do v <- mFromPer t
       let vs = noChoice cs
       return (ValueC v vs)
-nthChoice n (ChoiceOption nt@(NamedType _ _ t) cs) = 
+nthChoice n (ChoiceOption nt@(NamedType _ _ t) cs) =
    do v <- nthChoice (n - 1) cs
       return (NoValueC NoValue v)
 
