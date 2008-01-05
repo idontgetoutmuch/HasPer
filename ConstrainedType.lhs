@@ -1501,55 +1501,20 @@ decodeLargeLengthDeterminant f t =
 
 \end{code}
 
-\section{Bargh}
+\subsection{INTEGER}
 
-\begin{enumerate}
-\item
-         -- 10.9.3.6
-\item
-                  -- 10.9.3.7
-\item
-                           -- For now - we should handle error positions generically inside the monad
+Constrained {\em INTEGER}s are encoded as non-negative binary in
+the least number of bits
+unless the range is 1 (in which case the answer is the lower and upper bound) --- see Note 2 in Clause 12.
 
-\item
-                                   -- This looks like it might be quadratic in efficiency!
-\end{enumerate}
+Semi-constrained and unconstrained {\em INTEGER}s are encoded in a list of chunks of
+8 bits (octets) as non-negative binary or as two's complement respectively with a
+\lq\lq large\rq\rq length determinant (as there are no constraints on the length
+determinant itself in this particular case).
 
 \begin{code}
 
-mmDecodeWithLengthDeterminant k = decodeLargeLengthDeterminant (flip (const (mmGetBits . (*k)))) undefined
-
-\end{code}
-
-
-decodeSized only ever gets called with either no upper bound or an upper bound of $>= 64$.
-
-It is an error if the length determinant is specified as indefinite for the first block.
-We don't capture this for now.
-
-The lowest the lower bound can be is $0$. Therefore we can assume that decodeSized only
-ever gets called with a constraint of the form Constraint (Just n) \_.
-
-\end{code}
-
-\begin{enumerate}
-\item
-      -- 10.5 Encoding of a constrained whole number
-\item
-               -- 10.5.4
-\item
-               -- 10.5.6 and 10.3 Encoding as a non-negative-binary-integer
-\item
-      -- 12.2.3, 10.7 Encoding of a semi-constrained whole number,
-      -- 10.3 Encoding as a non-negative-binary-integer, 12.2.6, 10.9 and 12.2.6 (b)
-\item
-      -- 12.2.4, 10.8 Encoding of an unconstrained whole number, 10.8.3 and
-      -- 10.4 Encoding as a 2's-complement-binary-integer
-\end{enumerate}
-
-\begin{code}
-
-mmUntoPerInt t =
+fromPerInteger t =
    case p of
       Constrained (Just lb) (Just ub) ->
          let range = ub - lb + 1
@@ -1559,16 +1524,16 @@ mmUntoPerInt t =
                else do j <- mmGetBits n
                        return (lb + (fromNonNeg j))
       Constrained (Just lb) Nothing ->
-         do o <- mmDecodeWithLengthDeterminant 8
+         do o <- octets
             return (lb + (fromNonNeg o))
       Constrained Nothing _ ->
-         do o <- mmDecodeWithLengthDeterminant 8
+         do o <- octets
             return (from2sComplement o)
    where
-      p = bounds t
+      p      = bounds t
+      octets = decodeLargeLengthDeterminant (flip (const (mmGetBits . (*8)))) undefined
 
 \end{code}
-
 
 \subsection{BIT STRING}
 
@@ -1647,8 +1612,8 @@ fromNonNeg xs =
 \begin{code}
 
 mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
-mFromPer t@INTEGER                 = mmUntoPerInt t
-mFromPer r@(RANGE i l u)           = mmUntoPerInt r
+mFromPer t@INTEGER                 = fromPerInteger t
+mFromPer r@(RANGE i l u)           = fromPerInteger r
 mFromPer t@(BITSTRING _)           = (liftM (BitString . map fromIntegral) . fromPerBitString) t
 mFromPer t@(SIZE (BITSTRING _) _ _) =
    (liftM (BitString . map fromIntegral) . fromPerBitString) t
