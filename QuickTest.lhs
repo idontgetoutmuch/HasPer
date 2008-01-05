@@ -26,6 +26,7 @@ import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
 import Data.Int
 import Relabel
+import qualified Rename as R
 
 prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
 prettyConstraint (Elem s) = text (show s)
@@ -466,6 +467,12 @@ main =
       quickCheck prop_2scomplement1
 --       quickCheck prop_2scomplement2
 
+foo =
+   do y <- arbitrary
+      case y of
+         RepTypeVal t x ->
+            return (RepTypeVal (legalName (legalise t)) x)
+
 \end{code}
 
 \section{Testing BIT STRING}
@@ -597,6 +604,9 @@ instance Show RepChoice where
 
 legalise :: ASNType a -> ASNType a
 legalise = unShadow . relabel . shadow
+
+legalName :: ASNType a -> ASNType a
+legalName = R.unShadow . R.rename . R.shadow
 
 \end{code}
 
