@@ -1511,7 +1511,7 @@ unless the range is 1 (in which case the answer is the lower and upper bound) --
 
 Semi-constrained and unconstrained {\em INTEGER}s are encoded in a list of chunks of
 8 bits (octets) as non-negative binary or as two's complement respectively with a
-\lq\lq large\rq\rq length determinant (as there are no constraints on the length
+\lq\lq large\rq\rq\ length determinant (as there are no constraints on the length
 determinant itself in this particular case).
 
 \begin{code}
