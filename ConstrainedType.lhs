@@ -1530,49 +1530,24 @@ fromPerInteger t =
          do o <- octets
             return (from2sComplement o)
    where
-      p      = bounds t
-      octets = decodeLargeLengthDeterminant (flip (const (mmGetBits . (*8)))) undefined
+      p        = bounds t
+      octets   = decodeLargeLengthDeterminant chunkBy8 undefined
+      chunkBy8 = flip (const (mmGetBits . (*8)))
 
 \end{code}
 
-\subsection{BIT STRING}
+\subsection{BIT STRING --- Clause 16}
 
-\begin{enumerate}
-
-\item
-The first case deals with clause 15.8.
-
-\item
-The second case deals with 15.9 and 15.10 which happen to be the same for unaligned PER.
-
-\item
-The third case deals with 15.11.
-
-This clause is hard to understand and we reproduce it here.
-
-15.11 If 15.8-15.10 do not apply, the bitstring shall be placed in a bit-field (octet-aligned in the ALIGNED variant)
-of length "n" bits and the procedures of 10.9 shall be invoked to add this bit-field (octet-aligned in the ALIGNED
-variant) of "n" bits to the field-list, preceded by a length determinant equal to "n" bits as a constrained whole number if
-"ub" is set and is less than 64K or as a semi-constrained whole number if "ub" is unset. "lb" is as determined above.
-    NOTE – Fragmentation applies for unconstrained or large "ub" after 16K, 32K, 48K or 64K bits.
-
-\end{enumerate}
-
-3rd guard is 10.9.4.1
-
-4th guard is the second condition of 10.9.4.2. Note we haven't covered the other two conditions yet.
-
-decodeSizedAsSemi cpvers the second condition
-
-the 3rd pattern match for $f$ covers the 3rd condition in 10.9.4.2.
-
-So I think we have now covered all the relevant conditions.
-
-There is no case for f Nothing (Just\_) as this case cannot arise CHECK THIS!!!
+{\em BIT STRING}s are encoded with a length determinant but the type
+is immaterial hence we use $\bottom$ as the type argument to 
+{\em decodeLengthDeterminant}; the (function) argument to
+decode the individual components merely takes 1 bit at a time.
 
 \begin{code}
 
-fromPerBitString t = decodeLengthDeterminant (sizeLimit t) (flip (const mmGetBits)) undefined
+fromPerBitString t = 
+   decodeLengthDeterminant (sizeLimit t) chunkBy1 undefined
+      where chunkBy1 = flip (const mmGetBits)
 
 \end{code}
 
