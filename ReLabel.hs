@@ -176,3 +176,10 @@ update =
    
 relabel t = let (p,_) = runState (mapM (\_ -> update) t) 0 in p
 
+testType1 = SEQUENCE (Cons (ETMandatory (NamedType "Foo" (Just (Context, 3, Implicit)) BOOLEAN)) Nil)
+
+foo = 
+   map (prettyType . unShadow) p
+   where 
+      ts    = [testType1, testType1, testType1] 
+      (p,q) = runState (Control.Monad.State.sequence . map (mapM (\_ -> update) . shadow) $ ts) 0
