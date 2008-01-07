@@ -1,4 +1,4 @@
-module Rename (shadow, unShadow, rename) where
+module Rename (shadow, unShadow, rename, update) where
 
 import Prelude hiding (mapM)
 import Control.Applicative hiding (empty)

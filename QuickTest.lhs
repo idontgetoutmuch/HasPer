@@ -27,6 +27,7 @@ import qualified Data.ByteString.Lazy as B
 import Data.Int
 import Relabel
 import qualified Rename as R
+import Data.Traversable
 
 prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
 prettyConstraint (Elem s) = text (show s)
@@ -467,12 +468,6 @@ main =
       quickCheck prop_2scomplement1
 --       quickCheck prop_2scomplement2
 
-foo =
-   do y <- arbitrary
-      case y of
-         RepTypeVal t x ->
-            return (RepTypeVal (legalName (legalise t)) x)
-
 \end{code}
 
 \section{Testing BIT STRING}
@@ -607,6 +602,75 @@ legalise = unShadow . relabel . shadow
 
 legalName :: ASNType a -> ASNType a
 legalName = R.unShadow . R.rename . R.shadow
+
+foo =
+   do y <- arbitrary
+      case y of
+         RepTypeVal t x ->
+            return (RepTypeVal (legalName (legalise t)) x)
+
+testType1' = SEQUENCE (Cons (ETMandatory (NamedType "Foo" (Just (Context, 3, Implicit)) BOOLEAN)) Nil)
+
+foo'' = 
+   map (prettyType . unShadow) p
+   where 
+      ts    = [testType1', testType1', testType1'] 
+      (p,q) = runState (Control.Monad.State.sequence . map (Data.Traversable.mapM (\_ -> update) . shadow) $ ts) 0
+
+n1 = ETMandatory (NamedType "Baz" (Just (Context, 7, Implicit)) BOOLEAN)
+
+seq2 = Cons (ETMandatory (NamedType "Bar" (Just (Context, 5, Implicit)) INTEGER)) Nil
+
+testType2 = SEQUENCE (Cons n1 seq2)
+
+us    = [RepType testType1', RepType testType2] 
+
+repsRelabel us = 
+   p' 
+   where 
+      g r =
+         case r of
+            RepType t ->
+               do x <- Data.Traversable.mapM (\_ -> update) (shadow t)
+                  return (RepType (unShadow x))
+      h rs = Control.Monad.State.sequence (map g rs)
+      f rs = runState (h rs) 0
+      (p',q') = f us
+
+repsRename us = 
+   p' 
+   where 
+      g r =
+         case r of
+            RepType t ->
+               do x <- Data.Traversable.mapM (\_ -> R.update) (R.shadow t)
+                  return (RepType (R.unShadow x))
+      h rs = Control.Monad.State.sequence (map g rs)
+      f rs = runState (h rs) 0
+      (p',q') = f us
+
+prettyRepType r =
+   case r of
+      RepType t ->
+         prettyType t
+
+foo' =
+ do xs <- sample' (arbitrary :: Gen RepType)
+    return (prettyModule xs)
+
+prettyModuleBody xs =
+ vcat (zipWith (<+>) typeNames (map prettyRepType . repsRename . repsRelabel $ xs))
+ where
+   typeNames = map ((<+> text "::=") . (text "Type" <>) . text. show) [1..]
+
+prettyModule xs =
+   text "FooBar {1 2 3 4 5 6} DEFINITIONS ::="
+   $$
+   nest 2 (text "BEGIN")
+   $$
+   nest 4 (prettyModuleBody xs)
+   $$
+   nest 2 (text "END")
 
 \end{code}
 
