@@ -82,7 +82,10 @@ instance Arbitrary RepNamedType where
          tv <- arbitrary
          case rct of
             RepType ct ->
-               return (RepNamedType (NamedType (elementName name) (Just (Context, tv, Implicit)) ct))
+               do let f :: ASNType a -> TagPlicity
+                      f (CHOICE _) = Explicit
+                      f _          = Implicit
+                  return (RepNamedType (NamedType (elementName name) (Just (Context, tv, (f ct))) ct))
 
 newtype ElementName = ElementName {elementName :: String}
    deriving Show
