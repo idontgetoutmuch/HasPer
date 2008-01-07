@@ -1606,10 +1606,17 @@ foo (NamedType _ _ t) =
 
 tests =
    [
+v v v v v v v
+   unConIntegerTest1,
+   unConIntegerTest2,
+   unConIntegerTest3,
+--    unConIntegerTest4,
+*************
    unConIntegerTest1, 
    unConIntegerTest2, 
    unConIntegerTest3, 
---    unConIntegerTest4, 
+--    unConIntegerTest4, --
+^ ^ ^ ^ ^ ^ ^
    integerTest2,
    integerTest3,
    integerTest4,
@@ -1645,14 +1652,14 @@ tests =
    eSeqOfTest4,
    eSeqOfTest5,
    sSeqTest1,
---    dub439e1, 
+--    dub439e1, --
    lar303e1,
    lar303e2,
    lar303e3,
-   lar303e4
---    lar303e6,
---    lar303e7a, 
---    lar303e7b 
+   lar303e4 --,
+--    lar303e6, --
+--    lar303e7a, --
+--    lar303e7b --
    ]
 
 
