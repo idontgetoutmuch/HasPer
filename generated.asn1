@@ -1,6 +1,0 @@
-FooBar {1 2 3 4 5 6} DEFINITIONS ::=
-   BEGIN
-      T5 ::= 
-         SEQUENCE {first INTEGER (0..65535),
-                   second BIT STRING (SIZE (0..65544))}
-   END
