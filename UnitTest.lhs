@@ -1606,17 +1606,10 @@ foo (NamedType _ _ t) =
 
 tests =
    [
-v v v v v v v
-   unConIntegerTest1,
-   unConIntegerTest2,
-   unConIntegerTest3,
---    unConIntegerTest4,
-*************
    unConIntegerTest1, 
    unConIntegerTest2, 
    unConIntegerTest3, 
 --    unConIntegerTest4, --
-^ ^ ^ ^ ^ ^ ^
    integerTest2,
    integerTest3,
    integerTest4,
