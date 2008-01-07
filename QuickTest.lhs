@@ -8,7 +8,8 @@
 
 \begin{code}
 module QuickTest(
-   main
+   main,
+   genModule
    )  where
 
 import Test.QuickCheck
@@ -603,28 +604,6 @@ legalise = unShadow . relabel . shadow
 legalName :: ASNType a -> ASNType a
 legalName = R.unShadow . R.rename . R.shadow
 
-foo =
-   do y <- arbitrary
-      case y of
-         RepTypeVal t x ->
-            return (RepTypeVal (legalName (legalise t)) x)
-
-testType1' = SEQUENCE (Cons (ETMandatory (NamedType "Foo" (Just (Context, 3, Implicit)) BOOLEAN)) Nil)
-
-foo'' = 
-   map (prettyType . unShadow) p
-   where 
-      ts    = [testType1', testType1', testType1'] 
-      (p,q) = runState (Control.Monad.State.sequence . map (Data.Traversable.mapM (\_ -> update) . shadow) $ ts) 0
-
-n1 = ETMandatory (NamedType "Baz" (Just (Context, 7, Implicit)) BOOLEAN)
-
-seq2 = Cons (ETMandatory (NamedType "Bar" (Just (Context, 5, Implicit)) INTEGER)) Nil
-
-testType2 = SEQUENCE (Cons n1 seq2)
-
-us    = [RepType testType1', RepType testType2] 
-
 repsRelabel us = 
    p' 
    where 
@@ -654,7 +633,7 @@ prettyRepType r =
       RepType t ->
          prettyType t
 
-foo' =
+genModule =
  do xs <- sample' (arbitrary :: Gen RepType)
     return (prettyModule xs)
 
