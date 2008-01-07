@@ -33,7 +33,7 @@ Some type aliases and newtype declarations
 
 \begin{code}
 type BitStream = [Int]
-type Octet = [Int] 
+type Octet = [Int]
 --type OctetStream = [Octet]
 
 newtype IA5String = IA5String {iA5String :: String}
@@ -174,12 +174,12 @@ data S n
 data Phantom a = NoValue
 
 
--- This is a type for heterogeneous lists with a constraint of one on the number of 
+-- This is a type for heterogeneous lists with a constraint of one on the number of
 -- actual values allowed.
 data HL :: * -> * -> * where
-    EmptyHL  :: HL Nil Z 
+    EmptyHL  :: HL Nil Z
     ValueC   :: a -> HL l Z -> HL (a:*:l) (S Z)
-    NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n  
+    NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n
 
 instance Show (HL Nil n) where
    show _ = "EmptyHL"
@@ -204,12 +204,12 @@ instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
    NoValueC _ xs == NoValueC _ ys = xs == ys
    ValueC x _ == ValueC y _ = x == y
 
--- This type is very similar to the original choice type but returns a 
+-- This type is very similar to the original choice type but returns a
 -- Choice (a:*:l) instead of a Choice (Maybe a:*: l) since Nothing and
 -- Just v are replaced by NoValue and v for any type.
 data Choice :: * -> *  where
     NoChoice     :: Choice Nil
-    ChoiceExt    :: Choice l -> Choice l 
+    ChoiceExt    :: Choice l -> Choice l
     ChoiceEAG    :: Choice l -> Choice l
     ChoiceOption :: NamedType a -> Choice l -> Choice (a:*:l)
 
@@ -241,13 +241,118 @@ type Name       = String
 
 \end{code}
 
-The type Constraint a represents size constraint values. 
+The type Constraint a represents size constraint values.
 
 \begin{code}
+data Constraint
+        = Elem [(Integer,Integer)]
+            | Union (Constraint) (Constraint)
+            | Intersection (Constraint) (Constraint)
+            | Except (Constraint) (Constraint)
 
-data Ord a => Constraint a
+evalCons :: Constraint -> [(Integer,Integer)]
+evalCons (Elem p) = p
+evalCons (Union x y)
+    = let m = evalCons x
+          n = evalCons y
+      in
+        unionCs m n
+evalCons (Intersection x y)
+    = let m = evalCons x
+          n = evalCons y
+      in
+        intersectCs m n
+evalCons (Except x y)
+    = let m = evalCons x
+          n = evalCons y
+      in
+        exceptCs m n
+
+unionCs :: [(Integer,Integer)] -> [(Integer,Integer)] -> [(Integer,Integer)]
+unionCs m n
+        | subset m n   = n
+        | subset n m   = m
+        | distinct m n = addCs m n
+        | otherwise    = combineCs m n
+
+intersectCs :: [(Integer,Integer)] -> [(Integer,Integer)] -> [(Integer,Integer)]
+intersectCs m n
+        | subset m n   = m
+        | subset n m   = n
+        | distinct m n = []
+        | otherwise    = intCombineCs m n
+
+exceptCs :: [(Integer,Integer)] -> [(Integer,Integer)] -> [(Integer,Integer)]
+exceptCs m n
+        | subset m n   = []
+        | subset n m   = excCombineCs m n
+        | distinct m n = m
+        | otherwise    = excCombineCs m n
+
+
+
+subset :: [(Integer,Integer)] -> [(Integer,Integer)] -> Bool
+subset [x] [y] = isIn x y
+subset p@[(a,b)] ((c,d):ys)
+    = if a > d then subset p ys
+               else isIn (a,b) (c,d)
+subset (x:xs) p
+    = subset [x] p && subset xs p
+
+isIn :: (Integer,Integer) -> (Integer,Integer) -> Bool
+isIn (a,b) (c,d) = a >= c && b <= d
+
+distinct :: [(Integer,Integer)] -> [(Integer,Integer)] -> Bool
+distinct [(a,b)] [(c,d)] = b < c || d < a
+distinct p@[(a,b)] ((c,d):ys)
+    = if a > d then distinct p ys
+               else distinct p [(c,d)]
+distinct (x:xs) p
+    = distinct [x] p && distinct xs p
+
+addCs :: [(Integer,Integer)] -> [(Integer,Integer)] -> [(Integer,Integer)]
+addCs [p@(a,b)] [q@(c,d)] = if b < c then [p,q] else [q,p]
+addCs p@[(a,b)] q@((c,d):ys)
+    = if a > d then (c,d):addCs p ys
+               else (a,b):q
+addCs (x:xs) p
+    = addCs xs (addCs [x] p)
+
+combineCs :: [(Integer,Integer)] -> [(Integer,Integer)] -> [(Integer,Integer)]
+combineCs p@[(a,b)] q@[(c,d)] = if a < c then [(a,d)] else [(c,b)]
+combineCs p@[(a,b)] q@((c,d):ys)
+    = if a > d then (c,d):combineCs p ys
+               else combineCs [(a,b)] [(c,d)] ++ ys
+combineCs (x:xs) p
+    = combineCs xs (combineCs [x] p)
+
+intCombineCs :: [(Integer,Integer)] -> [(Integer,Integer)] -> [(Integer,Integer)]
+intCombineCs p@[(a,b)] q@[(c,d)] = if a < c then [(c,b)] else [(a,d)]
+intCombineCs p@[(a,b)] q@((c,d):ys)
+    = if c > b then ys
+               else intCombineCs p [(c,d)] ++ intCombineCs p ys
+intCombineCs (x:xs) p
+    = intCombineCs xs (intCombineCs [x] p)
+
+excCombineCs :: [(Integer,Integer)] -> [(Integer,Integer)] -> [(Integer,Integer)]
+excCombineCs p@[(a,b)] q@[(c,d)] = if a < c then [(a,c-1)] else [(d+1,b)]
+excCombineCs p@[(a,b)] q@((c,d):ys)
+    = if c > b then []
+               else excCombineCs (excCombineCs p [(c,d)]) ys
+excCombineCs (x:xs) p
+    = excCombineCs [x] p ++ excCombineCs xs p
+
+lowerB :: [(Integer,Integer)] -> Integer
+lowerB = fst . head
+
+upperB :: [(Integer,Integer)] -> Integer
+upperB = snd . last
+
+
+{-
+data Ord a => Constraint
         = Elem (S.Set a)
-            | Union (Constraint a) (Constraint a)
+            | Union (Constraint) (Constraint a)
             | Intersection (Constraint a) (Constraint a)
             | Except (Constraint a) (Constraint a)
 
@@ -256,6 +361,7 @@ evalCons (Elem s) = s
 evalCons (Union s t) = evalCons s `S.union` evalCons t
 evalCons (Intersection s t) = evalCons s `S.intersection` evalCons t
 evalCons (Except s t) = evalCons s `S.difference` evalCons t
+-}
 
 \end{code}
 
@@ -264,7 +370,7 @@ The Maybe stype is used because an extension marker may be followed by additiona
 
 \begin{code}
 
-data EM a = NoMarker | EM (Maybe (Constraint a))
+data EM = NoMarker | EM (Maybe Constraint)
 
 evalEM (EM x) = x
 
@@ -295,11 +401,11 @@ data ASNType :: * -> * where
    RANGE           :: ASNType Integer -> Lower -> Upper -> ASNType Integer
    SEQUENCE        :: Sequence a -> ASNType a
    SEQUENCEOF      :: ASNType a -> ASNType [a]
-   SIZE            :: ASNType a -> Constraint Integer -> EM Integer -> ASNType a
+   SIZE            :: ASNType a -> Constraint -> EM -> ASNType a
 -- REMOVED SizeConstraint a => from above
    SET             :: Sequence a -> ASNType a
    SETOF           :: ASNType a -> ASNType [a]
-   CHOICE          :: Choice a -> ASNType (HL a (S Z)) 
+   CHOICE          :: Choice a -> ASNType (HL a (S Z))
    FROM            :: PermittedAlphabet a => ASNType a -> a -> ASNType a
 -- WILL CHANGE 2ND ELEMENT TO cONSTRAINT cHAR FOR FROM CONSTRUCTOR
 
@@ -352,7 +458,7 @@ used in type assignment of an extensible type.
 
 multiSize :: ASNType a -> ASNType a
 multiSize (SIZE t@(SIZE t' s' e') s e)
-        = let ns = evalCons s' `S.intersection` evalCons s
+        = let ns = evalCons s' `intersectCs` evalCons s
               ne = unionEM e' e
           in
               multiSize (SIZE t' (Elem ns) ne)
@@ -361,7 +467,7 @@ multiSize x = x
 
 multiRSize :: ASNType a -> ASNType a
 multiRSize (SIZE t@(SIZE t' s' e') s e)
-        = let ns = evalCons s' `S.intersection` evalCons s
+        = let ns = evalCons s' `intersectCs` evalCons s
           in
               multiRSize (SIZE t' (Elem ns) NoMarker)
 multiRSize x = x
@@ -369,8 +475,9 @@ multiRSize x = x
 
 sizeLimit t@(SIZE _ _ _)
     = let SIZE _ s _  = multiSize t
-          l = S.findMin (evalCons s)
-          u = S.findMax (evalCons s)
+          xs = evalCons s
+          l = (fst . head) xs
+          u = (snd . last) xs
       in
         Constrained (Just l) (Just u)
 sizeLimit t
@@ -380,7 +487,7 @@ unionEM NoMarker x = x
 unionEM y NoMarker = y
 unionEM (EM Nothing) x = x
 unionEM y (EM Nothing) = y
-unionEM (EM (Just s)) (EM (Just t)) = EM (Just (Elem (evalCons s `S.union` evalCons t)))
+unionEM (EM (Just s)) (EM (Just t)) = EM (Just (Elem (evalCons s `unionCs` evalCons t)))
 
 \end{code}
 
@@ -830,8 +937,8 @@ encodeBS t x               = encodeBSNoSz t x
 
 encodeBSSz :: ASNType BitString -> BitString -> BitStream
 encodeBSSz (SIZE (BITSTRING nbs) s NoMarker) (BitString xs)
-    = let l   = S.findMin (evalCons s)
-          u   = S.findMax (evalCons s)
+    = let l   = lowerB (evalCons s)
+          u   = upperB (evalCons s)
           exs = if (not.null) nbs then editBS l u xs
                   else xs
           ln  = genericLength exs
@@ -839,16 +946,16 @@ encodeBSSz (SIZE (BITSTRING nbs) s NoMarker) (BitString xs)
                 bsCode nbs s NoMarker exs
 encodeBSSz (SIZE (BITSTRING nbs) s m@(EM (Just e))) (BitString xs)
     =   let ln = genericLength xs
-            l  = S.findMin (evalCons s)
-            u  = S.findMax (evalCons s)
+            l  = lowerB (evalCons s)
+            u  = upperB (evalCons s)
         in if ln <= u && ln >= l
                 then 0: bsCode nbs s m xs
                 else 1: bsCode nbs s m xs
 
 bsCode nbs s m xs
       =  let (EM (Just ns)) = unionEM (EM (Just s)) m
-             l  = S.findMin (evalCons ns)
-             u  = S.findMax (evalCons ns)
+             l  = lowerB (evalCons ns)
+             u  = upperB (evalCons ns)
              exs = if (not.null) nbs then editBS l u xs
                      else xs
              ln = genericLength exs
@@ -1040,8 +1147,8 @@ otherwise.
 
 encodeSeqSz :: ASNType [a] -> [a] -> BitStream
 encodeSeqSz (SIZE ty s e) x
-        =   let l = S.findMin (evalCons s)
-                u = S.findMax (evalCons s)
+        =   let l = lowerB (evalCons s)
+                u = upperB (evalCons s)
             in
                 manageExtremes (encodeNoL ty) (encodeSeqOf ty) l u x
 
@@ -1305,8 +1412,8 @@ encodeVS t x = encodeVis t x
 
 encodeVisSz :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVisSz t@(SIZE ty s _) x@(VisibleString xs)
-    = let l = S.findMin (evalCons s)
-          u = S.findMax (evalCons s)
+    = let l = lowerB (evalCons s)
+          u = upperB (evalCons s)
       in
           manageExtremes encS (encodeVis ty . VisibleString) l u xs
 
@@ -1332,8 +1439,8 @@ encodeVSF v@(FROM _ _) x = encodeVisF v x
 
 encodeVisSzF :: ASNType VisibleString -> VisibleString -> BitStream
 encodeVisSzF (SIZE ty@(FROM cv pac) s e) x@(VisibleString xs)
-        =   let l = S.findMin (evalCons s)
-                u = S.findMax (evalCons s)
+        =   let l = lowerB (evalCons s)
+                u = upperB (evalCons s)
             in
                 manageExtremes (encSF pac) (encodeVisF ty . VisibleString) l u xs
 
@@ -1389,8 +1496,8 @@ encodeNS t x              = encodeNum t x
 
 encodeNumSz :: ASNType NumericString -> NumericString -> BitStream
 encodeNumSz t@(SIZE ty s _) x@(NumericString xs)
-    = let l = S.findMin (evalCons s)
-          u = S.findMax (evalCons s)
+    = let l = lowerB (evalCons s)
+          u = upperB (evalCons s)
       in
           manageExtremes encNS (encodeNum ty . NumericString) l u xs
 

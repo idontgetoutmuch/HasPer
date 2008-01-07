@@ -9,7 +9,7 @@ import Text.PrettyPrint
 import ConstrainedType
 import Language.ASN1 (TagType(..), TagPlicity(..))
 
-prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
+prettyConstraint :: Constraint -> Doc
 prettyConstraint (Elem s) = text (show s)
 
 class Pretty a where
