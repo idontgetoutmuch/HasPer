@@ -626,7 +626,7 @@ prettyRepType r =
 prettyRepTypeVal r =
    case r of
       RepTypeVal t x ->
-         prettyTypeVal t x
+         (prettyType t, prettyTypeVal t x)
 
 genModule =
  do xs <- sample' (arbitrary :: Gen RepType)
@@ -637,12 +637,13 @@ prettyModuleBody xs =
  where
    typeNames = map ((<+> text "::=") . (text "Type" <>) . text. show) [1..]
 
-{-
 prettyModuleValsBody xs =
- vcat (zipWith (<+>) typeNames (map prettyRepType . repTypeValsRename . repTypeValsRelabel $ xs))
- where
-   typeNames = map ((<+> text "::=") . (text "Type" <>) . text. show) [1..]
--}
+   vcat (map (uncurry ($$)) (prefixPairs prefixes tsvs))
+   where
+      typeNames = map ((<+> text "::=") . (text "Type" <>) . text. show) [1..]
+      tsvs = map prettyRepTypeVal . repTypeValsRename . repTypeValsRelabel $ xs
+      prefixes = zipWith (,) typeNames typeNames
+      prefixPairs ps xs = zipWith (\(p1,p2) (t,v) -> ((p1 <+> t), (p2 <+> v))) ps xs 
 
 prettyModule xs =
    text "FooBar {1 2 3 4 5 6} DEFINITIONS ::="
