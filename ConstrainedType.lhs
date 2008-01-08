@@ -20,7 +20,7 @@ import qualified Data.Set as S
 import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
-import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
+import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType, OctetString)
 import Text.PrettyPrint
 import System
 import IO
@@ -34,7 +34,7 @@ Some type aliases and newtype declarations
 \begin{code}
 type BitStream = [Int]
 type Octet = [Int]
---type OctetStream = [Octet]
+type OctetStream = [Octet]
 
 newtype IA5String = IA5String {iA5String :: String}
 
@@ -44,8 +44,8 @@ instance Show IA5String where
 newtype BitString = BitString {bitString :: BitStream}
    deriving (Eq, Show)
 
---newtype OctetString = OctetString {octetString :: OctetStream}
---  deriving (Eq, Show)
+newtype OctetString = OctetString {octetString :: OctetStream}
+   deriving (Eq, Show)
 
 newtype PrintableString = PrintableString {printableString :: String}
 newtype NumericString = NumericString {numericString :: String}
@@ -391,7 +391,7 @@ data ASNType :: * -> * where
    INTEGER         :: ASNType Integer
    ENUMERATED      :: Enumerate a -> ASNType a
    BITSTRING       :: NamedBits -> ASNType BitString
---   OCTETSTRING     :: ASNTYPE OctetString
+   OCTETSTRING     :: ASNType OctetString
    PRINTABLESTRING :: ASNType PrintableString
    IA5STRING       :: ASNType IA5String
    VISIBLESTRING   :: ASNType VisibleString
@@ -509,14 +509,8 @@ toPer r@(RANGE i l u) x                         = encodeInt r x
 toPer (ENUMERATED e) x                          = encodeEnum e x
 toPer t@(BITSTRING nbs) x                       = encodeBS t x
 toPer t@(SIZE (BITSTRING _) _ _) x              = encodeBS t x
-
-\end{code}
-
---toPer t@(OCTETSTRING nbs) x                     = encodeOS t x
---toPer t@(SIZE (OCTETSTRING _) _ _) x            = encodeOS t x
-
-\begin{code}
-
+toPer t@OCTETSTRING x                           = encodeOS t x
+toPer t@(SIZE OCTETSTRING _ _) x            = encodeOS t x
 toPer (SEQUENCE s) x                            = encodeSeq s x
 toPer t@(SEQUENCEOF s) x                        = encodeSO t x
 toPer t@(SIZE (SEQUENCEOF c) _ _) x             = encodeSO t x
@@ -791,6 +785,35 @@ Note there is no clause for $>= 16*(2^10)$ as we have groupBy $16*(2^10)$
 
 \end{enumerate}
 
+encodeSz encodes a size-constrained value. manageExtremes implements
+16.6-16.8 (for OctetString) or 19.5-19.6 (for Sequence-of) which state
+that no length encoding is used when the length is known and less than
+64k, the length is encoded as an semi-constrained whole number if the
+upper bound is unset (does not exist or at least 64k) and as a constrained
+whole number otherwise.
+
+\begin{code}
+
+--encodeSz :: ASNType t -> (ASNType t -> [a] -> BitStream)-> (ASNType t -> [a] -> BitStream) -> [a] -> BitStream
+encodeSz (SIZE ty s e) noL yesL x
+        =   let l = lowerB (evalCons s)
+                u = upperB (evalCons s)
+            in
+                manageExtremes (noL ty) (yesL ty) l u x
+
+manageExtremes :: ([a] -> BitStream) -> ([a] -> BitStream) -> Integer -> Integer -> [a] -> BitStream
+manageExtremes fn1 fn2 l u x
+    = let range = u - l + 1
+        in
+            if range == 1 && u < 65536
+               then fn1 x
+               else if u >= 65536
+                   then fn2 x
+                   else encodeNNBIntBits ((genericLength x-l),range-1) ++ fn1 x
+
+\end{code}
+
+
 
 \section{Two's Complement Arithmetic}
 
@@ -1012,11 +1035,45 @@ strip0s (a:r)
 strip0s [] = []
 \end{code}
 
-\section{15. ENCODING THE OCTETSTRING TYPE}
+\section{16. ENCODING THE OCTETSTRING TYPE}
+
+\begin{code}
 
 encodeOS :: ASNType OctetString -> OctetString -> BitStream
-encodeOS t the at sign (SIZE ty s e) x = encodeOSSz t x
-encodeOS t x               = encodeOSNoSz t x
+encodeOS  t@(SIZE t' s e) (OctetString x) = encodeSz t encodeOSNoL encodeOctS x
+encodeOS t (OctetString x)                = encodeOctS t x
+
+\end{code}
+
+encodeOctS encodes an unconstrained SEQUENCEOF value.
+
+\BEGIN{code}
+
+-- encodeOctS :: ASNType [a] -> [a] -> BitStream
+encodeOctS s@OCTETSTRING xs
+    = encodeOSWithLength s xs
+
+\end{code}
+
+encodeSOWithLength encodes a sequence-of value with the appropriate
+length encoding.
+
+\begin{code}
+--encodeOSWithLength :: ASNType a -> [a] -> BitStream
+encodeOSWithLength s = encodeWithLength concat
+
+\end{code}
+
+
+No length encoding of SEQUENCEOF
+
+\begin{code}
+
+--encodeSONoL :: ASNType a -> a -> BitStream
+encodeOSNoL OCTETSTRING xs
+    = concat xs
+
+\end{code}
 
 \section{18. ENCODING THE SEQUENCE TYPE}
 
@@ -1130,42 +1187,18 @@ fragmentation into 64K blocks).
 \begin{code}
 
 encodeSO :: ASNType [a] -> [a] -> BitStream
-encodeSO  t@(SIZE t' s e) x = encodeSeqSz t x
+encodeSO  t@(SIZE t' s e) x = encodeSz t encodeSONoL encodeSeqOf x
 encodeSO t x = encodeSeqOf t x
 
 \end{code}
 
-encodeSeqSz encodes a size-constrained SEQUENCEOF and encodeSeqOf encodes an
-unconstrained SEQUENCEOF value. manageExtremes implements
-19.5-19.6 which state that no length encoding is used when the
-length is known and less than 64k, the length is encoded as an
-semi-constrained whole number if the upper bound is unset (does
-not exist or at least 64k) and as a constrained whole number
-otherwise.
+encodeSeqOf encodes an unconstrained SEQUENCEOF value.
 
 \begin{code}
-
-encodeSeqSz :: ASNType [a] -> [a] -> BitStream
-encodeSeqSz (SIZE ty s e) x
-        =   let l = lowerB (evalCons s)
-                u = upperB (evalCons s)
-            in
-                manageExtremes (encodeNoL ty) (encodeSeqOf ty) l u x
-
 
 encodeSeqOf :: ASNType [a] -> [a] -> BitStream
 encodeSeqOf (SEQUENCEOF s) xs
     = encodeSOWithLength s xs
-
-manageExtremes :: ([a] -> BitStream) -> ([a] -> BitStream) -> Integer -> Integer -> [a] -> BitStream
-manageExtremes fn1 fn2 l u x
-    = let range = u - l + 1
-        in
-            if range == 1 && u < 65536
-               then fn1 x
-               else if u >= 65536
-                   then fn2 x
-                   else encodeNNBIntBits ((genericLength x-l),range-1) ++ fn1 x
 
 \end{code}
 
@@ -1183,8 +1216,8 @@ No length encoding of SEQUENCEOF
 
 \begin{code}
 
-encodeNoL :: ASNType a -> a -> BitStream
-encodeNoL (SEQUENCEOF s) xs
+encodeSONoL :: ASNType a -> a -> BitStream
+encodeSONoL (SEQUENCEOF s) xs
     = (concat . map (toPer s)) xs
 
 \end{code}

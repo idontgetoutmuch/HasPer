@@ -30,9 +30,6 @@ import Relabel
 import qualified Rename as R
 import Data.Traversable
 
-prettyConstraint :: (Ord a, Show a) => Constraint a -> Doc
-prettyConstraint (Elem s) = text (show s)
-
 \end{code}
 
 \begin{code}
