@@ -17,7 +17,7 @@ data Shadow :: * -> * -> * where
    SBITSTRING :: NamedBits -> Shadow BitString b
    SSEQUENCE  :: SSequence a b -> Shadow a b
    SCHOICE    :: SChoice a b -> Shadow (HL a (S Z)) b
-   SSIZE      :: Shadow a b -> Constraint Integer -> EM Integer -> Shadow a b
+   SSIZE      :: Shadow a b -> Constraint -> EM -> Shadow a b
 
 data SSequence :: * -> * -> * where
    SNil     :: SSequence Nil b
