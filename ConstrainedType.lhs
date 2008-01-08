@@ -1047,11 +1047,15 @@ encodeOS t (OctetString x)                = encodeOctS t x
 
 encodeOctS encodes an unconstrained SEQUENCEOF value.
 
-\BEGIN{code}
+\begin{code}
 
+{-
 -- encodeOctS :: ASNType [a] -> [a] -> BitStream
 encodeOctS s@OCTETSTRING xs
     = encodeOSWithLength s xs
+-}
+encodeOctS = error "foo" -- undefined
+
 
 \end{code}
 
@@ -1069,9 +1073,12 @@ No length encoding of SEQUENCEOF
 
 \begin{code}
 
+{-
 --encodeSONoL :: ASNType a -> a -> BitStream
 encodeOSNoL OCTETSTRING xs
     = concat xs
+-}
+encodeOSNoL = error "bar" -- undefined
 
 \end{code}
 
