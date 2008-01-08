@@ -505,7 +505,7 @@ instance Arbitrary OnlyBITSTRING where
                let Constrained lb ub = sizeLimit t
                nl <- suchThat (suchThat arbitrary (f2 lb ub)) (>= 0)
                nu <- suchThat (suchThat arbitrary (f2 lb ub)) (>= nl)
-               return (OnlyBITSTRING (SIZE t (Elem (S.fromList [nl..nu])) NoMarker))
+               return (OnlyBITSTRING (SIZE t (Elem [(nl,nu)]) NoMarker))
             where
                subOnlyBITSTRING = onlyBITSTRING (n `div` 2)
 
@@ -523,7 +523,7 @@ arbitraryBITSTRING x =
             (BITSTRING []) ->
                arbitrary
             SIZE t s _ ->
-               if S.null (evalCons s)
+               if null (evalCons s)
                   then
                      error "arbitraryBITSTRING: generating impossible constraints"
                   else
@@ -535,7 +535,8 @@ arbitraryBITSTRING x =
             xs <- h (n - 1)
             return (x:xs)
       f = (liftM BitString) . h
-      g (Elem ns) = oneof (map f (S.toList ns))
+      g (Elem ns) = do n <- oneof (map choose ns)
+                       f n
 
 data BITSTRINGVal = BITSTRINGVal (ASNType BitString) BitString
 
