@@ -1681,7 +1681,7 @@ fromPerInteger t =
 
 \end{code}
 
-\subsection{BIT STRING --- Clause 16}
+\subsection{BIT STRING --- Clause 15}
 
 {\em BIT STRING}s are encoded with a length determinant but the type
 is immaterial hence we use $\bottom$ as the type argument to 
@@ -1695,6 +1695,22 @@ fromPerBitString t =
       where chunkBy1 = flip (const mmGetBits)
 
 \end{code}
+
+\subsection{OCTET STRING --- Clause 16}
+
+{\em OCTET STRING}s are encoded with a length determinant but the type
+is immaterial hence we use $\bottom$ as the type argument to 
+{\em decodeLengthDeterminant}; the (function) argument to
+decode the individual components merely takes 8 bits at a time.
+
+\begin{code}
+
+fromOctetString t = 
+   decodeLengthDeterminant (sizeLimit t) chunkBy8 undefined
+      where chunkBy8 = flip (const (mmGetBits . (*8)))
+
+\end{code}
+
 
 \section{Twos Complement Stuff}
 
