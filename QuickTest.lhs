@@ -558,41 +558,6 @@ instance Arbitrary BITSTRINGVal where
 
 \begin{code}
 
-data Baz = Baz String Int
-   deriving (Eq, Show)
-
-g2 :: MonadState Int m => m (Gen Int)
-g2 =
-   do x <- get
-      put (x + 1)
-      return (return x)
-
-f :: MonadState Int m => Int -> m (Gen [Baz])
-f 0 = return (return [])
-f n =
-   do x <- g2
-      xs <- f (n - 1)
-      let z = do u <- x
-                 us <- xs
-                 v <- arbitrary
-                 return ((Baz ("t" ++ (show u)) v):us)
-      return z
-
-main1 = let (q,p) = runState (f 10) 1 in sample q
-
-f3 0 = return (return [])
-f3 n =
-   do x <- g2
-      xs <- f3 (n - 1)
-      let z = do u <- x
-                 us <- xs
-                 name <- arbitrary
-                 r    <- arbitrary
-                 let (OnlyINTEGER t) = r
-                 let tag = (Context, (fromIntegral u), Implicit)
-                 return ((RepChoice (ChoiceOption (NamedType (elementName name) (Just tag) t) NoChoice)):us)
-      return z
-
 instance Show RepChoice where
    show x =
       case x of
@@ -617,6 +582,18 @@ repsRelabel us =
       f rs = runState (h rs) 0
       (p',q') = f us
 
+repTypeValsRelabel us = 
+   p' 
+   where 
+      g r =
+         case r of
+            RepTypeVal t y ->
+               do x <- Data.Traversable.mapM (\_ -> update) (shadow t)
+                  return (RepTypeVal (unShadow x) y)
+      h rs = Control.Monad.State.sequence (map g rs)
+      f rs = runState (h rs) 0
+      (p',q') = f us
+
 repsRename us = 
    p' 
    where 
@@ -629,10 +606,27 @@ repsRename us =
       f rs = runState (h rs) 0
       (p',q') = f us
 
+repTypeValsRename us = 
+   p' 
+   where 
+      g r =
+         case r of
+            RepTypeVal t y ->
+               do x <- Data.Traversable.mapM (\_ -> R.update) (R.shadow t)
+                  return (RepTypeVal (R.unShadow x) y)
+      h rs = Control.Monad.State.sequence (map g rs)
+      f rs = runState (h rs) 0
+      (p',q') = f us
+
 prettyRepType r =
    case r of
       RepType t ->
          prettyType t
+
+prettyRepTypeVal r =
+   case r of
+      RepTypeVal t x ->
+         prettyTypeVal t x
 
 genModule =
  do xs <- sample' (arbitrary :: Gen RepType)
@@ -642,6 +636,13 @@ prettyModuleBody xs =
  vcat (zipWith (<+>) typeNames (map prettyRepType . repsRename . repsRelabel $ xs))
  where
    typeNames = map ((<+> text "::=") . (text "Type" <>) . text. show) [1..]
+
+{-
+prettyModuleValsBody xs =
+ vcat (zipWith (<+>) typeNames (map prettyRepType . repTypeValsRename . repTypeValsRelabel $ xs))
+ where
+   typeNames = map ((<+> text "::=") . (text "Type" <>) . text. show) [1..]
+-}
 
 prettyModule xs =
    text "FooBar {1 2 3 4 5 6} DEFINITIONS ::="
