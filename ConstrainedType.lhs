@@ -33,7 +33,7 @@ Some type aliases and newtype declarations
 
 \begin{code}
 type BitStream = [Int]
-type Octet = [Int]
+type Octet = Word8
 type OctetStream = [Octet]
 
 newtype IA5String = IA5String {iA5String :: String}
@@ -241,7 +241,7 @@ type Name       = String
 
 \end{code}
 
-The type Constraint a represents size constraint values.
+The type Constraint represents the set of size-constraint values.
 
 \begin{code}
 data Constraint
@@ -288,8 +288,6 @@ exceptCs m n
         | subset n m   = excCombineCs m n
         | distinct m n = m
         | otherwise    = excCombineCs m n
-
-
 
 subset :: [(Integer,Integer)] -> [(Integer,Integer)] -> Bool
 subset [x] [y] = isIn x y
@@ -348,24 +346,14 @@ lowerB = fst . head
 upperB :: [(Integer,Integer)] -> Integer
 upperB = snd . last
 
-
-{-
-data Ord a => Constraint
-        = Elem (S.Set a)
-            | Union (Constraint) (Constraint a)
-            | Intersection (Constraint a) (Constraint a)
-            | Except (Constraint a) (Constraint a)
-
-evalCons :: Ord a => Constraint a -> S.Set a
-evalCons (Elem s) = s
-evalCons (Union s t) = evalCons s `S.union` evalCons t
-evalCons (Intersection s t) = evalCons s `S.intersection` evalCons t
-evalCons (Except s t) = evalCons s `S.difference` evalCons t
--}
+elemOf :: Integer -> [(Integer,Integer)] -> Bool
+elemOf l [] = False
+elemOf l ((f,s):r)
+        = l >= f && l <= s || elemOf l r
 
 \end{code}
 
-The type EM a represents the existence or not of an extension marker in a size constraint.
+The type EM represents the existence or not of an extension marker in a size constraint.
 The Maybe stype is used because an extension marker may be followed by additional values or not.
 
 \begin{code}
@@ -794,12 +782,19 @@ whole number otherwise.
 
 \begin{code}
 
---encodeSz :: ASNType t -> (ASNType t -> [a] -> BitStream)-> (ASNType t -> [a] -> BitStream) -> [a] -> BitStream
+encodeSz :: ASNType t -> (ASNType t -> [a] -> BitStream)-> (ASNType t -> [a] -> BitStream) -> [a] -> BitStream
 encodeSz (SIZE ty s e) noL yesL x
-        =   let l = lowerB (evalCons s)
-                u = upperB (evalCons s)
+        =   let
+                sv = evalCons s
+                l  = lowerB sv
+                u  = upperB sv
+                lx = genericLength x
+                b  = lx `elemOf` sv
+                en = manageExtremes (noL ty) (yesL ty) l u x
             in
-                manageExtremes (noL ty) (yesL ty) l u x
+                if b
+                    then 0:en
+                    else 1:en
 
 manageExtremes :: ([a] -> BitStream) -> ([a] -> BitStream) -> Integer -> Integer -> [a] -> BitStream
 manageExtremes fn1 fn2 l u x
@@ -975,6 +970,9 @@ encodeBSSz (SIZE (BITSTRING nbs) s m@(EM (Just e))) (BitString xs)
                 then 0: bsCode nbs s m xs
                 else 1: bsCode nbs s m xs
 
+-- update the above so that is tests whether ln is in the list of
+-- pairs
+
 bsCode nbs s m xs
       =  let (EM (Just ns)) = unionEM (EM (Just s)) m
              l  = lowerB (evalCons ns)
@@ -1053,17 +1051,16 @@ encodeOctS :: ASNType OctetString -> [Octet] -> BitStream
 encodeOctS s@OCTETSTRING xs
     = encodeOSWithLength s xs
 
--- encodeOctS = error "foo" -- undefined
-
-
 \end{code}
 
 encodeSOWithLength encodes a sequence-of value with the appropriate
 length encoding.
 
 \begin{code}
---encodeOSWithLength :: ASNType a -> [a] -> BitStream
-encodeOSWithLength s = encodeWithLength concat
+
+encodeOSWithLength :: ASNType OctetString -> [Octet] -> BitStream
+encodeOSWithLength s = encodeWithLength
+            (concat . map (let foo x = encodeNNBIntBits ((fromIntegral x),255) in foo))
 
 \end{code}
 
@@ -1074,7 +1071,7 @@ No length encoding of SEQUENCEOF
 
 encodeOSNoL :: ASNType OctetString -> [Octet] -> BitStream
 encodeOSNoL OCTETSTRING xs
-    = concat xs
+    = (concat . map (let foo x = encodeNNBIntBits ((fromIntegral x),255) in foo)) xs
 
 \end{code}
 
@@ -1684,13 +1681,13 @@ fromPerInteger t =
 \subsection{BIT STRING --- Clause 15}
 
 {\em BIT STRING}s are encoded with a length determinant but the type
-is immaterial hence we use $\bottom$ as the type argument to 
+is immaterial hence we use $\bottom$ as the type argument to
 {\em decodeLengthDeterminant}; the (function) argument to
 decode the individual components merely takes 1 bit at a time.
 
 \begin{code}
 
-fromPerBitString t = 
+fromPerBitString t =
    decodeLengthDeterminant (sizeLimit t) chunkBy1 undefined
       where chunkBy1 = flip (const mmGetBits)
 
