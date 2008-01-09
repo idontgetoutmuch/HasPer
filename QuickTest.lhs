@@ -29,6 +29,7 @@ import Data.Int
 import Relabel
 import qualified Rename as R
 import Data.Traversable
+import Control.Arrow hiding ((<+>))
 
 \end{code}
 
@@ -638,11 +639,18 @@ prettyModuleBody xs =
    typeNames = map ((<+> text "::=") . (text "Type" <>) . text. show) [1..]
 
 prettyModuleValsBody xs =
-   vcat (map (uncurry ($$)) (prefixPairs prefixes tsvs))
+   vcat (map (uncurry ($$)) (prefixPairs (map valueTypeName fprefixes) tsvs)) -- vcat (map (uncurry ($$)) (prefixPairs prefixes tsvs))
    where
       typeNames = map ((<+> text "::=") . (text "Type" <>) . text. show) [1..]
+      valueNames = map ((<+> text "::=") . (text "value" <>) . text. show) [1..]
+      tsvs :: [(Doc,Doc)]
       tsvs = map prettyRepTypeVal . repTypeValsRename . repTypeValsRelabel $ xs
-      prefixes = zipWith (,) typeNames typeNames
+      prefixes = zipWith (,) typeNames valueNames
+      ftypeNames :: String -> Doc
+      ftypeNames = {- (<+> text "::=") . -} (text "Type" <>) . text 
+      fvalueNames = {- (<+> text "::=") . -} (text "value" <>) . text 
+      fprefixes = map ((ftypeNames &&& fvalueNames) . show) [1..]
+      valueTypeName (t,v) = (t <+> text "::=", v <+> t <+> text "::=")
       prefixPairs ps xs = zipWith (\(p1,p2) (t,v) -> ((p1 <+> t), (p2 <+> v))) ps xs 
 
 prettyModule xs =
