@@ -10,7 +10,10 @@ import ConstrainedType
 import Language.ASN1 (TagType(..), TagPlicity(..))
 
 prettyConstraint :: Constraint -> Doc
-prettyConstraint (Elem s) = text (show s)
+prettyConstraint (Elem s) = let (x,y) = head s in parens (text (show x) <> text ".." <> text (show y)) -- WARNING for now - Dan is changing
+prettyConstraint (Union c1 c2) = parens (prettyConstraint c1 <+> text "|" <+> prettyConstraint c2)
+prettyConstraint (Intersection c1 c2) = parens (prettyConstraint c1 <+> text "^" <+> prettyConstraint c2)
+prettyConstraint (Except c1 c2) = parens (prettyConstraint c1 <+> text "EXCEPT" <+> prettyConstraint c2)
 
 class Pretty a where
    pretty :: a -> Doc
