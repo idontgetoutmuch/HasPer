@@ -780,21 +780,36 @@ that no length encoding is used when the length is known and less than
 upper bound is unset (does not exist or at least 64k) and as a constrained
 whole number otherwise.
 
+Where an extension marker exists a single bit is added to the
+front of the encoding. A 1 indicates that the size of the value is
+not within the extension root and a 0 indicates otherwise. If the
+value is not within the extension root then the length is encoded
+as an unconstrained whole number.
+
 \begin{code}
 
 encodeSz :: ASNType t -> (ASNType t -> [a] -> BitStream)-> (ASNType t -> [a] -> BitStream) -> [a] -> BitStream
-encodeSz (SIZE ty s e) noL yesL x
+encodeSz (SIZE ty s NoMarker) noL yesL x
         =   let
                 sv = evalCons s
                 l  = lowerB sv
                 u  = upperB sv
-                lx = genericLength x
-                b  = lx `elemOf` sv
+            in
+                 manageExtremes (noL ty) (yesL ty) l u x
+encodeSz (SIZE ty s (EM (Just c))) noL yesL x
+        =   let
+                sv  = evalCons s
+                lx  = genericLength x
+                b   = lx `elemOf` sv
+                esv = sv `unionCs` evalCons c
+                l   = lowerB esv
+                u   = upperB esv
                 en = manageExtremes (noL ty) (yesL ty) l u x
             in
                 if b
                     then 0:en
-                    else 1:en
+                    else 1:yesL ty x
+
 
 manageExtremes :: ([a] -> BitStream) -> ([a] -> BitStream) -> Integer -> Integer -> [a] -> BitStream
 manageExtremes fn1 fn2 l u x
@@ -1696,13 +1711,13 @@ fromPerBitString t =
 \subsection{OCTET STRING --- Clause 16}
 
 {\em OCTET STRING}s are encoded with a length determinant but the type
-is immaterial hence we use $\bottom$ as the type argument to 
+is immaterial hence we use $\bottom$ as the type argument to
 {\em decodeLengthDeterminant}; the (function) argument to
 decode the individual components merely takes 8 bits at a time.
 
 \begin{code}
 
-fromOctetString t = 
+fromOctetString t =
    decodeLengthDeterminant (sizeLimit t) chunkBy8 undefined
       where chunkBy8 = flip (const (mmGetBits . (*8)))
 
