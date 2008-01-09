@@ -28,7 +28,7 @@ prettyType :: ASNType a -> Doc
 prettyType (TYPEASS tr _ t) =
    text tr <+> text "::=" <+> prettyType t
 prettyType (BITSTRING []) =
-   text "BITSTRING"
+   text "BIT STRING"
 prettyType INTEGER =
    text "INTEGER"
 prettyType BOOLEAN =
@@ -43,7 +43,7 @@ prettyType(SIZE t s _) =
    prettyType t <+> parens (text "SIZE" <+> prettyConstraint s) -- text (show s))
 
 prettyTypeVal :: ASNType a -> a -> Doc
-prettyTypeVal a@(BITSTRING []) x     = text (show x)
+prettyTypeVal a@(BITSTRING []) x     = prettyBitString x
 prettyTypeVal a@INTEGER x       = text (show x)
 prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
 prettyTypeVal a@(SIZE t s e) x  = prettyTypeVal t x
@@ -141,3 +141,5 @@ prettyNamedType (NamedType n ti ct) =
                text n <+> brackets (text (show tv)) <+> prettyPlicity tp <+> prettyType ct
             _ ->
                text n <+> brackets (text (show tt) <+> text (show tv)) <+> prettyPlicity tp <+> prettyType ct
+
+prettyBitString = (<> text "B") . (quotes . text . concat . map show .  bitString)
