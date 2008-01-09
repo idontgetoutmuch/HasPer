@@ -67,10 +67,10 @@ t41 = RANGE INTEGER (Just 0) (Just 18000)
 t42 = RANGE INTEGER (Just 3) (Just 3)
 t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
 t6 = SEQUENCE (Cons t1 (Cons t1 Nil))
-t7 = SIZE (SEQUENCEOF t1') (Elem [(2,5)]) NoMarker
-t8 = SIZE (SEQUENCEOF t5) (Elem [(2,2)]) NoMarker
+t7 = SIZE (SEQUENCEOF t1') (Elem (2,5)) NoMarker
+t8 = SIZE (SEQUENCEOF t5) (Elem (2,2)) NoMarker
 t9 = SEQUENCE (Cons t4' (Cons t4 Nil))
-t10 = SIZE (SEQUENCEOF t9) (Elem [(1,3)]) NoMarker
+t10 = SIZE (SEQUENCEOF t9) (Elem (1,3)) NoMarker
 t11 = CHOICE (ChoiceOption (NamedType "" Nothing t0)
          (ChoiceOption (NamedType "" Nothing t1')
          (ChoiceOption (NamedType "" Nothing t01)
@@ -209,9 +209,9 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
 
 \begin{code}
 
-seqOft7 = SIZE (SEQUENCEOF seqOfElem1) (Elem [(2,5)]) NoMarker
+seqOft7 = SIZE (SEQUENCEOF seqOfElem1) (Elem (2,5)) NoMarker
 
-seqOfType3 = SIZE (SEQUENCEOF seqOfElem1) (Elem [(4,4)]) NoMarker
+seqOfType3 = SIZE (SEQUENCEOF seqOfElem1) (Elem (4,4)) NoMarker
 
 seqOfVal7 = [26,25,28,27]
 
@@ -305,7 +305,7 @@ seqOfType1 (seqOfVals3 147457)
 
 \begin{code}
 
-larSeqOfT1 = SIZE (SEQUENCEOF seqOfElem1) (Elem [(6,6)]) NoMarker
+larSeqOfT1 = SIZE (SEQUENCEOF seqOfElem1) (Elem (6,6)) NoMarker
 
 larSeqOf1 = [0,0,0,0,0,1,0,1,0,0,1,1,1,0,0,1,0,1,0,0,0,0,0,0]
 
@@ -319,7 +319,7 @@ lar303e1 =
          dLarSeqOf1
    )
 
-larSeqOfT2 = SIZE (SEQUENCEOF seqOfElem1) (Elem [(5,20)]) NoMarker
+larSeqOfT2 = SIZE (SEQUENCEOF seqOfElem1) (Elem (5,20)) NoMarker
 
 larSeqOf2 = [0,0,0,1,0,0,0,0,0,1,0,1,0,0,1,1,1,0,0,1,0,1,0,0]
 
@@ -333,7 +333,7 @@ lar303e2 =
          dLarSeqOf2
    )
 
-larSeqOfT3 = SIZE (SEQUENCEOF seqOfElem1) (Elem [(0,7)]) NoMarker
+larSeqOfT3 = SIZE (SEQUENCEOF seqOfElem1) (Elem (0,7)) NoMarker
 
 larSeqOf3 = [0,1,1,0,0,0,0,0,1,0,1,0,0,0,0,0]
 
@@ -361,7 +361,7 @@ lar303e4 =
          dLarSeqOf4
    )
 
-larSeqOfT6 = SIZE (SEQUENCEOF seqOfElem1) (Elem [(65534,65535)]) NoMarker
+larSeqOfT6 = SIZE (SEQUENCEOF seqOfElem1) (Elem (65534,65535)) NoMarker
 
 larSeqOf6 = (0:(genericTake (65534*3) (cycle [0,0,0,0,0,1,0,1,0,0,1,1,1,0,0,1,0,1,0,0,0,0,0,1]))) ++ [0,0,0,0,0]
 
@@ -375,7 +375,7 @@ lar303e6 =
          dLarSeqOf6
    )
 
-larSeqOfT7 = SIZE (SEQUENCEOF seqOfElem1) (Elem [(65537,65537)]) NoMarker
+larSeqOfT7 = SIZE (SEQUENCEOF seqOfElem1) (Elem (65537,65537)) NoMarker
 
 larSeqOf7 =
    [1,1,0,0,0,1,0,0] ++ firstBlock ++ [0,0,0,0,0,0,0,1] ++ secondBlock ++ [0,0,0,0,0]
@@ -451,7 +451,7 @@ testvs1 = toPer VISIBLESTRING (VisibleString "Director")
 
 -- VISIBLESTRING with permitted alphabet constraint and size constraints tests
 
-x = (SIZE (FROM VISIBLESTRING (VisibleString ['0'..'9'])) (Elem [(8,9)]) NoMarker)
+x = (SIZE (FROM VISIBLESTRING (VisibleString ['0'..'9'])) (Elem (8,9)) NoMarker)
 
 testvsc1 = toPer x (VisibleString "19710917")
 
@@ -477,7 +477,7 @@ name
     = TYPEASS "Name" (Just (Application, 1, Implicit))
         (SEQUENCE
           (Cons (ETMandatory (NamedType "givenName" Nothing nameString))
-            (Cons (ETMandatory (NamedType "initial" Nothing (SIZE nameString (Elem [(1,1)]) NoMarker)))
+            (Cons (ETMandatory (NamedType "initial" Nothing (SIZE nameString (Elem (1,1)) NoMarker)))
               (Cons (ETMandatory (NamedType "familyName" Nothing nameString)) Nil))))
 
 
@@ -490,7 +490,7 @@ num = 51
 
 date
     = TYPEASS "Date" (Just (Application, 3, Implicit))
-        (SIZE (FROM VISIBLESTRING  (VisibleString ['0'..'9'])) (Elem [(8,9)]) NoMarker)
+        (SIZE (FROM VISIBLESTRING  (VisibleString ['0'..'9'])) (Elem (8,9)) NoMarker)
 
 hiredate = VisibleString "19710917"
 
@@ -530,7 +530,7 @@ childInfo
 nameString
     = TYPEASS "NameString" Nothing
         (SIZE (FROM VISIBLESTRING (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])) )
-                            (Elem [(1,64)]) NoMarker)
+                            (Elem (1,64)) NoMarker)
 
 empGN = VisibleString "John"
 
@@ -765,7 +765,7 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
 
 \begin{code}
 
-tSConBitString1 = SIZE (BITSTRING []) (Elem [(7,7)]) NoMarker
+tSConBitString1 = SIZE (BITSTRING []) (Elem (7,7)) NoMarker
 vSConBitString1 = BitString [1,1,0,0,0,1,0]
 sConBitString1  = toPer tSConBitString1 vSConBitString1
 
@@ -785,7 +785,7 @@ sConBitStringTest1a =
       assertEqual "BIT STRING Test 4a" dSConBitString1 vSConBitString1
    )
 
-tSConBitString2 = SIZE (BITSTRING []) (Elem [(12,15)]) NoMarker
+tSConBitString2 = SIZE (BITSTRING []) (Elem (12,15)) NoMarker
 vSConBitString2 = BitString [1,0,0,1,1,0,0,1,1,0,0,1,1]
 sConBitString2  = toPer tSConBitString2 vSConBitString2
 
@@ -807,7 +807,7 @@ sConBitStringTest2a =
       assertEqual "BIT STRING Test 5a" dSConBitString2 vSConBitString2
    )
 
-tSConBitString3 = SIZE (BITSTRING []) (Elem [(0,2128)]) NoMarker
+tSConBitString3 = SIZE (BITSTRING []) (Elem (0,2128)) NoMarker
 vSConBitString3 = BitString [1,1]
 sConBitString3  = toPer tSConBitString3 vSConBitString3
 
@@ -831,8 +831,8 @@ sConBitStringTest3a =
 
 tSConBitString4 =
    SIZE (BITSTRING [])
-        (Elem [(4,12)])
-        (EM (Just (Elem [(15,15)])))
+        (Elem (4,12))
+        (EM (Just (Elem (15,15))))
 vSConBitString4 = BitString [1,1,0,0,0,1,0,0,0,0]
 sConBitString4  = toPer tSConBitString4 vSConBitString4
 
@@ -1115,7 +1115,7 @@ ax
                     (Extens
                         (Cons (ETExtMand (NamedType "" Nothing
                                (EXTADDGROUP
-                                (Cons (ETExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (Elem [(3,3)]) NoMarker)))
+                                (Cons (ETExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (Elem (3,3)) NoMarker)))
                                      (Cons (ETOptional (NamedType "h" Nothing BOOLEAN)) Nil)))))
                             (Extens
                                 (Cons (ETOptional (NamedType "i" Nothing VISIBLESTRING))
@@ -1543,12 +1543,12 @@ thereAndBack7 =
       mmIdem t (toPer t (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty))))
 
 type8       = NamedType "T4" Nothing (SEQUENCE (Cons (ETMandatory type8First) (Cons (ETMandatory type8Second) (Cons (ETMandatory type8Nest1) Nil))))
-type8First  = NamedType "first"  Nothing (SIZE (BITSTRING []) (Elem [(0,65537)]) NoMarker)
-type8Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem [(0,65537)]) NoMarker)
+type8First  = NamedType "first"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
+type8Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 
 type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (ETMandatory type8Third) (Cons (ETMandatory type8Fourth) Nil)))
-type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem [(0,65537)]) NoMarker)
-type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem [(0,65537)]) NoMarker)
+type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
+type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 
 testType8 =
    let (NamedType _ _ t) = type8 in
@@ -1562,7 +1562,7 @@ bs8' n = take n (cycle [1,0,1,0,0,0,0,0])
 
 type9       = NamedType "T5" Nothing (SEQUENCE (Cons (ETMandatory type9First) (Cons (ETMandatory type9Second) Nil)))
 type9First  = NamedType "first"  Nothing (RANGE INTEGER (Just 0) (Just 65535))
-type9Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem [(0,65544)]) NoMarker)
+type9Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (0,65544)) NoMarker)
 
 val9 = 2:*:((BitString (bs8' 52)):*:Empty)
 
@@ -1576,7 +1576,7 @@ thereAndBack91 =
    let NamedType _ _ t = type9 in
       mmIdem t (toPer t val91)
 
-type10 = NamedType "T6" Nothing (SIZE (BITSTRING []) (Elem [(0,65537)]) NoMarker)
+type10 = NamedType "T6" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 
 val10 = BitString (bs8' 56)
 
@@ -1590,11 +1590,11 @@ thereAndBack101 =
    let NamedType _ _ t = type10 in
       mmIdem t (toPer t val101)
 
-type4 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem [(0,4)]) NoMarker)
+type4 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (0,4)) NoMarker)
 
-type5 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem [(0,14)]) NoMarker)
+type5 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (0,14)) NoMarker)
 
-type6 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem [(0,((2^16)+1))]) NoMarker)
+type6 = NamedType "T1" Nothing (SIZE (BITSTRING []) (Elem (0,((2^16)+1))) NoMarker)
 
 foo (NamedType _ _ t) =
    do h <- openFile "test" ReadMode
@@ -1606,9 +1606,9 @@ foo (NamedType _ _ t) =
 
 tests =
    [
-   unConIntegerTest1, 
-   unConIntegerTest2, 
-   unConIntegerTest3, 
+   unConIntegerTest1,
+   unConIntegerTest2,
+   unConIntegerTest3,
 --    unConIntegerTest4, --
    integerTest2,
    integerTest3,

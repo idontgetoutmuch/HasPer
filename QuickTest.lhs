@@ -179,7 +179,7 @@ instance Arbitrary OnlyINTEGER where
                case t of
                   OnlyINTEGER s ->
                      do let (l,u) = fromJust (range s)
-                        l' <- suchThat arbitrary (f2 l u)        
+                        l' <- suchThat arbitrary (f2 l u)
                         u' <- suchThat arbitrary (f2 (Just l') u)
                         return (f t (Just l') (Just u'))
             where
@@ -258,7 +258,7 @@ instance Show RepChoiceVal where
             render (prettyVal t x)
 
 arbitraryNoChoice :: Choice a -> Gen RepNoChoiceVal
-arbitraryNoChoice NoChoice = 
+arbitraryNoChoice NoChoice =
    return (RepNoChoiceVal NoChoice EmptyHL)
 arbitraryNoChoice (ChoiceOption (NamedType n i t) ts) =
    do u <- arbitraryType t
@@ -303,7 +303,7 @@ arbitraryNthChoice m (ChoiceOption (NamedType n i t) ts) =
 
 arbitraryChoice :: Choice a -> Gen RepChoiceVal
 arbitraryChoice NoChoice =
-   error "arbitraryChoice generating invalid length choice"   
+   error "arbitraryChoice generating invalid length choice"
 arbitraryChoice a =
    do n <- suchThat arbitrary (\n -> (n >= 0) && (n <= ((choiceLength a) - 1)))
       arbitraryNthChoice n a
@@ -447,13 +447,13 @@ This really needs its own generator rather than using BitString.
 \begin{code}
 
 prop_2scomplement2 x =
-   length (bitString x) `mod` 8 == 0 && (not (null (bitString x))) ==> 
+   length (bitString x) `mod` 8 == 0 && (not (null (bitString x))) ==>
       x == (BitString . to2sComplement . from2sComplement .bitString) x
 
 prop_fromPerToPer x =
    case x of
       RepTypeVal t y ->
-         let t' = legalise t in    
+         let t' = legalise t in
             y == runFromPer t' (toPer8s t' y)
    where
       runFromPer :: ASNType a -> BitStream -> a
@@ -506,7 +506,7 @@ instance Arbitrary OnlyBITSTRING where
                let Constrained lb ub = sizeLimit t
                nl <- suchThat (suchThat arbitrary (f2 lb ub)) (>= 0)
                nu <- suchThat (suchThat arbitrary (f2 lb ub)) (>= nl)
-               return (OnlyBITSTRING (SIZE t (Elem [(nl,nu)]) NoMarker))
+               return (OnlyBITSTRING (SIZE t (Elem (nl,nu)) NoMarker))
             where
                subOnlyBITSTRING = onlyBITSTRING (n `div` 2)
 
@@ -536,7 +536,7 @@ arbitraryBITSTRING x =
             xs <- h (n - 1)
             return (x:xs)
       f = (liftM BitString) . h
-      g (Elem ns) = do n <- oneof (map choose ns)
+      g (Elem ns) = do n <- choose ns
                        f n
 
 data BITSTRINGVal = BITSTRINGVal (ASNType BitString) BitString
@@ -571,9 +571,9 @@ legalise = unShadow . relabel . shadow
 legalName :: ASNType a -> ASNType a
 legalName = R.unShadow . R.rename . R.shadow
 
-repsRelabel us = 
-   p' 
-   where 
+repsRelabel us =
+   p'
+   where
       g r =
          case r of
             RepType t ->
@@ -583,9 +583,9 @@ repsRelabel us =
       f rs = runState (h rs) 0
       (p',q') = f us
 
-repTypeValsRelabel us = 
-   p' 
-   where 
+repTypeValsRelabel us =
+   p'
+   where
       g r =
          case r of
             RepTypeVal t y ->
@@ -595,9 +595,9 @@ repTypeValsRelabel us =
       f rs = runState (h rs) 0
       (p',q') = f us
 
-repsRename us = 
-   p' 
-   where 
+repsRename us =
+   p'
+   where
       g r =
          case r of
             RepType t ->
@@ -607,9 +607,9 @@ repsRename us =
       f rs = runState (h rs) 0
       (p',q') = f us
 
-repTypeValsRename us = 
-   p' 
-   where 
+repTypeValsRename us =
+   p'
+   where
       g r =
          case r of
             RepTypeVal t y ->
@@ -646,7 +646,7 @@ prettyModuleValsBody xs =
       valueNames = (text "value" <>) . text 
       prefixes = map ((typeNames &&& valueNames) . show) [1..]
       valueTypeName (t,v) = (t <+> text "::=", v <+> t <+> text "::=")
-      prefixPairs ps xs = zipWith (\(p1,p2) (t,v) -> ((p1 <+> t), (p2 <+> v))) ps xs 
+      prefixPairs ps xs = zipWith (\(p1,p2) (t,v) -> ((p1 <+> t), (p2 <+> v))) ps xs
 
 prettyModuleWithVals xs =
    text "FooBar {1 2 3 4 5 6} DEFINITIONS ::="

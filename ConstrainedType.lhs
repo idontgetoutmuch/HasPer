@@ -245,13 +245,13 @@ The type Constraint represents the set of size-constraint values.
 
 \begin{code}
 data Constraint
-        = Elem [(Integer,Integer)]
+        = Elem (Integer,Integer)
             | Union (Constraint) (Constraint)
             | Intersection (Constraint) (Constraint)
             | Except (Constraint) (Constraint)
 
 evalCons :: Constraint -> [(Integer,Integer)]
-evalCons (Elem p) = p
+evalCons (Elem p) = [p]
 evalCons (Union x y)
     = let m = evalCons x
           n = evalCons y
@@ -446,18 +446,13 @@ used in type assignment of an extensible type.
 
 multiSize :: ASNType a -> ASNType a
 multiSize (SIZE t@(SIZE t' s' e') s e)
-        = let ns = evalCons s' `intersectCs` evalCons s
-              ne = unionEM e' e
-          in
-              multiSize (SIZE t' (Elem ns) ne)
+        = multiSize (SIZE t' (Intersection s' s) (unionEM e' e))
 multiSize x = x
 
 
 multiRSize :: ASNType a -> ASNType a
 multiRSize (SIZE t@(SIZE t' s' e') s e)
-        = let ns = evalCons s' `intersectCs` evalCons s
-          in
-              multiRSize (SIZE t' (Elem ns) NoMarker)
+        = multiRSize (SIZE t' (Intersection s' s) NoMarker)
 multiRSize x = x
 
 
@@ -475,7 +470,7 @@ unionEM NoMarker x = x
 unionEM y NoMarker = y
 unionEM (EM Nothing) x = x
 unionEM y (EM Nothing) = y
-unionEM (EM (Just s)) (EM (Just t)) = EM (Just (Elem (evalCons s `unionCs` evalCons t)))
+unionEM (EM (Just s)) (EM (Just t)) = EM (Just (Union s t))
 
 \end{code}
 
