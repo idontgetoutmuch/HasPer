@@ -7,6 +7,7 @@ import Pretty
 import qualified Data.Set as S
 import Data.Word
 import Data.List
+import Language.ASN1 hiding (BitString, NamedType)
 
 genC :: NamedType a -> a -> Doc
 genC nt@(NamedType name tagInfo t) v =
@@ -125,6 +126,23 @@ sequenceC prefix (Cons t ts) (x:*:xs) =
    elemC (prefix <> text ".") t x $$ 
    sequenceC prefix ts xs
 
+choiceC :: Doc -> Choice a -> HL a (S Z) -> Doc
+choiceC _ NoChoice _ = empty
+choiceC prefix (ChoiceOption nt cts) (NoValueC _ v) =
+   choiceC prefix cts v
+choiceC prefix (ChoiceOption nt cts) (ValueC v _) =
+   namedTypeValC (prefix <> text ".choice.") nt v
+
+choiceCAux :: [Name] -> Doc -> Choice a -> HL a (S Z) -> (Doc,[Name])
+choiceCAux ds _ NoChoice _ = (empty,ds)
+choiceCAux ds prefix (ChoiceOption _ cts) (NoValueC _ v) =
+   choiceCAux ds prefix cts v
+choiceCAux ds prefix (ChoiceOption nt@(NamedType n _ _) cts) (ValueC v _) =
+   (namedTypeValC (prefix <> text ".choice.") nt v, n:ds)
+
+choiceC' :: Doc -> Choice a -> HL a (S Z) -> Doc
+choiceC' prefix t v = let (p,qs) = choiceCAux [] prefix t v in vcat (map text qs) $$ p
+
 elemC :: Doc -> ElementType a -> a -> Doc
 elemC prefix (ETMandatory (NamedType n _ t)) x =
    typeValC (prefix <> text n) t x
@@ -135,10 +153,11 @@ typeValC prefix a@INTEGER x        = prefix <> text " = " <> text (show x) <> se
 typeValC prefix a@(RANGE t l u) x  = typeValC prefix t x
 typeValC prefix a@(SIZE t s e) x   = typeValC prefix t x
 typeValC prefix a@(SEQUENCE s) x   = sequenceC prefix s x
+typeValC prefix a@(CHOICE c) x = choiceC' prefix c x
 
 namedTypeValC :: Doc -> NamedType a -> a -> Doc
 namedTypeValC prefix nt@(NamedType name tagInfo t) v =
-   typeValC (prefix <+> text name) t v
+   typeValC (prefix <> text name) t v
 
 topLevelNamedTypeValC :: NamedType a -> a -> Doc
 topLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
@@ -159,16 +178,29 @@ type7Sixth  = NamedType "sixth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 val7 = (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty)))
 
 type8       = NamedType "T4" Nothing (SEQUENCE (Cons (ETMandatory type8First) (Cons (ETMandatory type8Second) (Cons (ETMandatory type8Nest1) Nil))))
-type8First  = NamedType "first"  Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
-type8Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+type8First  = NamedType "first"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
+type8Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 
 type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (ETMandatory type8Third) (Cons (ETMandatory type8Fourth) Nil)))
-type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
-type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem (S.fromList [0..65537])) NoMarker)
+type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
+type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 
 val8 = ((BitString (bs8 12)):*:((BitString (bs8 20)):*:(((BitString (bs8 36)):*:((BitString (bs8 52)):*:Empty)):*:Empty)))
 
 bs8 n = take n (cycle [1,0,1,0,0,0,0,0])
+
+type9 = 
+   CHOICE xs
+      where
+         xs = ChoiceOption e1 (ChoiceOption e2 (ChoiceOption e4 NoChoice))
+         e1 = NamedType "element1" (Just (Context,0,Implicit)) INTEGER
+         e2 = NamedType "element2" (Just (Context,1,Explicit)) (CHOICE (ChoiceOption s1 (ChoiceOption s2 (ChoiceOption s3 NoChoice))))
+         e4 = NamedType "element4" (Just (Context,2,Implicit)) INTEGER
+         s1 = NamedType "subElement1" (Just (Context,0,Implicit)) INTEGER
+         s2 = NamedType "subElement2" (Just (Context,0,Implicit)) INTEGER
+         s3 = NamedType "subElement3" (Just (Context,0,Implicit)) INTEGER
+
+val9 = NoValueC NoValue (ValueC (ValueC 7 (NoValueC NoValue (NoValueC NoValue EmptyHL))) (NoValueC NoValue EmptyHL))
 
 {-
   T5 ::=
