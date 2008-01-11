@@ -126,6 +126,16 @@ sequenceC prefix (Cons t ts) (x:*:xs) =
    elemC (prefix <> text ".") t x $$ 
    sequenceC prefix ts xs
 
+newSequence :: [Name] -> Sequence a -> a -> Doc
+newSequence _ Nil _ = empty
+newSequence ns (Cons t ts) (x:*:xs) =
+   newElementType (".":ns) t x $$
+   newSequence ns ts xs
+
+newElementType :: [Name] -> ElementType a -> a -> Doc
+newElementType ns (ETMandatory (NamedType n _ t)) x =
+   newTypeValC (n:ns) t x
+
 choiceC :: Doc -> Choice a -> HL a (S Z) -> Doc
 choiceC _ NoChoice _ = empty
 choiceC prefix (ChoiceOption nt cts) (NoValueC _ v) =
@@ -143,6 +153,18 @@ choiceCAux ds prefix (ChoiceOption nt@(NamedType n _ _) cts) (ValueC v _) =
 choiceC' :: Doc -> Choice a -> HL a (S Z) -> Doc
 choiceC' prefix t v = let (p,qs) = choiceCAux [] prefix t v in vcat (map text qs) $$ p
 
+newChoice :: [Name] -> Choice a -> HL a (S Z) -> Doc
+newChoice ns NoChoice _ = empty
+newChoice ns (ChoiceOption _ cts) (NoValueC _ v) =
+   newChoice ns cts v
+newChoice ns (ChoiceOption nt@(NamedType n _ ct) cts) (ValueC v _) =
+   tags ns $$
+   newTypeValC (n:".choice.":ns) ct v
+   where
+      tags [] = empty
+      tags ns = hcat (map text ms) <> text ".present = " <> text (head ns) <> text "_PR_" <> text n
+      ms = reverse ns
+
 elemC :: Doc -> ElementType a -> a -> Doc
 elemC prefix (ETMandatory (NamedType n _ t)) x =
    typeValC (prefix <> text n) t x
@@ -154,6 +176,11 @@ typeValC prefix a@(RANGE t l u) x  = typeValC prefix t x
 typeValC prefix a@(SIZE t s e) x   = typeValC prefix t x
 typeValC prefix a@(SEQUENCE s) x   = sequenceC prefix s x
 typeValC prefix a@(CHOICE c) x = choiceC' prefix c x
+
+newTypeValC :: [Name] -> ASNType a -> a -> Doc
+newTypeValC ns a@INTEGER x = hcat (map text (reverse ns)) <> text " = " <> text (show x) <> semi
+newTypeValC ns a@(CHOICE c) x = newChoice ns c x
+newTypeValC ns a@(SEQUENCE s) x = newSequence ns s x
 
 namedTypeValC :: Doc -> NamedType a -> a -> Doc
 namedTypeValC prefix nt@(NamedType name tagInfo t) v =
@@ -196,11 +223,49 @@ type9 =
          e1 = NamedType "element1" (Just (Context,0,Implicit)) INTEGER
          e2 = NamedType "element2" (Just (Context,1,Explicit)) (CHOICE (ChoiceOption s1 (ChoiceOption s2 (ChoiceOption s3 NoChoice))))
          e4 = NamedType "element4" (Just (Context,2,Implicit)) INTEGER
-         s1 = NamedType "subElement1" (Just (Context,0,Implicit)) INTEGER
-         s2 = NamedType "subElement2" (Just (Context,0,Implicit)) INTEGER
-         s3 = NamedType "subElement3" (Just (Context,0,Implicit)) INTEGER
+         s1 = NamedType "subElement1" (Just (Context,3,Implicit)) INTEGER
+         s2 = NamedType "subElement2" (Just (Context,4,Implicit)) INTEGER
+         s3 = NamedType "subElement3" (Just (Context,5,Implicit)) INTEGER
 
 val9 = NoValueC NoValue (ValueC (ValueC 7 (NoValueC NoValue (NoValueC NoValue EmptyHL))) (NoValueC NoValue EmptyHL))
+
+type10 =
+   CHOICE xs
+      where
+         xs = ChoiceOption ss1 (ChoiceOption ss2 (ChoiceOption ss3 NoChoice))
+         ss1 = NamedType "superElement1" (Just (Context,6,Implicit)) INTEGER
+         ss2 = NamedType "superElement2" (Just (Context,7,Explicit)) type9
+         ss3 = NamedType "superElement3" (Just (Context,8,Implicit)) INTEGER
+
+val10 = NoValueC NoValue (ValueC val9 (NoValueC NoValue EmptyHL))
+
+type11       = NamedType "T3" Nothing (SEQUENCE (Cons (ETMandatory type11First) (Cons (ETMandatory type11Second) (Cons (ETMandatory type11Nest1) Nil))))
+type11First  = NamedType "first" Nothing INTEGER 
+type11Second = NamedType "second" Nothing INTEGER
+
+type11Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (ETMandatory type11Fifth) (Cons (ETMandatory type11Fourth) (Cons (ETMandatory type11Nest2) Nil))))
+type11Third  = NamedType "third" Nothing INTEGER
+type11Fourth = NamedType "fourth" Nothing INTEGER
+
+type11Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (ETMandatory type11Fifth) (Cons (ETMandatory type11Sixth) Nil)))
+type11Fifth  = NamedType "fifth" Nothing INTEGER
+type11Sixth  = NamedType "sixth" Nothing INTEGER
+
+type12 =
+   CHOICE xs
+      where
+         xs = ChoiceOption c1 (ChoiceOption c2 NoChoice)
+         c1 = NamedType "c1" (Just (Context,0,Implicit)) s1
+         c2 = NamedType "c2" (Just (Context,0,Implicit)) s2
+         s1 = SEQUENCE (Cons (ETMandatory e1) (Cons (ETMandatory e2) Nil))
+         s2 = SEQUENCE (Cons (ETMandatory e3) (Cons (ETMandatory e4) Nil))
+         e1 = NamedType "one" Nothing INTEGER
+         e2 = NamedType "two" Nothing INTEGER
+         e3 = NamedType "three" Nothing INTEGER
+         e4 = NamedType "four" Nothing INTEGER
+
+val12a = ValueC (3:*:(4:*:Empty)) (NoValueC NoValue EmptyHL)
+val12b = NoValueC NoValue (ValueC (1:*:(2:*:Empty)) EmptyHL)
 
 {-
   T5 ::=
