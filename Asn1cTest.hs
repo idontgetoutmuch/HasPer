@@ -58,7 +58,7 @@ mainC nt@(NamedType name tagInfo t) v =
             text "assert(" <> cPtr <> text "); /* Assume infinite memory */",
             space,
             text "/* Initialize" <+> text name <+> text "*/",
-            topLevelNamedTypeValC nt v, -- sequenceC cPtr ntSeq v,
+            newTopLevelNamedTypeValC nt v, -- sequenceC cPtr ntSeq v,
             space,
             text "if(ac < 2) {",
             nest 5 (text "fprintf(stderr,\"Specify filename for PER output\\n\");"),
@@ -190,6 +190,10 @@ topLevelNamedTypeValC :: NamedType a -> a -> Doc
 topLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
    typeValC (parens (text "*" <> text (lowerFirst name))) t v
 
+newTopLevelNamedTypeValC :: NamedType a -> a -> Doc
+newTopLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
+   newTypeValC [render (parens (text "*" <> text (lowerFirst name)))] t v
+
 type7       = NamedType "T3" Nothing (SEQUENCE (Cons (ETMandatory type7First) (Cons (ETMandatory type7Second) (Cons (ETMandatory type7Nest1) Nil))))
 type7First  = NamedType "first" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 type7Second = NamedType "second" Nothing (RANGE INTEGER (Just 0) (Just 65535))
@@ -256,7 +260,7 @@ type12 =
       where
          xs = ChoiceOption c1 (ChoiceOption c2 NoChoice)
          c1 = NamedType "c1" (Just (Context,0,Implicit)) s1
-         c2 = NamedType "c2" (Just (Context,0,Implicit)) s2
+         c2 = NamedType "c2" (Just (Context,1,Implicit)) s2
          s1 = SEQUENCE (Cons (ETMandatory e1) (Cons (ETMandatory e2) Nil))
          s2 = SEQUENCE (Cons (ETMandatory e3) (Cons (ETMandatory e4) Nil))
          e1 = NamedType "one" Nothing INTEGER
@@ -266,14 +270,6 @@ type12 =
 
 val12a = ValueC (3:*:(4:*:Empty)) (NoValueC NoValue EmptyHL)
 val12b = NoValueC NoValue (ValueC (1:*:(2:*:Empty)) EmptyHL)
-
-{-
-  T5 ::=
-    SEQUENCE {
-      first INTEGER (0..65535),
-      second BIT STRING (SIZE (0..65537))
-    }
--}
 
 bitStringC :: Doc -> ASNType a -> a -> Doc
 bitStringC prefix a@(BITSTRING []) x = 
