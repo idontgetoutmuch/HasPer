@@ -46,6 +46,7 @@ prettyType(SIZE t s _) =
    prettyType t <+> parens (text "SIZE" <+> prettyConstraint s) -- text (show s))
 
 prettyTypeVal :: ASNType a -> a -> Doc
+prettyTypeVal a@(TYPEASS tr _ t) x = text tr <+> text "::=" <+> prettyTypeVal t x
 prettyTypeVal a@(BITSTRING []) x     = prettyBitString x
 prettyTypeVal a@INTEGER x       = text (show x)
 prettyTypeVal a@(RANGE t l u) x = prettyTypeVal t x
