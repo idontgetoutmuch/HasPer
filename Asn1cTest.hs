@@ -8,6 +8,7 @@ import qualified Data.Set as S
 import Data.Word
 import Data.List
 import Language.ASN1 hiding (BitString, NamedType)
+import QuickTest (genModule', RepTypeVal(..))
 
 genC :: NamedType a -> a -> Doc
 genC nt@(NamedType name tagInfo t) v =
@@ -162,7 +163,7 @@ newChoice ns (ChoiceOption nt@(NamedType n _ ct) cts) (ValueC v _) =
    newTypeValC (n:".choice.":ns) ct v
    where
       tags [] = empty
-      tags ns = hcat (map text ms) <> text ".present = " <> text (head ns) <> text "_PR_" <> text n
+      tags ns = lhs ns {- hcat (map text ms) -} <> text ".present = " <> text (head ns) <> text "_PR_" <> text n <> semi
       ms = reverse ns
 
 elemC :: Doc -> ElementType a -> a -> Doc
@@ -178,9 +179,21 @@ typeValC prefix a@(SEQUENCE s) x   = sequenceC prefix s x
 typeValC prefix a@(CHOICE c) x = choiceC' prefix c x
 
 newTypeValC :: [Name] -> ASNType a -> a -> Doc
-newTypeValC ns a@INTEGER x = hcat (map text (reverse ns)) <> text " = " <> text (show x) <> semi
-newTypeValC ns a@(CHOICE c) x = newChoice ns c x
-newTypeValC ns a@(SEQUENCE s) x = newSequence ns s x
+newTypeValC ns a@INTEGER x        = lhs ns {- hcat (map text (reverse ns)) -} <> text " = " <> text (show x) <> semi
+newTypeValC ns a@(CHOICE c) x     = newChoice ns c x
+newTypeValC ns a@(SEQUENCE s) x   = newSequence ns s x
+newTypeValC ns a@(RANGE t l u) x  = newTypeValC ns t x
+newTypeValC ns a@(SIZE t s e) x   = newTypeValC ns t x
+newTypeValC ns a@(BITSTRING []) x = newBitStringC ns a x
+newTypeValC _ a _ = prettyType a
+
+lhs :: Prefix -> Doc
+lhs ns = 
+   pointer <> components
+   where
+      (x:xs) = reverse ns
+      pointer = parens (text "*" <> text (lowerFirst x))
+      components = hcat (map text xs)
 
 namedTypeValC :: Doc -> NamedType a -> a -> Doc
 namedTypeValC prefix nt@(NamedType name tagInfo t) v =
@@ -192,7 +205,37 @@ topLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
 
 newTopLevelNamedTypeValC :: NamedType a -> a -> Doc
 newTopLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
-   newTypeValC [render (parens (text "*" <> text (lowerFirst name)))] t v
+   newTypeValC {- [render (parens (text "*" <> text (lowerFirst name)))] -} [name] t v
+
+oldQuickC =
+   do rs <- genModule'
+      let as = map g rs
+          ds = map f rs
+      return (vcat as $$ vcat ds)
+   where
+      f r =
+         case r of
+            RepTypeVal t v ->
+               topLevelNamedTypeValC (NamedType "Foo" Nothing t) v
+      g r =
+         case r of
+            RepTypeVal t v ->
+               prettyTypeVal t v
+
+quickC =
+   do rs <- genModule'
+      let as = map g rs
+          ds = map f rs
+      return (vcat as $$ vcat ds)
+   where
+      f r =
+         case r of
+            RepTypeVal t v ->
+               newTopLevelNamedTypeValC (NamedType "Foo" Nothing t) v
+      g r =
+         case r of
+            RepTypeVal t v ->
+               prettyTypeVal t v
 
 type7       = NamedType "T3" Nothing (SEQUENCE (Cons (ETMandatory type7First) (Cons (ETMandatory type7Second) (Cons (ETMandatory type7Nest1) Nil))))
 type7First  = NamedType "first" Nothing (RANGE INTEGER (Just 0) (Just 65535))
@@ -231,6 +274,8 @@ type9 =
          s2 = NamedType "subElement2" (Just (Context,4,Implicit)) INTEGER
          s3 = NamedType "subElement3" (Just (Context,5,Implicit)) INTEGER
 
+type9' = NamedType "Type9" Nothing type9
+
 val9 = NoValueC NoValue (ValueC (ValueC 7 (NoValueC NoValue (NoValueC NoValue EmptyHL))) (NoValueC NoValue EmptyHL))
 
 type10 =
@@ -240,6 +285,8 @@ type10 =
          ss1 = NamedType "superElement1" (Just (Context,6,Implicit)) INTEGER
          ss2 = NamedType "superElement2" (Just (Context,7,Explicit)) type9
          ss3 = NamedType "superElement3" (Just (Context,8,Implicit)) INTEGER
+
+type10' = NamedType "Type10" Nothing type10
 
 val10 = NoValueC NoValue (ValueC val9 (NoValueC NoValue EmptyHL))
 
@@ -268,6 +315,8 @@ type12 =
          e3 = NamedType "three" Nothing INTEGER
          e4 = NamedType "four" Nothing INTEGER
 
+type12' = NamedType "Type12" Nothing type12
+
 val12a = ValueC (3:*:(4:*:Empty)) (NoValueC NoValue EmptyHL)
 val12b = NoValueC NoValue (ValueC (1:*:(2:*:Empty)) EmptyHL)
 
@@ -289,6 +338,27 @@ bitStringC prefix a@(BITSTRING []) x =
       (callocM1, unusedBits) = length ((bitString x)) `quotRem` 8
       calloc = callocM1 + 1
 
+type Prefix = [Name]
+
+newBitStringC :: Prefix -> ASNType a -> a -> Doc
+newBitStringC ns a@(BITSTRING []) x =
+   space
+   $+$
+   fns <> text ".buf = calloc (" <> text (show calloc) <> text ", 1); /* " <> text (show calloc) <> text " bytes */" 
+   $$
+   text "assert(" <> fns <> text ".buf);"
+   $$
+   fns <> text ".size = " <> text (show calloc) <> semi
+   $$
+   vcat (zipWith (<>) bufs ((map ((<> semi) . text .show) . bitStringToBytes) x))
+   $$
+   fns <> text ".bits_unused = " <> text (show unusedBits) <> semi <> text " /* Trim unused bits */"
+   where
+      fns = lhs ns {- hcat (map text (reverse ns)) -}
+      bufs = map (\x -> fns <> text ".buf[" <> text (show x) <> text "] = ") [0..]
+      (callocM1, unusedBits) = length ((bitString x)) `quotRem` 8
+      calloc = callocM1 + 1
+
 bitStringToBytes :: BitString -> [Word8]
 bitStringToBytes =
    map fromNonNeg . pad . bitString
@@ -305,6 +375,7 @@ pad =
                l = length t
                t = take 8 x
                d = drop 8 x
+
 {-
 main =
    writeFile "asn1c2/generated.c" (render (genC type9 val9))

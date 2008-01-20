@@ -9,7 +9,9 @@
 \begin{code}
 module QuickTest(
    main,
-   genModule
+   genModule,
+   genModule',
+   RepTypeVal(..)
    )  where
 
 import Test.QuickCheck
@@ -632,6 +634,8 @@ prettyRepTypeVal r =
 genModule =
  do xs <- sample' (arbitrary :: Gen RepType)
     return (prettyModule xs)
+
+genModule' = sample' (arbitrary :: Gen RepTypeVal)
 
 prettyModuleBody xs =
  vcat (zipWith (<+>) typeNames (map prettyRepType . repsRename . repsRelabel $ xs))
