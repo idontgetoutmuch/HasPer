@@ -8,7 +8,7 @@ import Data.Monoid
 import Control.Monad.State hiding (mapM)
 import Text.PrettyPrint
 import ConstrainedType
-import Language.ASN1 hiding (NamedType, BitString)
+import Language.ASN1 hiding (NamedType, BitString, ComponentType)
 import Pretty
 
 data Shadow :: * -> * -> * where
@@ -69,11 +69,11 @@ unSChoice :: SChoice a Name -> Choice a
 unSChoice SNoChoice = NoChoice
 unSChoice (SChoiceOption n cs) = ChoiceOption (unSNamedType n) (unSChoice cs)
 
-shadowElement :: ElementType a -> SElementType a Name
-shadowElement (ETMandatory n) = SETMandatory (shadowNamedType n)
+shadowElement :: ComponentType a -> SElementType a Name
+shadowElement (CTMandatory n) = SETMandatory (shadowNamedType n)
 
-unSElement :: SElementType a Name -> ElementType a
-unSElement (SETMandatory n) = ETMandatory (unSNamedType n)
+unSElement :: SElementType a Name -> ComponentType a
+unSElement (SETMandatory n) = CTMandatory (unSNamedType n)
 
 shadowNamedType :: NamedType a -> SNamedType a Name
 shadowNamedType (NamedType n Nothing at) = SNamedType (SName n) Nothing (shadow at)
@@ -171,6 +171,5 @@ update =
    do x <- get
       put (x + 1)
       return ("element" ++ show x)
-   
-rename t = let (p,_) = runState (mapM (\_ -> update) t) 0 in p
 
+rename t = let (p,_) = runState (mapM (\_ -> update) t) 0 in p

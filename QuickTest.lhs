@@ -19,7 +19,7 @@ import Text.PrettyPrint
 import Control.Monad.State
 import ConstrainedType
 import Pretty
-import Language.ASN1 hiding (NamedType, BitString)
+import Language.ASN1 hiding (NamedType, BitString, ComponentType)
 import Data.Char
 import Data.Maybe
 import Data.Monoid
@@ -64,14 +64,14 @@ instance Show RepType where
          RepType y ->
             render (prettyType y)
 
-data RepElementType = forall t . RepElementType (ElementType t)
+data RepElementType = forall t . RepElementType (ComponentType t)
 
 instance Arbitrary RepElementType where
    arbitrary =
       do rnt <- arbitrary
          case rnt of
             RepNamedType nt ->
-               return (RepElementType (ETMandatory nt))
+               return (RepElementType (CTMandatory nt))
 
 data RepNamedType = forall t . RepNamedType (NamedType t)
 
@@ -229,14 +229,14 @@ instance Show RepSeqVal where
 arbitrarySeq :: Sequence a -> Gen RepSeqVal
 arbitrarySeq Nil =
    return (RepSeqVal Nil Empty)
-arbitrarySeq (Cons (ETMandatory (NamedType n i t)) ts) =
+arbitrarySeq (Cons (CTMandatory (NamedType n i t)) ts) =
    do u <- arbitraryType t
       us <- arbitrarySeq ts
       case u of
          RepTypeVal a v ->
             case us of
                RepSeqVal bs vs ->
-                  return (RepSeqVal (Cons (ETMandatory (NamedType n i a)) bs) (v:*:vs))
+                  return (RepSeqVal (Cons (CTMandatory (NamedType n i a)) bs) (v:*:vs))
 
 \end{code}
 
@@ -325,7 +325,7 @@ instance Arbitrary RepSeqVal where
                      case us of
                         RepSeqVal t xs ->
                            do e <- arbitrary
-                              return (RepSeqVal (Cons (ETMandatory (NamedType (elementName e) Nothing s)) t) (x:*:xs))
+                              return (RepSeqVal (Cons (CTMandatory (NamedType (elementName e) Nothing s)) t) (x:*:xs))
          ]
 
 data RepTypeVal = forall a . Eq a => RepTypeVal (ASNType a) a
@@ -646,8 +646,8 @@ prettyModuleValsBody xs =
    vcat (map (uncurry ($$)) (prefixPairs (map valueTypeName prefixes) tsvs))
    where
       tsvs = map prettyRepTypeVal . repTypeValsRename . repTypeValsRelabel $ xs
-      typeNames = (text "Type" <>) . text 
-      valueNames = (text "value" <>) . text 
+      typeNames = (text "Type" <>) . text
+      valueNames = (text "value" <>) . text
       prefixes = map ((typeNames &&& valueNames) . show) [1..]
       valueTypeName (t,v) = (t <+> text "::=", v <+> t <+> text "::=")
       prefixPairs ps xs = zipWith (\(p1,p2) (t,v) -> ((p1 <+> t), (p2 <+> v))) ps xs

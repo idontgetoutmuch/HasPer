@@ -8,7 +8,7 @@ import Data.Monoid
 import Control.Monad.State hiding (mapM)
 import Text.PrettyPrint
 import ConstrainedType
-import Language.ASN1 hiding (NamedType, BitString)
+import Language.ASN1 hiding (NamedType, BitString, ComponentType)
 import Pretty
 
 data Shadow :: * -> * -> * where
@@ -67,11 +67,11 @@ unSChoice :: SChoice a TagValue -> Choice a
 unSChoice SNoChoice = NoChoice
 unSChoice (SChoiceOption n cs) = ChoiceOption (unSNamedType n) (unSChoice cs)
 
-shadowElement :: ElementType a -> SElementType a TagValue
-shadowElement (ETMandatory n) = SETMandatory (shadowNamedType n)
+shadowElement :: ComponentType a -> SElementType a TagValue
+shadowElement (CTMandatory n) = SETMandatory (shadowNamedType n)
 
-unSElement :: SElementType a TagValue -> ElementType a
-unSElement (SETMandatory n) = ETMandatory (unSNamedType n)
+unSElement :: SElementType a TagValue -> ComponentType a
+unSElement (SETMandatory n) = CTMandatory (unSNamedType n)
 
 shadowNamedType :: NamedType a -> SNamedType a TagValue
 shadowNamedType (NamedType n Nothing at) = SNamedType n Nothing (shadow at)
@@ -173,13 +173,13 @@ update =
    do x <- get
       put (x + 1)
       return x
-   
+
 relabel t = let (p,_) = runState (mapM (\_ -> update) t) 0 in p
 
-testType1 = SEQUENCE (Cons (ETMandatory (NamedType "Foo" (Just (Context, 3, Implicit)) BOOLEAN)) Nil)
+testType1 = SEQUENCE (Cons (CTMandatory (NamedType "Foo" (Just (Context, 3, Implicit)) BOOLEAN)) Nil)
 
-foo = 
+foo =
    map (prettyType . unShadow) p
-   where 
-      ts    = [testType1, testType1, testType1] 
+   where
+      ts    = [testType1, testType1, testType1]
       (p,q) = runState (Control.Monad.State.sequence . map (mapM (\_ -> update) . shadow) $ ts) 0

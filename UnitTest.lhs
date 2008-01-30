@@ -58,11 +58,11 @@ t02 = INTEGER
 t03 = INTEGER
 t04 = INTEGER
 t1' = RANGE INTEGER (Just 25) (Just 30)
-t1 = ETMandatory (NamedType "" Nothing (RANGE INTEGER (Just 25) (Just 30)))
+t1 = CTMandatory (NamedType "" Nothing (RANGE INTEGER (Just 25) (Just 30)))
 --t2 = INCLUDES INTEGER t1
 --t3 = INCLUDES t1 t1
-t4 = ETMandatory (NamedType "" Nothing (RANGE INTEGER (Just (-256)) Nothing))
-t4' = ETOptional (NamedType "" Nothing (RANGE INTEGER (Just (-256)) Nothing))
+t4 = CTMandatory (NamedType "" Nothing (RANGE INTEGER (Just (-256)) Nothing))
+t4' = CTOptional (NamedType "" Nothing (RANGE INTEGER (Just (-256)) Nothing))
 t41 = RANGE INTEGER (Just 0) (Just 18000)
 t42 = RANGE INTEGER (Just 3) (Just 3)
 t5 = SEQUENCE (Cons t4 (Cons t4 Nil))
@@ -421,8 +421,8 @@ test16 = toPer t10 [(Just (-10):*:(2:*:Empty))]
 
 test17
     = toPer (SET
-              (Cons (ETMandatory (NamedType "" Nothing t1'))
-                (Cons (ETMandatory (NamedType "" Nothing t0)) Nil)))
+              (Cons (CTMandatory (NamedType "" Nothing t1'))
+                (Cons (CTMandatory (NamedType "" Nothing t0)) Nil)))
             (27 :*: (5 :*: Empty))
 
 \end{code}
@@ -465,20 +465,20 @@ pr = (emp :*: (t :*: (num :*: (hiredate :*: (sp :*: (Just cs :*: Empty))))))
 personnelRecord
     = TYPEASS "PersonnelRecord" (Just (Application, 0, Implicit))
        (SET
-         (Cons (ETMandatory (NamedType "name" Nothing name))
-           (Cons (ETMandatory (NamedType "title" (Just (Context, 0, Explicit)) VISIBLESTRING))
-             (Cons (ETMandatory (NamedType "number" Nothing empNumber))
-               (Cons (ETMandatory (NamedType "dateOfHire" (Just (Context, 1, Explicit)) date))
-                 (Cons (ETMandatory (NamedType "nameOfSpouse" (Just (Context, 2, Explicit)) name))
-                   (Cons (ETDefault (NamedType "children" (Just (Context, 3,Implicit))
+         (Cons (CTMandatory (NamedType "name" Nothing name))
+           (Cons (CTMandatory (NamedType "title" (Just (Context, 0, Explicit)) VISIBLESTRING))
+             (Cons (CTMandatory (NamedType "number" Nothing empNumber))
+               (Cons (CTMandatory (NamedType "dateOfHire" (Just (Context, 1, Explicit)) date))
+                 (Cons (CTMandatory (NamedType "nameOfSpouse" (Just (Context, 2, Explicit)) name))
+                   (Cons (CTDefault (NamedType "children" (Just (Context, 3,Implicit))
                                                              (SEQUENCEOF childInfo)) []) Nil)))))))
 
 name
     = TYPEASS "Name" (Just (Application, 1, Implicit))
         (SEQUENCE
-          (Cons (ETMandatory (NamedType "givenName" Nothing nameString))
-            (Cons (ETMandatory (NamedType "initial" Nothing (SIZE nameString (Elem (1,1)) NoMarker)))
-              (Cons (ETMandatory (NamedType "familyName" Nothing nameString)) Nil))))
+          (Cons (CTMandatory (NamedType "givenName" Nothing nameString))
+            (Cons (CTMandatory (NamedType "initial" Nothing (SIZE nameString (Elem (1,1)) NoMarker)))
+              (Cons (CTMandatory (NamedType "familyName" Nothing nameString)) Nil))))
 
 
 t = VisibleString "Director"
@@ -522,8 +522,8 @@ cs = [c1,c2]
 childInfo
     = TYPEASS "ChildInformation" Nothing
         (SET
-            (Cons (ETMandatory (NamedType "name" Nothing name))
-                (Cons (ETMandatory (NamedType "dateOfBirth" (Just (Context, 0, Explicit)) date)) Nil)))
+            (Cons (CTMandatory (NamedType "name" Nothing name))
+                (Cons (CTMandatory (NamedType "dateOfBirth" (Just (Context, 0, Explicit)) date)) Nil)))
 
 
 
@@ -546,13 +546,13 @@ emp = (empGN :*: (empI :*: (empFN :*: Empty)))
 seqType
     = TYPEASS "seqType" Nothing
         (SEQUENCE
-            (Cons (ETMandatory (NamedType "e" Nothing
+            (Cons (CTMandatory (NamedType "e" Nothing
                 (SEQUENCE
-                    (Cons (ETMandatory (NamedType "x" Nothing
+                    (Cons (CTMandatory (NamedType "x" Nothing
                             (RANGE (RANGE INTEGER (Just 2) Nothing) (Just (-2)) (Just 3))))
-                        (Cons (ETMandatory (NamedType "o" Nothing INTEGER)) Nil)))))
-                (Cons (ETMandatory (NamedType "b" Nothing INTEGER))
-                  (Cons (ETMandatory (NamedType "a" Nothing INTEGER)) Nil))))
+                        (Cons (CTMandatory (NamedType "o" Nothing INTEGER)) Nil)))))
+                (Cons (CTMandatory (NamedType "b" Nothing INTEGER))
+                  (Cons (CTMandatory (NamedType "a" Nothing INTEGER)) Nil))))
 
 seqVal
     = ((3 :*:
@@ -1090,8 +1090,8 @@ seqChoices1 =
    SEQUENCE elems
       where
          elems = Cons x (Cons y Nil)
-         x = ETMandatory (NamedType "x" Nothing choice1)
-         y = ETMandatory (NamedType "y" Nothing choice2)
+         x = CTMandatory (NamedType "x" Nothing choice1)
+         y = CTMandatory (NamedType "y" Nothing choice2)
 
 \end{code}
 
@@ -1101,9 +1101,9 @@ seqChoices1 =
 ax
     = TYPEASS "Ax" Nothing
         (SEQUENCE
-            (Cons (ETMandatory (NamedType "a" Nothing (RANGE INTEGER (Just 250) (Just 253))))
-                (Cons (ETMandatory (NamedType "b" Nothing BOOLEAN))
-                  (Cons (ETMandatory (NamedType "c" Nothing
+            (Cons (CTMandatory (NamedType "a" Nothing (RANGE INTEGER (Just 250) (Just 253))))
+                (Cons (CTMandatory (NamedType "b" Nothing BOOLEAN))
+                  (Cons (CTMandatory (NamedType "c" Nothing
                          (CHOICE
                           (ChoiceOption (NamedType "d" Nothing INTEGER)
                             (ChoiceExt
@@ -1113,13 +1113,13 @@ ax
                                      (ChoiceEAG
                                        (ChoiceExt NoChoice))))))))))
                     (Extens
-                        (Cons (ETExtMand (NamedType "" Nothing
+                        (Cons (CTExtMand (NamedType "" Nothing
                                (EXTADDGROUP
-                                (Cons (ETExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (Elem (3,3)) NoMarker)))
-                                     (Cons (ETOptional (NamedType "h" Nothing BOOLEAN)) Nil)))))
+                                (Cons (CTExtMand (NamedType "g" Nothing (SIZE NUMERICSTRING (Elem (3,3)) NoMarker)))
+                                     (Cons (CTOptional (NamedType "h" Nothing BOOLEAN)) Nil)))))
                             (Extens
-                                (Cons (ETOptional (NamedType "i" Nothing VISIBLESTRING))
-                                  (Cons (ETOptional (NamedType "j" Nothing VISIBLESTRING)) Nil)))))))))
+                                (Cons (CTOptional (NamedType "i" Nothing VISIBLESTRING))
+                                  (Cons (CTOptional (NamedType "j" Nothing VISIBLESTRING)) Nil)))))))))
 
 
 axVal
@@ -1233,7 +1233,7 @@ quickFailType2 =
          r1  = RANGE r2 (Just 3) (Just 3)
          r2  = RANGE r3 (Just 2) (Just 3)
          r3  = RANGE INTEGER (Just (-2)) (Just 7)
-         s   = SEQUENCE (Cons (ETMandatory (NamedType "y" Nothing INTEGER)) Nil)
+         s   = SEQUENCE (Cons (CTMandatory (NamedType "y" Nothing INTEGER)) Nil)
 
 quickFailVal3 = ValueC ((-2) :*: Empty) (NoValueC NoValue EmptyHL)
 
@@ -1253,7 +1253,7 @@ quickFailType2a =
          r1  = RANGE r2 (Just 3) (Just 3)
          r2  = RANGE r3 (Just 2) (Just 3)
          r3  = RANGE INTEGER (Just (-2)) (Just 7)
-         s   = SEQUENCE (Cons (ETMandatory (NamedType "y" Nothing INTEGER)) Nil)
+         s   = SEQUENCE (Cons (CTMandatory (NamedType "y" Nothing INTEGER)) Nil)
 
 quickFailVal3a = ValueC ((-2) :*: Empty) (NoValueC NoValue EmptyHL)
 
@@ -1302,7 +1302,7 @@ quickFailType11 =
          )
       )
    where
-      seq11 = SEQUENCE (Cons (ETMandatory (NamedType "c" (Just (Context, 1, Implicit)) INTEGER)) Nil)
+      seq11 = SEQUENCE (Cons (CTMandatory (NamedType "c" (Just (Context, 1, Implicit)) INTEGER)) Nil)
       choice11 = CHOICE (ChoiceOption (NamedType "p" Nothing INTEGER) NoChoice)
 
 quickFailVal11 =
@@ -1357,8 +1357,8 @@ xsChoice9 = xs
       b  = NamedType "b" Nothing INTEGER
       c  = NamedType "c" Nothing (SEQUENCE Nil)
       d  = NamedType "d" Nothing (SEQUENCE (Cons e (Cons f Nil)))
-      e  = ETMandatory (NamedType "e" Nothing INTEGER)
-      f  = ETMandatory (NamedType "f" Nothing (BITSTRING []))
+      e  = CTMandatory (NamedType "e" Nothing INTEGER)
+      f  = CTMandatory (NamedType "f" Nothing (BITSTRING []))
 
 xsChoiceVal91 = NoValueC NoValue (ValueC d EmptyHL)
    where
@@ -1379,8 +1379,8 @@ xsChoice9b = xs
       b  = NamedType "b" Nothing INTEGER
       c  = NamedType "c" Nothing BOOLEAN
       d  = NamedType "d" Nothing (SEQUENCE (Cons e (Cons f Nil)))
-      e  = ETMandatory (NamedType "e" Nothing INTEGER)
-      f  = ETMandatory (NamedType "f" Nothing (BITSTRING []))
+      e  = CTMandatory (NamedType "e" Nothing INTEGER)
+      f  = CTMandatory (NamedType "f" Nothing (BITSTRING []))
 
 xsChoiceVal9b1 = NoValueC NoValue (ValueC d EmptyHL)
    where
@@ -1415,8 +1415,8 @@ FooBaz {1 2 0 0 6 3} DEFINITIONS ::=
 tSeq1 =
    SEQUENCE testSeq1
       where
-         testSeq1 = Cons (ETMandatory (NamedType "" Nothing (SEQUENCE subSeq1))) Nil
-         subSeq1  = Cons (ETMandatory (NamedType "" Nothing consInt1)) Nil
+         testSeq1 = Cons (CTMandatory (NamedType "" Nothing (SEQUENCE subSeq1))) Nil
+         subSeq1  = Cons (CTMandatory (NamedType "" Nothing consInt1)) Nil
          consInt1 = RANGE INTEGER (Just 25) (Just 30)
 
 vSeq1 = (27:*:Empty):*:Empty
@@ -1468,7 +1468,7 @@ mmIdem t x =
    where
       runTest x y = runState (runErrorT (mFromPer t)) (B.pack (map (fromIntegral . fromNonNeg) (groupBy 8 x)),y)
 
-testType3 = SEQUENCE (Cons (ETOptional (NamedType "l1" Nothing t1')) (Cons (ETOptional (NamedType "l1" Nothing t1')) Nil))
+testType3 = SEQUENCE (Cons (CTOptional (NamedType "l1" Nothing t1')) (Cons (CTOptional (NamedType "l1" Nothing t1')) Nil))
 testVal3  = (Just 29):*:((Just 30):*:Empty)
 testToPer3 = toPer testType3 testVal3
 testFromPer3 = mmIdem testType3 testToPer3
@@ -1515,22 +1515,22 @@ seqTest t xs =
 
 type1 = NamedType "T1" Nothing (RANGE INTEGER (Just 25) (Just 30))
 
-type2 = NamedType "T2" Nothing (SEQUENCE (Cons (ETMandatory (NamedType "first" Nothing INTEGER)) Nil))
+type2 = NamedType "T2" Nothing (SEQUENCE (Cons (CTMandatory (NamedType "first" Nothing INTEGER)) Nil))
 
 type3 =
    NamedType "T3" Nothing (SEQUENCE (
-      Cons (ETMandatory (NamedType "first" Nothing INTEGER)) (
-         Cons (ETMandatory (NamedType "second" Nothing INTEGER)) Nil)))
+      Cons (CTMandatory (NamedType "first" Nothing INTEGER)) (
+         Cons (CTMandatory (NamedType "second" Nothing INTEGER)) Nil)))
 
-type7       = NamedType "T3" Nothing (SEQUENCE (Cons (ETMandatory type7First) (Cons (ETMandatory type7Second) (Cons (ETMandatory type7Nest1) Nil))))
+type7       = NamedType "T3" Nothing (SEQUENCE (Cons (CTMandatory type7First) (Cons (CTMandatory type7Second) (Cons (CTMandatory type7Nest1) Nil))))
 type7First  = NamedType "first" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 type7Second = NamedType "second" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 
-type7Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (ETMandatory type7Fifth) (Cons (ETMandatory type7Fourth) (Cons (ETMandatory type7Nest2) Nil))))
+type7Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (CTMandatory type7Fifth) (Cons (CTMandatory type7Fourth) (Cons (CTMandatory type7Nest2) Nil))))
 type7Third  = NamedType "third" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 type7Fourth = NamedType "fourth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 
-type7Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (ETMandatory type7Fifth) (Cons (ETMandatory type7Sixth) Nil)))
+type7Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (CTMandatory type7Fifth) (Cons (CTMandatory type7Sixth) Nil)))
 type7Fifth  = NamedType "fifth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 type7Sixth  = NamedType "sixth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 
@@ -1542,11 +1542,11 @@ thereAndBack7 =
    let NamedType _ _ t = type7 in
       mmIdem t (toPer t (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty))))
 
-type8       = NamedType "T4" Nothing (SEQUENCE (Cons (ETMandatory type8First) (Cons (ETMandatory type8Second) (Cons (ETMandatory type8Nest1) Nil))))
+type8       = NamedType "T4" Nothing (SEQUENCE (Cons (CTMandatory type8First) (Cons (CTMandatory type8Second) (Cons (CTMandatory type8Nest1) Nil))))
 type8First  = NamedType "first"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 type8Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 
-type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (ETMandatory type8Third) (Cons (ETMandatory type8Fourth) Nil)))
+type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (CTMandatory type8Third) (Cons (CTMandatory type8Fourth) Nil)))
 type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 
@@ -1560,7 +1560,7 @@ thereAndBack8 =
 
 bs8' n = take n (cycle [1,0,1,0,0,0,0,0])
 
-type9       = NamedType "T5" Nothing (SEQUENCE (Cons (ETMandatory type9First) (Cons (ETMandatory type9Second) Nil)))
+type9       = NamedType "T5" Nothing (SEQUENCE (Cons (CTMandatory type9First) (Cons (CTMandatory type9Second) Nil)))
 type9First  = NamedType "first"  Nothing (RANGE INTEGER (Just 0) (Just 65535))
 type9Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (0,65544)) NoMarker)
 

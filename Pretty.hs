@@ -82,17 +82,17 @@ prettySeqVal (Cons e Nil) (x:*:Empty) =
 prettySeqVal (Cons e l) (x:*:xs) =
    prettyElementTypeVal e x <> comma $$ prettySeqVal l xs
 
-instance Pretty (ElementType a) where
+instance Pretty (ComponentType a) where
    pretty = prettyElem
 
-instance PrettyVal (ElementType a) a where
+instance PrettyVal (ComponentType a) a where
    prettyVal = prettyElementTypeVal
 
-prettyElem :: ElementType a -> Doc
-prettyElem (ETMandatory nt) = prettyNamedType nt
+prettyElem :: ComponentType a -> Doc
+prettyElem (CTMandatory nt) = prettyNamedType nt
 
-prettyElementTypeVal :: ElementType a -> a -> Doc
-prettyElementTypeVal (ETMandatory (NamedType n _ t)) x =
+prettyElementTypeVal :: ComponentType a -> a -> Doc
+prettyElementTypeVal (CTMandatory (NamedType n _ t)) x =
    text n <+> prettyTypeVal t x
 
 instance Pretty (Choice a) where

@@ -29,35 +29,61 @@ import Data.Word
 import Data.Maybe
 \end{code}
 
-Some type aliases and newtype declarations
+
+The GADT ASNType which represents all ASN.1 types.
 
 \begin{code}
+
+data ASNType :: * -> * where
+   TYPEASS         :: TypeRef -> Maybe TagInfo -> ASNType a -> ASNType a
+   EXTADDGROUP     :: Sequence a -> ASNType a
+   BOOLEAN         :: ASNType Bool
+   INTEGER         :: ASNType Integer
+   ENUMERATED      :: Enumerate a -> ASNType a
+   BITSTRING       :: NamedBits -> ASNType BitString
+   OCTETSTRING     :: ASNType OctetString
+   PRINTABLESTRING :: ASNType PrintableString
+   IA5STRING       :: ASNType IA5String
+   VISIBLESTRING   :: ASNType VisibleString
+   NUMERICSTRING   :: ASNType NumericString
+   SINGLE          :: SingleValue a => ASNType a -> a -> ASNType a
+   INCLUDES        :: ContainedSubtype a => ASNType a -> ASNType a -> ASNType a
+   RANGE           :: ASNType Integer -> Lower -> Upper -> ASNType Integer
+   SEQUENCE        :: Sequence a -> ASNType a
+   SEQUENCEOF      :: ASNType a -> ASNType [a]
+   SIZE            :: ASNType a -> Constraint -> EM -> ASNType a
+   SET             :: Sequence a -> ASNType a
+   SETOF           :: ASNType a -> ASNType [a]
+   CHOICE          :: Choice a -> ASNType (HL a (S Z))
+   FROM            :: PermittedAlphabet a => ASNType a -> a -> ASNType a
+\end{code}
+
+Some newtype declarations used to define ASNType, and type aliases to make the code more readable.
+
+\begin{code}
+newtype IA5String = IA5String {iA5String :: String}
+    deriving (Eq, Show)
+newtype BitString = BitString {bitString :: BitStream}
+    deriving (Eq, Show)
+newtype OctetString = OctetString {octetString :: OctetStream}
+    deriving (Eq, Show)
+newtype PrintableString = PrintableString {printableString :: String}
+    deriving (Eq, Show)
+newtype NumericString = NumericString {numericString :: String}
+    deriving (Eq, Show)
+
 type BitStream = [Int]
 type Octet = Word8
 type OctetStream = [Octet]
 
-newtype IA5String = IA5String {iA5String :: String}
-
-instance Show IA5String where
-   show s = iA5String s
-
-newtype BitString = BitString {bitString :: BitStream}
-   deriving (Eq, Show)
-
-newtype OctetString = OctetString {octetString :: OctetStream}
-   deriving (Eq, Show)
-
-newtype PrintableString = PrintableString {printableString :: String}
-newtype NumericString = NumericString {numericString :: String}
-
-instance Show NumericString where
-   show s = numericString s
-
-instance Show PrintableString where
-   show s = printableString s
+type TagInfo    = (TagType, TagValue, TagPlicity)
+type TypeRef    = String
+type Name       = String
 \end{code}
 
-X.680 (07/2002) Section 47.1 Table 9
+Type Classes which make explitict the (not necessarily PER-visible) subtypes associated with the ASN.1 types.
+
+See X.680 (07/2002) Section 47.1 Table 9
 
 \begin{code}
 class SingleValue a
@@ -86,12 +112,11 @@ instance ValueRange Integer
 
 class PermittedAlphabet a
 
--- BIT STRING cannot be given permitted alphabet
 instance PermittedAlphabet IA5String
 instance PermittedAlphabet PrintableString
 instance PermittedAlphabet VisibleString
 instance PermittedAlphabet NumericString
--- INTEGER cannot be given permitted alphabet
+
 
 class SizeConstraint a
 
@@ -103,8 +128,8 @@ instance SizeConstraint VisibleString
 instance SizeConstraint NumericString
 \end{code}
 
-Heterogeneous lists and GADTs for Sequence, Choice and Enumerated
-values.
+Type for heterogeneous lists. This is used in defining the Sequence, Set, Choice and Enumerated
+types.
 
 \begin{code}
 data Nil = Empty
@@ -117,26 +142,33 @@ instance (Show a, Show l) => Show (a:*:l) where
    show (x:*:xs) = show x ++ ":*:" ++ show xs
 \end{code}
 
-A sequence is a collection of element types
+X.680 Section 24. Sequence Type
+
+A sequence is a (possibly heterogeneous) collection of component
+types. Nil is the empty sequence, Cons adds components to a
+sequence and Extens signals an extension marker.
 
 \begin{code}
 data Sequence :: * -> * where
    Nil     :: Sequence Nil
    Extens  :: Sequence l    -> Sequence l
-   Cons    :: ElementType a -> Sequence l -> Sequence (a:*:l)
+   Cons    :: ComponentType a -> Sequence l -> Sequence (a:*:l)
 \end{code}
 
-An element type is either mandatory, optional, or default.
-The second constructor ETExtMand deals with an extension
-addition which is neither optional nor default.
+A component type is either mandatory, optional or default.
+The second constructor CTExtMand deals with an extension
+addition which is neither optional nor default. It returns a Maybe
+value since a mandatory extension value may not be present in a
+sequence value.
 
 \begin{code}
 
-data ElementType :: * -> * where
-   ETMandatory :: NamedType a -> ElementType a
-   ETExtMand   :: NamedType a -> ElementType (Maybe a)
-   ETOptional  :: NamedType a -> ElementType (Maybe a)
-   ETDefault   :: NamedType a -> a -> ElementType (Maybe a)
+data ComponentType :: * -> * where
+   CTMandatory :: NamedType a -> ComponentType a
+   CTExtMand   :: NamedType a -> ComponentType (Maybe a)
+   CTOptional  :: NamedType a -> ComponentType (Maybe a)
+   CTDefault   :: NamedType a -> a -> ComponentType (Maybe a)
+   CTCompOf    :: ASNType a   -> ComponentType (ASNType a)
 
 \end{code}
 
@@ -228,16 +260,6 @@ data Enumerate :: * -> * where
     NoEnum      :: Enumerate Nil
     EnumOption  :: EnumerationItem a -> Enumerate l -> Enumerate ((Maybe a):*:l)
     EnumExt     :: Enumerate l -> Enumerate l
-
-\end{code}
-
-Type Aliases for Tag Information and Constraint Extension Marker
-
-\begin{code}
-
-type TagInfo    = (TagType, TagValue, TagPlicity)
-type TypeRef    = String
-type Name       = String
 
 \end{code}
 
@@ -368,36 +390,7 @@ data NamedBit = NB String Integer
 
 \end{code}
 
-ASNType
 
-\begin{code}
-
-data ASNType :: * -> * where
-   TYPEASS         :: TypeRef -> Maybe TagInfo -> ASNType a -> ASNType a
-   EXTADDGROUP     :: Sequence a -> ASNType a
-   BOOLEAN         :: ASNType Bool
-   INTEGER         :: ASNType Integer
-   ENUMERATED      :: Enumerate a -> ASNType a
-   BITSTRING       :: NamedBits -> ASNType BitString
-   OCTETSTRING     :: ASNType OctetString
-   PRINTABLESTRING :: ASNType PrintableString
-   IA5STRING       :: ASNType IA5String
-   VISIBLESTRING   :: ASNType VisibleString
-   NUMERICSTRING   :: ASNType NumericString
-   SINGLE          :: SingleValue a => ASNType a -> a -> ASNType a
-   INCLUDES        :: ContainedSubtype a => ASNType a -> ASNType a -> ASNType a
-   RANGE           :: ASNType Integer -> Lower -> Upper -> ASNType Integer
-   SEQUENCE        :: Sequence a -> ASNType a
-   SEQUENCEOF      :: ASNType a -> ASNType [a]
-   SIZE            :: ASNType a -> Constraint -> EM -> ASNType a
--- REMOVED SizeConstraint a => from above
-   SET             :: Sequence a -> ASNType a
-   SETOF           :: ASNType a -> ASNType [a]
-   CHOICE          :: Choice a -> ASNType (HL a (S Z))
-   FROM            :: PermittedAlphabet a => ASNType a -> a -> ASNType a
--- WILL CHANGE 2ND ELEMENT TO cONSTRAINT cHAR FOR FROM CONSTRUCTOR
-
-\end{code}
 
 Type aliases used when defining a range-constrained Integer.
 
@@ -1137,19 +1130,19 @@ encodeSeqAux (ap,ab) (rp,rb) Nil _
         else ((reverse rp,reverse rb),(reverse ap, reverse ab))
 encodeSeqAux (ap,ab) (rp,rb) (Extens as) xs
     = encodeExtSeqAux (ap,ab) (rp,rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (ETMandatory (NamedType n t a)) as) (x:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTMandatory (NamedType n t a)) as) (x:*:xs) =
    encodeSeqAux (ap,ab) ([]:rp,toPer a x:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (ETExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (ETExtMand (NamedType n t a)) as) (Just x:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Just x:*:xs) =
    encodeSeqAux (ap,ab) ([]:rp,toPer a x:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (ETOptional (NamedType n t a)) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (ETOptional (NamedType n t a)) as) (Just x:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Just x:*:xs) =
    encodeSeqAux (ap,ab) ([1]:rp,toPer a x:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (ETDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (ETDefault (NamedType n t a) d) as) (Just x:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs) =
    encodeSeqAux (ap,ab) ([1]:rp,toPer a x:rb) as xs
 
 \end{code}
@@ -1170,17 +1163,17 @@ encodeExtSeqAux (ap,ab) (rp,rb) Nil _
                 else  (([0]:reverse rp,reverse ab),(reverse ap,reverse ab))
 encodeExtSeqAux extAdds extRoot (Extens as) xs =
    encodeSeqAux extAdds extRoot as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETExtMand (NamedType n t a)) as) (Just x:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Just x:*:xs) =
    encodeExtSeqAux ([1]:ap,toPerOpen a x:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETOptional (NamedType n t a)) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETOptional (NamedType n t a)) as) (Just x:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Just x:*:xs) =
    encodeExtSeqAux ([1]:ap,toPerOpen a x:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (ETDefault (NamedType n t a) d) as) (Just x:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs) =
    encodeExtSeqAux ([1]:ap,toPerOpen a x:ab) (rp,rb) as xs
 
 \end{code}
@@ -1295,7 +1288,7 @@ tagOrder x y = getTI x < getTI y
 getTags :: Sequence a -> [TagInfo]
 getTags Nil               = []
 getTags (Extens xs)       = getTags' xs
-getTags (Cons a xs)       = getETI a : getTags xs
+getTags (Cons a xs)       = getCTI a : getTags xs
 
 
 getTags' :: Sequence a -> [TagInfo]
@@ -1304,15 +1297,15 @@ getTags' (Extens xs) = getTags xs
 getTags' (Cons a xs) = getTags' xs
 
 
-getETI :: ElementType a -> TagInfo
-getETI (ETMandatory (NamedType _ Nothing ct))   = getTI ct
-getETI (ETMandatory (NamedType _ (Just t) ct))  = t
-getETI (ETExtMand (NamedType _ Nothing ct))     = getTI ct
-getETI (ETExtMand (NamedType _ (Just t) ct))    = t
-getETI (ETOptional (NamedType _ Nothing ct))   = getTI ct
-getETI (ETOptional (NamedType _ (Just t) ct))  = t
-getETI (ETDefault (NamedType _ Nothing ct) d)  = getTI ct
-getETI (ETDefault (NamedType _ (Just t) ct) d) = t
+getCTI :: ComponentType a -> TagInfo
+getCTI (CTMandatory (NamedType _ Nothing ct))   = getTI ct
+getCTI (CTMandatory (NamedType _ (Just t) ct))  = t
+getCTI (CTExtMand (NamedType _ Nothing ct))     = getTI ct
+getCTI (CTExtMand (NamedType _ (Just t) ct))    = t
+getCTI (CTOptional (NamedType _ Nothing ct))   = getTI ct
+getCTI (CTOptional (NamedType _ (Just t) ct))  = t
+getCTI (CTDefault (NamedType _ Nothing ct) d)  = getTI ct
+getCTI (CTDefault (NamedType _ (Just t) ct) d) = t
 
 getTI :: ASNType a -> TagInfo
 getTI (TYPEASS _ (Just tg) _)   = tg
@@ -1389,7 +1382,7 @@ getCTags NoChoice                     = []
 getCTags (ChoiceExt xs)               = getCTags xs
 getCTags (ChoiceEAG xs)               = getCTags xs
 getCTags (ChoiceOption (NamedType n t (EXTADDGROUP (Cons v rs))) xs)
-        = getETI v : getCTags (ChoiceOption (NamedType n t (EXTADDGROUP rs))xs)
+        = getCTI v : getCTags (ChoiceOption (NamedType n t (EXTADDGROUP rs))xs)
 getCTags (ChoiceOption (NamedType n t (EXTADDGROUP Nil)) xs)
         = getCTags xs
 getCTags (ChoiceOption (NamedType n Nothing a) xs)
@@ -1766,8 +1759,8 @@ mFromPer (SEQUENCE s)              =
    where
       l :: Integral n => Sequence a -> n
       l Nil = 0
-      l (Cons (ETMandatory _) ts) = l ts
-      l (Cons (ETOptional _ ) ts) = 1+(l ts)
+      l (Cons (CTMandatory _) ts) = l ts
+      l (Cons (CTOptional _ ) ts) = 1+(l ts)
 mFromPer t@(SIZE (SIZE _ _ _) _ _) =
    let nt = multiSize t in mFromPer nt
 mFromPer (SEQUENCEOF u)        = fromPerSeqOf u
@@ -1792,11 +1785,11 @@ I'm not really sure if this is true now having thought about it
 
 mmFromPerSeq :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => BitStream -> Sequence a -> m a
 mmFromPerSeq _ Nil = return Empty
-mmFromPerSeq bitmap (Cons (ETMandatory (NamedType _ _ t)) ts) =
+mmFromPerSeq bitmap (Cons (CTMandatory (NamedType _ _ t)) ts) =
    do x <- mFromPer t
       xs <- mmFromPerSeq bitmap ts
       return (x:*:xs)
-mmFromPerSeq bitmap (Cons (ETOptional (NamedType _ _ t)) ts) =
+mmFromPerSeq bitmap (Cons (CTOptional (NamedType _ _ t)) ts) =
    do if (head bitmap) == 0
          then
             do xs <- mmFromPerSeq (tail bitmap) ts
