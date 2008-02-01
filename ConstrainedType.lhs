@@ -168,7 +168,7 @@ data ComponentType :: * -> * where
    CTExtMand   :: NamedType a -> ComponentType (Maybe a)
    CTOptional  :: NamedType a -> ComponentType (Maybe a)
    CTDefault   :: NamedType a -> a -> ComponentType (Maybe a)
-   CTCompOf    :: ASNType a   -> ComponentType (ASNType a)
+   CTCompOf    :: ASNType a   -> ComponentType a
 
 \end{code}
 
@@ -1120,6 +1120,11 @@ Note that if another Extens occurs then reponsibility returns
 to encodeSeqAux since this is the 2 extension marker case
 (and what follows is in the extension root).
 
+encodeCO implments the encoding of a COMPONENTS OF component of a
+sequence. The (non-extension) components of the referenced
+sequence are embedded in the parent sequence and are enocoded as
+if components of this sequence.
+
 \begin{code}
 
 encodeSeqAux :: ([BitStream],[BitStream]) -> ([BitStream],[BitStream]) -> Sequence a -> a ->
@@ -1130,6 +1135,10 @@ encodeSeqAux (ap,ab) (rp,rb) Nil _
         else ((reverse rp,reverse rb),(reverse ap, reverse ab))
 encodeSeqAux (ap,ab) (rp,rb) (Extens as) xs
     = encodeExtSeqAux (ap,ab) (rp,rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTCompOf (TYPEASS tr ti (SEQUENCE s))) as) (x:*:xs) =
+    let (p,b) = encodeCO ([],[]) s x
+    in
+        encodeSeqAux (ap,ab) (p ++ rp,b ++ rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTMandatory (NamedType n t a)) as) (x:*:xs) =
    encodeSeqAux (ap,ab) ([]:rp,toPer a x:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Nothing:*:xs) =
@@ -1144,6 +1153,39 @@ encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothing:
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs) =
    encodeSeqAux (ap,ab) ([1]:rp,toPer a x:rb) as xs
+
+encodeCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> (([BitStream],[BitStream]))
+encodeCO (rp,rb) Nil _
+    = (rp,rb)
+encodeCO (rp,rb) (Extens as) xs
+    = encodeExtCO (rp,rb) as xs
+encodeCO (rp,rb) (Cons (CTCompOf (TYPEASS tr ti (SEQUENCE s))) as) (x:*:xs) =
+    let (p,b) = encodeCO ([],[]) s x
+    in
+        encodeCO (p ++ rp,b ++ rb) as xs
+encodeCO (rp,rb) (Cons (CTMandatory (NamedType n t a)) as) (x:*:xs) =
+   encodeCO ([]:rp,toPer a x:rb) as xs
+encodeCO (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeCO ([]:rp,[]:rb) as xs
+encodeCO (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Just x:*:xs) =
+   encodeCO ([]:rp,toPer a x:rb) as xs
+encodeCO (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeCO ([0]:rp,[]:rb) as xs
+encodeCO (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Just x:*:xs) =
+   encodeCO ([1]:rp,toPer a x:rb) as xs
+encodeCO (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+   encodeCO ([0]:rp,[]:rb) as xs
+encodeCO (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs) =
+   encodeCO ([1]:rp,toPer a x:rb) as xs
+
+
+encodeExtCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> (([BitStream],[BitStream]))
+encodeExtCO (rp,rb) Nil _
+    = (rp,rb)
+encodeExtCO (rp,rb) (Extens as) xs
+    = encodeCO (rp,rb) as xs
+encodeExtCO (rp,rb) (Cons _ as) (_:*:xs)
+    = encodeExtCO (rp,rb) as xs
 
 \end{code}
 
