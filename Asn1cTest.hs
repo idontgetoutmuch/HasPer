@@ -7,7 +7,7 @@ import Pretty
 import qualified Data.Set as S
 import Data.Word
 import Data.List
-import Language.ASN1 hiding (BitString, NamedType)
+import Language.ASN1 hiding (BitString, NamedType, ComponentType)
 import QuickTest (genModule', RepTypeVal(..))
 
 genC :: NamedType a -> a -> Doc
@@ -133,8 +133,8 @@ newSequence ns (Cons t ts) (x:*:xs) =
    newElementType (".":ns) t x $$
    newSequence ns ts xs
 
-newElementType :: [Name] -> ElementType a -> a -> Doc
-newElementType ns (ETMandatory (NamedType n _ t)) x =
+newElementType :: [Name] -> ComponentType a -> a -> Doc
+newElementType ns (CTMandatory (NamedType n _ t)) x =
    newTypeValC (n:ns) t x
 
 choiceC :: Doc -> Choice a -> HL a (S Z) -> Doc
@@ -166,8 +166,8 @@ newChoice ns (ChoiceOption nt@(NamedType n _ ct) cts) (ValueC v _) =
       tags ns = lhs ns {- hcat (map text ms) -} <> text ".present = " <> text (head ns) <> text "_PR_" <> text n <> semi
       ms = reverse ns
 
-elemC :: Doc -> ElementType a -> a -> Doc
-elemC prefix (ETMandatory (NamedType n _ t)) x =
+elemC :: Doc -> ComponentType a -> a -> Doc
+elemC prefix (CTMandatory (NamedType n _ t)) x =
    typeValC (prefix <> text n) t x
 
 typeValC :: Doc -> ASNType a -> a -> Doc
@@ -237,25 +237,25 @@ quickC =
             RepTypeVal t v ->
                prettyTypeVal t v
 
-type7       = NamedType "T3" Nothing (SEQUENCE (Cons (ETMandatory type7First) (Cons (ETMandatory type7Second) (Cons (ETMandatory type7Nest1) Nil))))
+type7       = NamedType "T3" Nothing (SEQUENCE (Cons (CTMandatory type7First) (Cons (CTMandatory type7Second) (Cons (CTMandatory type7Nest1) Nil))))
 type7First  = NamedType "first" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 type7Second = NamedType "second" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 
-type7Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (ETMandatory type7Fifth) (Cons (ETMandatory type7Fourth) (Cons (ETMandatory type7Nest2) Nil))))
+type7Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (CTMandatory type7Fifth) (Cons (CTMandatory type7Fourth) (Cons (CTMandatory type7Nest2) Nil))))
 type7Third  = NamedType "third" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 type7Fourth = NamedType "fourth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 
-type7Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (ETMandatory type7Fifth) (Cons (ETMandatory type7Sixth) Nil)))
+type7Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (CTMandatory type7Fifth) (Cons (CTMandatory type7Sixth) Nil)))
 type7Fifth  = NamedType "fifth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 type7Sixth  = NamedType "sixth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
 
 val7 = (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty)))
 
-type8       = NamedType "T4" Nothing (SEQUENCE (Cons (ETMandatory type8First) (Cons (ETMandatory type8Second) (Cons (ETMandatory type8Nest1) Nil))))
+type8       = NamedType "T4" Nothing (SEQUENCE (Cons (CTMandatory type8First) (Cons (CTMandatory type8Second) (Cons (CTMandatory type8Nest1) Nil))))
 type8First  = NamedType "first"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 type8Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 
-type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (ETMandatory type8Third) (Cons (ETMandatory type8Fourth) Nil)))
+type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (CTMandatory type8Third) (Cons (CTMandatory type8Fourth) Nil)))
 type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 
@@ -290,15 +290,15 @@ type10' = NamedType "Type10" Nothing type10
 
 val10 = NoValueC NoValue (ValueC val9 (NoValueC NoValue EmptyHL))
 
-type11       = NamedType "T3" Nothing (SEQUENCE (Cons (ETMandatory type11First) (Cons (ETMandatory type11Second) (Cons (ETMandatory type11Nest1) Nil))))
+type11       = NamedType "T3" Nothing (SEQUENCE (Cons (CTMandatory type11First) (Cons (CTMandatory type11Second) (Cons (CTMandatory type11Nest1) Nil))))
 type11First  = NamedType "first" Nothing INTEGER 
 type11Second = NamedType "second" Nothing INTEGER
 
-type11Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (ETMandatory type11Fifth) (Cons (ETMandatory type11Fourth) (Cons (ETMandatory type11Nest2) Nil))))
+type11Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (CTMandatory type11Fifth) (Cons (CTMandatory type11Fourth) (Cons (CTMandatory type11Nest2) Nil))))
 type11Third  = NamedType "third" Nothing INTEGER
 type11Fourth = NamedType "fourth" Nothing INTEGER
 
-type11Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (ETMandatory type11Fifth) (Cons (ETMandatory type11Sixth) Nil)))
+type11Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (CTMandatory type11Fifth) (Cons (CTMandatory type11Sixth) Nil)))
 type11Fifth  = NamedType "fifth" Nothing INTEGER
 type11Sixth  = NamedType "sixth" Nothing INTEGER
 
@@ -308,8 +308,8 @@ type12 =
          xs = ChoiceOption c1 (ChoiceOption c2 NoChoice)
          c1 = NamedType "c1" (Just (Context,0,Implicit)) s1
          c2 = NamedType "c2" (Just (Context,1,Implicit)) s2
-         s1 = SEQUENCE (Cons (ETMandatory e1) (Cons (ETMandatory e2) Nil))
-         s2 = SEQUENCE (Cons (ETMandatory e3) (Cons (ETMandatory e4) Nil))
+         s1 = SEQUENCE (Cons (CTMandatory e1) (Cons (CTMandatory e2) Nil))
+         s2 = SEQUENCE (Cons (CTMandatory e3) (Cons (CTMandatory e4) Nil))
          e1 = NamedType "one" Nothing INTEGER
          e2 = NamedType "two" Nothing INTEGER
          e3 = NamedType "three" Nothing INTEGER
