@@ -9,6 +9,7 @@ import Data.Word
 import Data.List
 import Language.ASN1 hiding (BitString, NamedType, ComponentType)
 import QuickTest (genModule', RepTypeVal(..))
+import TestData
 
 genC :: NamedType a -> a -> Doc
 genC nt@(NamedType name tagInfo t) v =
@@ -121,12 +122,6 @@ callocPreamble name =
       cPtr = text (lowerFirst name)
       cType = text name <> text "_t"
 
-sequenceC :: Doc -> Sequence a -> a -> Doc
-sequenceC prefix Nil _ = empty
-sequenceC prefix (Cons t ts) (x:*:xs) =
-   elemC (prefix <> text ".") t x $$ 
-   sequenceC prefix ts xs
-
 newSequence :: [Name] -> Sequence a -> a -> Doc
 newSequence _ Nil _ = empty
 newSequence ns (Cons t ts) (x:*:xs) =
@@ -136,23 +131,6 @@ newSequence ns (Cons t ts) (x:*:xs) =
 newElementType :: [Name] -> ComponentType a -> a -> Doc
 newElementType ns (CTMandatory (NamedType n _ t)) x =
    newTypeValC (n:ns) t x
-
-choiceC :: Doc -> Choice a -> HL a (S Z) -> Doc
-choiceC _ NoChoice _ = empty
-choiceC prefix (ChoiceOption nt cts) (NoValueC _ v) =
-   choiceC prefix cts v
-choiceC prefix (ChoiceOption nt cts) (ValueC v _) =
-   namedTypeValC (prefix <> text ".choice.") nt v
-
-choiceCAux :: [Name] -> Doc -> Choice a -> HL a (S Z) -> (Doc,[Name])
-choiceCAux ds _ NoChoice _ = (empty,ds)
-choiceCAux ds prefix (ChoiceOption _ cts) (NoValueC _ v) =
-   choiceCAux ds prefix cts v
-choiceCAux ds prefix (ChoiceOption nt@(NamedType n _ _) cts) (ValueC v _) =
-   (namedTypeValC (prefix <> text ".choice.") nt v, n:ds)
-
-choiceC' :: Doc -> Choice a -> HL a (S Z) -> Doc
-choiceC' prefix t v = let (p,qs) = choiceCAux [] prefix t v in vcat (map text qs) $$ p
 
 newChoice :: [Name] -> Choice a -> HL a (S Z) -> Doc
 newChoice ns NoChoice _ = empty
@@ -166,20 +144,8 @@ newChoice ns (ChoiceOption nt@(NamedType n _ ct) cts) (ValueC v _) =
       tags ns = lhs ns {- hcat (map text ms) -} <> text ".present = " <> text (head ns) <> text "_PR_" <> text n <> semi
       ms = reverse ns
 
-elemC :: Doc -> ComponentType a -> a -> Doc
-elemC prefix (CTMandatory (NamedType n _ t)) x =
-   typeValC (prefix <> text n) t x
-
-typeValC :: Doc -> ASNType a -> a -> Doc
-typeValC prefix a@(BITSTRING []) x = bitStringC prefix a x
-typeValC prefix a@INTEGER x        = prefix <> text " = " <> text (show x) <> semi
-typeValC prefix a@(RANGE t l u) x  = typeValC prefix t x
-typeValC prefix a@(SIZE t s e) x   = typeValC prefix t x
-typeValC prefix a@(SEQUENCE s) x   = sequenceC prefix s x
-typeValC prefix a@(CHOICE c) x = choiceC' prefix c x
-
 newTypeValC :: [Name] -> ASNType a -> a -> Doc
-newTypeValC ns a@INTEGER x        = lhs ns {- hcat (map text (reverse ns)) -} <> text " = " <> text (show x) <> semi
+newTypeValC ns a@INTEGER x        = lhs ns <> text " = " <> text (show x) <> semi
 newTypeValC ns a@(CHOICE c) x     = newChoice ns c x
 newTypeValC ns a@(SEQUENCE s) x   = newSequence ns s x
 newTypeValC ns a@(RANGE t l u) x  = newTypeValC ns t x
@@ -195,32 +161,9 @@ lhs ns =
       pointer = parens (text "*" <> text (lowerFirst x))
       components = hcat (map text xs)
 
-namedTypeValC :: Doc -> NamedType a -> a -> Doc
-namedTypeValC prefix nt@(NamedType name tagInfo t) v =
-   typeValC (prefix <> text name) t v
-
-topLevelNamedTypeValC :: NamedType a -> a -> Doc
-topLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
-   typeValC (parens (text "*" <> text (lowerFirst name))) t v
-
 newTopLevelNamedTypeValC :: NamedType a -> a -> Doc
 newTopLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
    newTypeValC {- [render (parens (text "*" <> text (lowerFirst name)))] -} [name] t v
-
-oldQuickC =
-   do rs <- genModule'
-      let as = map g rs
-          ds = map f rs
-      return (vcat as $$ vcat ds)
-   where
-      f r =
-         case r of
-            RepTypeVal t v ->
-               topLevelNamedTypeValC (NamedType "Foo" Nothing t) v
-      g r =
-         case r of
-            RepTypeVal t v ->
-               prettyTypeVal t v
 
 quickC =
    do rs <- genModule'
@@ -302,24 +245,6 @@ type11Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (CTMandatory type11Fift
 type11Fifth  = NamedType "fifth" Nothing INTEGER
 type11Sixth  = NamedType "sixth" Nothing INTEGER
 
-type12 =
-   CHOICE xs
-      where
-         xs = ChoiceOption c1 (ChoiceOption c2 NoChoice)
-         c1 = NamedType "c1" (Just (Context,0,Implicit)) s1
-         c2 = NamedType "c2" (Just (Context,1,Implicit)) s2
-         s1 = SEQUENCE (Cons (CTMandatory e1) (Cons (CTMandatory e2) Nil))
-         s2 = SEQUENCE (Cons (CTMandatory e3) (Cons (CTMandatory e4) Nil))
-         e1 = NamedType "one" Nothing INTEGER
-         e2 = NamedType "two" Nothing INTEGER
-         e3 = NamedType "three" Nothing INTEGER
-         e4 = NamedType "four" Nothing INTEGER
-
-type12' = NamedType "Type12" Nothing type12
-
-val12a = ValueC (3:*:(4:*:Empty)) (NoValueC NoValue EmptyHL)
-val12b = NoValueC NoValue (ValueC (1:*:(2:*:Empty)) EmptyHL)
-
 bitStringC :: Doc -> ASNType a -> a -> Doc
 bitStringC prefix a@(BITSTRING []) x = 
    space
@@ -354,7 +279,7 @@ newBitStringC ns a@(BITSTRING []) x =
    $$
    fns <> text ".bits_unused = " <> text (show unusedBits) <> semi <> text " /* Trim unused bits */"
    where
-      fns = lhs ns {- hcat (map text (reverse ns)) -}
+      fns = lhs ns 
       bufs = map (\x -> fns <> text ".buf[" <> text (show x) <> text "] = ") [0..]
       (callocM1, unusedBits) = length ((bitString x)) `quotRem` 8
       calloc = callocM1 + 1

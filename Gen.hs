@@ -2,7 +2,7 @@ import Rename
 import Relabel
 import Pretty
 import TestData
-import Asn1cTest hiding (type12, type12', val12a, val12b)
+import Asn1cTest
 import ConstrainedType
 import Text.PrettyPrint
 import Control.Arrow hiding ((<+>))
