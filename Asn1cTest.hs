@@ -8,7 +8,7 @@ import qualified Data.Set as S
 import Data.Word
 import Data.List
 import Language.ASN1 hiding (BitString, NamedType, ComponentType)
-import QuickTest (genModule', RepTypeVal(..))
+import QuickTest (genModule', genModule'', RepTypeVal(..))
 import TestData
 
 genC :: NamedType a -> a -> Doc
@@ -165,26 +165,29 @@ newTopLevelNamedTypeValC :: NamedType a -> a -> Doc
 newTopLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
    newTypeValC {- [render (parens (text "*" <> text (lowerFirst name)))] -} [name] t v
 
-declareTypePointer :: NamedType a -> a -> Doc
-declareTypePointer nt@(NamedType name tagInfo t) v = 
+declareTypePointer :: ASNType a -> Doc
+declareTypePointer (TYPEASS tr _ _) = 
    vcat [
       space,
-      text "/* Declare a pointer to a " <> text name <> text " type */",
+      text "/* Declare a pointer to a " <> text tr <> text " type */",
       cType <+> text "*" <> cPtr <> semi,
       space,
-      text "/* Allocate an instance of " <+> text name <+> text "*/",
+      text "/* Allocate an instance of " <+> text tr <+> text "*/",
       cPtr <> text " = calloc(1, sizeof(" <> cType <> text ")); /* not malloc! */",
       text "assert(" <> cPtr <> text "); /* Assume infinite memory */"
       ]
    where
-      cPtr = text (lowerFirst name)
-      cType = text name <> text "_t"
+      cPtr = text (lowerFirst tr)
+      cType = text tr <> text "_t"
+declareTypePointer x =
+   error ("Type pointers can only be defined for type assignments, attempting: " ++ render (pretty x))
 
 quickC =
-   do rs <- genModule'
+   do rs <- genModule''
       let as = map g rs
           ds = map f rs
-      return (vcat as $$ vcat ds)
+          ps = map h rs
+      return (vcat as $$ vcat ps $$ vcat ds)
    where
       f r =
          case r of
@@ -194,32 +197,10 @@ quickC =
          case r of
             RepTypeVal t v ->
                prettyTypeVal t v
-
-type7       = NamedType "T3" Nothing (SEQUENCE (Cons (CTMandatory type7First) (Cons (CTMandatory type7Second) (Cons (CTMandatory type7Nest1) Nil))))
-type7First  = NamedType "first" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-type7Second = NamedType "second" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-
-type7Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (CTMandatory type7Fifth) (Cons (CTMandatory type7Fourth) (Cons (CTMandatory type7Nest2) Nil))))
-type7Third  = NamedType "third" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-type7Fourth = NamedType "fourth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-
-type7Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (CTMandatory type7Fifth) (Cons (CTMandatory type7Sixth) Nil)))
-type7Fifth  = NamedType "fifth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-type7Sixth  = NamedType "sixth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-
-val7 = (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty)))
-
-type8       = NamedType "T4" Nothing (SEQUENCE (Cons (CTMandatory type8First) (Cons (CTMandatory type8Second) (Cons (CTMandatory type8Nest1) Nil))))
-type8First  = NamedType "first"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
-type8Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
-
-type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (CTMandatory type8Third) (Cons (CTMandatory type8Fourth) Nil)))
-type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
-type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
-
-val8 = ((BitString (bs8 12)):*:((BitString (bs8 20)):*:(((BitString (bs8 36)):*:((BitString (bs8 52)):*:Empty)):*:Empty)))
-
-bs8 n = take n (cycle [1,0,1,0,0,0,0,0])
+      h r =
+         case r of
+            RepTypeVal t v ->
+               declareTypePointer (TYPEASS "Foo" Nothing t)
 
 type9 = 
    CHOICE xs

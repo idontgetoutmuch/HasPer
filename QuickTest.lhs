@@ -11,6 +11,7 @@ module QuickTest(
    main,
    genModule,
    genModule',
+   genModule'',
    RepTypeVal(..)
    )  where
 
@@ -621,6 +622,15 @@ repTypeValsRename us =
       f rs = runState (h rs) 0
       (p',q') = f us
 
+typeAssify :: [RepTypeVal] -> [RepTypeVal]
+typeAssify xs =
+   zipWith ($) (map (g $) [1..]) xs
+   where
+      g n r = 
+         case r of
+            RepTypeVal t y ->
+               RepTypeVal (TYPEASS ("Type" ++ (show n)) Nothing t) y
+
 prettyRepType r =
    case r of
       RepType t ->
@@ -636,6 +646,10 @@ genModule =
     return (prettyModule xs)
 
 genModule' = sample' (arbitrary :: Gen RepTypeVal)
+
+genModule'' =
+   do xs <- genModule'
+      return (typeAssify xs)
 
 prettyModuleBody xs =
  vcat (zipWith (<+>) typeNames (map prettyRepType . repsRename . repsRelabel $ xs))
