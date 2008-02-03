@@ -165,6 +165,21 @@ newTopLevelNamedTypeValC :: NamedType a -> a -> Doc
 newTopLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
    newTypeValC {- [render (parens (text "*" <> text (lowerFirst name)))] -} [name] t v
 
+declareTypePointer :: NamedType a -> a -> Doc
+declareTypePointer nt@(NamedType name tagInfo t) v = 
+   vcat [
+      space,
+      text "/* Declare a pointer to a " <> text name <> text " type */",
+      cType <+> text "*" <> cPtr <> semi,
+      space,
+      text "/* Allocate an instance of " <+> text name <+> text "*/",
+      cPtr <> text " = calloc(1, sizeof(" <> cType <> text ")); /* not malloc! */",
+      text "assert(" <> cPtr <> text "); /* Assume infinite memory */"
+      ]
+   where
+      cPtr = text (lowerFirst name)
+      cType = text name <> text "_t"
+
 quickC =
    do rs <- genModule'
       let as = map g rs
