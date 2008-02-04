@@ -81,7 +81,7 @@ type TypeRef    = String
 type Name       = String
 \end{code}
 
-Type Classes which make explitict the (not necessarily PER-visible) subtypes associated with the ASN.1 types.
+Type Classes which make explicit the (not necessarily PER-visible) subtypes associated with the ASN.1 types.
 
 See X.680 (07/2002) Section 47.1 Table 9
 
@@ -103,7 +103,6 @@ instance ContainedSubtype Integer
 
 class ValueRange a
 
--- BIT STRING cannot be given value ranges
 instance ValueRange IA5String
 instance ValueRange PrintableString
 instance ValueRange NumericString
@@ -155,11 +154,15 @@ data Sequence :: * -> * where
    Cons    :: ComponentType a -> Sequence l -> Sequence (a:*:l)
 \end{code}
 
-A component type is either mandatory, optional or default.
+A component type is either mandatory, optional, default or indicates
+that the components of another sequence are being used.
 The second constructor CTExtMand deals with an extension
 addition which is neither optional nor default. It returns a Maybe
 value since a mandatory extension value may not be present in a
 sequence value.
+
+Each constructor (except CTCompOf) takes a named type value which
+associates a name and possibly a tag with a type.
 
 \begin{code}
 
@@ -170,17 +173,12 @@ data ComponentType :: * -> * where
    CTDefault   :: NamedType a -> a -> ComponentType (Maybe a)
    CTCompOf    :: ASNType a   -> ComponentType a
 
-\end{code}
-
-A named type associates a type with a name and (possibly)
-a tag.
-
-\begin{code}
-
 data NamedType :: * -> * where
    NamedType :: Name -> Maybe TagInfo -> ASNType a -> NamedType a
 
 \end{code}
+
+X.680 Section 28. Choice type
 
 A choice is a collection of named types. The Choice type
 is similar to a Sequence except that each value
@@ -189,29 +187,41 @@ that the Choice type has no PER-visible constraints.
 The constructors ChoiceExt and ChoiceEAG deal with
 extension markers and extension addition groups respectively.
 
-This is transtitional code. If you need the code prior to this then
-get version 0.0.9. This is a sufficiently big change that the next
-version will be 0.1.0.
+In order to enforce one and only one value for a choice the ASNType
+constructor CHOICE returns a value of the type
+ASNType (HL a (S Z)).
 
-In order to enforce one and only one value for a choice,
-we introduce an extra type parameter for the CHOICE value type
-constructor.
+HL is a type for heterogeneous lists (similar
+to Sequence) except that it takes a second input which indicates
+the number of actual values in the list. The empty list is
+represented by EmptyHL of the type HL Nil Z where Z is a type
+indicating no values. The constructor ValueC takes a value
+and a list with no values and adds the value to the list.
+Its retuurn type is HL (a:*:l) (S Z) indicating that the list now
+has one value (S for successor). Finally the constructor
+NoValueC takes no value (of the appropriate type -- hence the use
+of the phantom type Phantom a) and a list and returns the list
+with the non-value added. In this case the number of values in the
+list is not incremented.
 
 \begin{code}
+
+data Choice :: * -> *  where
+    NoChoice     :: Choice Nil
+    ChoiceExt    :: Choice l -> Choice l
+    ChoiceEAG    :: Choice l -> Choice l
+    ChoiceOption :: NamedType a -> Choice l -> Choice (a:*:l)
+
+data HL :: * -> * -> * where
+    EmptyHL  :: HL Nil Z
+    ValueC   :: a -> HL l Z -> HL (a:*:l) (S Z)
+    NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n
 
 data Z
 
 data S n
 
 data Phantom a = NoValue
-
-
--- This is a type for heterogeneous lists with a constraint of one on the number of
--- actual values allowed.
-data HL :: * -> * -> * where
-    EmptyHL  :: HL Nil Z
-    ValueC   :: a -> HL l Z -> HL (a:*:l) (S Z)
-    NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n
 
 instance Show (HL Nil n) where
    show _ = "EmptyHL"
@@ -236,16 +246,9 @@ instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
    NoValueC _ xs == NoValueC _ ys = xs == ys
    ValueC x _ == ValueC y _ = x == y
 
--- This type is very similar to the original choice type but returns a
--- Choice (a:*:l) instead of a Choice (Maybe a:*: l) since Nothing and
--- Just v are replaced by NoValue and v for any type.
-data Choice :: * -> *  where
-    NoChoice     :: Choice Nil
-    ChoiceExt    :: Choice l -> Choice l
-    ChoiceEAG    :: Choice l -> Choice l
-    ChoiceOption :: NamedType a -> Choice l -> Choice (a:*:l)
-
 \end{code}
+
+X.680 Section 19. Enumerated type
 
 An enumeration is a collection of identifiers (implicitly or explicitly) associated
 with an integer.
@@ -263,7 +266,9 @@ data Enumerate :: * -> * where
 
 \end{code}
 
-The type Constraint represents the set of size-constraint values.
+X.680 Section 48.5. Size Constraint
+
+The type Constraint represents the set of size-constraint values used in size-constrained ASN types.
 
 \begin{code}
 data Constraint
@@ -376,7 +381,7 @@ elemOf l ((f,s):r)
 \end{code}
 
 The type EM represents the existence or not of an extension marker in a size constraint.
-The Maybe stype is used because an extension marker may be followed by additional values or not.
+The Maybe type is used because an extension marker may be followed by additional values or not.
 
 \begin{code}
 
@@ -388,48 +393,6 @@ type NamedBits = [NamedBit]
 
 data NamedBit = NB String Integer
 
-\end{code}
-
-
-
-Type aliases used when defining a range-constrained Integer.
-
-\begin{code}
-
-type Upper = Maybe Integer
-type Lower = Maybe Integer
-
-\end{code}
-
-Type used to represent the lower and upper bounds of a range.
-
-\begin{code}
-
-data Constrained a = Constrained (Maybe a) (Maybe a)
-   deriving Show
-
-instance Ord a => Monoid (Constrained a) where
-   mempty = Constrained Nothing Nothing
-   mappend x y = Constrained (g x y) (f x y)
-      where
-         f (Constrained _ Nothing)  (Constrained _ Nothing)  = Nothing
-         f (Constrained _ Nothing)  (Constrained _ (Just y)) = Just y
-         f (Constrained _ (Just x)) (Constrained _ Nothing)  = Just x
-         f (Constrained _ (Just x)) (Constrained _ (Just y)) = Just (min x y)
-         g (Constrained Nothing _)  (Constrained Nothing _)  = Nothing
-         g (Constrained Nothing _)  (Constrained (Just y) _) = Just y
-         g (Constrained (Just x) _) (Constrained Nothing _)  = Just x
-         g (Constrained (Just x) _) (Constrained (Just y) _) = Just (max x y)
-\end{code}
-
-bounds returns the range of a value. Nothing indicates
-no lower or upper bound.
-
-\begin{code}
-bounds :: Ord a => ASNType a -> Constrained a
-bounds (INCLUDES t1 t2)   = (bounds t1) `mappend` (bounds t2)
-bounds (RANGE t l u)      = (bounds t) `mappend` (Constrained l u)
-bounds _                  = Constrained Nothing Nothing
 \end{code}
 
 multiSize converts a multiply size-constrained type in to a single size-constrained type.
@@ -467,11 +430,63 @@ unionEM (EM (Just s)) (EM (Just t)) = EM (Just (Union s t))
 
 \end{code}
 
+Type aliases used when defining a range-constrained Integer.
 
-toPer is the top-level PER encoding function. It currently uses
-the function toPer8s to apply the relevant `multiple-of-8'
-padding.
-This will be replaced with toPer functions that keep a running
+\begin{code}
+
+type Upper = Maybe Integer
+type Lower = Maybe Integer
+
+\end{code}
+
+The type Constrained is used to represent the lower and upper bounds of a range.
+It is also returned by the function sizeLimit which returns the
+upper and lower bounds on the size of a value.
+
+\begin{code}
+
+data Constrained a = Constrained (Maybe a) (Maybe a)
+   deriving Show
+
+instance Ord a => Monoid (Constrained a) where
+   mempty = Constrained Nothing Nothing
+   mappend x y = Constrained (g x y) (f x y)
+      where
+         f (Constrained _ Nothing)  (Constrained _ Nothing)  = Nothing
+         f (Constrained _ Nothing)  (Constrained _ (Just y)) = Just y
+         f (Constrained _ (Just x)) (Constrained _ Nothing)  = Just x
+         f (Constrained _ (Just x)) (Constrained _ (Just y)) = Just (min x y)
+         g (Constrained Nothing _)  (Constrained Nothing _)  = Nothing
+         g (Constrained Nothing _)  (Constrained (Just y) _) = Just y
+         g (Constrained (Just x) _) (Constrained Nothing _)  = Just x
+         g (Constrained (Just x) _) (Constrained (Just y) _) = Just (max x y)
+\end{code}
+
+bounds returns the range of a value. Nothing indicates
+no lower or upper bound.
+
+\begin{code}
+
+bounds :: Ord a => ASNType a -> Constrained a
+bounds (INCLUDES t1 t2)   = (bounds t1) `mappend` (bounds t2)
+bounds (RANGE t l u)      = (bounds t) `mappend` (Constrained l u)
+bounds _                  = Constrained Nothing Nothing
+
+\end{code}
+
+
+toPer is the top-level PER encoding function. It takes two inputs:
+- the ASN type the value to be encoded; and
+- the value to be encoded.
+
+The first input is required both to indicate the encoding function
+to be called and to provide extra input information when required for
+the encoding function. For example, the encoding of a size-constrained value
+depends on the range of possible size values which are supplied by
+the first input.
+
+toPer currently uses the function toPer8s to apply the relevant `multiple-of-8'
+padding. This will be replaced with toPer functions that keep a running
 counter.
 
 \begin{code}
