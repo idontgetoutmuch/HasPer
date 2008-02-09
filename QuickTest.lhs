@@ -12,6 +12,7 @@ module QuickTest(
    genModule,
    genModule',
    genModule'',
+   prettyModuleWithVals,
    RepTypeVal(..)
    )  where
 
@@ -649,7 +650,7 @@ genModule' = sample' (arbitrary :: Gen RepTypeVal)
 
 genModule'' =
    do xs <- genModule'
-      return (typeAssify xs)
+      return ((repTypeValsRename . repTypeValsRelabel .typeAssify) xs)
 
 prettyModuleBody xs =
  vcat (zipWith (<+>) typeNames (map prettyRepType . repsRename . repsRelabel $ xs))
@@ -666,12 +667,19 @@ prettyModuleValsBody xs =
       valueTypeName (t,v) = (t <+> text "::=", v <+> t <+> text "::=")
       prefixPairs ps xs = zipWith (\(p1,p2) (t,v) -> ((p1 <+> t), (p2 <+> v))) ps xs
 
+prettyModuleValsBody' xs =
+   vcat (map (uncurry ($$)) tsnvs)
+   where
+      tsvs = map prettyRepTypeVal {- . repTypeValsRename . repTypeValsRelabel -} $ xs
+      valNames = map ((text "value" <>) . text . show) [1..]
+      tsnvs = zipWith (\(x,y) z -> (x,z<+>y)) tsvs valNames
+
 prettyModuleWithVals xs =
    text "FooBar {1 2 3 4 5 6} DEFINITIONS ::="
    $$
    nest 2 (text "BEGIN")
    $$
-   nest 4 (prettyModuleValsBody xs)
+   nest 4 (prettyModuleValsBody' xs)
    $$
    nest 2 (text "END")
 

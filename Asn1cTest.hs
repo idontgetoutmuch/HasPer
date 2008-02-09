@@ -8,7 +8,7 @@ import qualified Data.Set as S
 import Data.Word
 import Data.List
 import Language.ASN1 hiding (BitString, NamedType, ComponentType)
-import QuickTest (genModule', genModule'', RepTypeVal(..))
+import QuickTest (genModule', genModule'', prettyModuleWithVals, RepTypeVal(..))
 import TestData
 
 genC :: NamedType a -> a -> Doc
@@ -165,6 +165,12 @@ newTopLevelNamedTypeValC :: NamedType a -> a -> Doc
 newTopLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
    newTypeValC {- [render (parens (text "*" <> text (lowerFirst name)))] -} [name] t v
 
+include :: ASNType a -> Doc
+include (TYPEASS tr _ _) =
+   text "#include <" <> text tr <> text ".h>" <> space <> text "/* " <> text tr <> text " ASN.1 type */"
+include x =
+   error ("Include files can only be defined for type assignments, attempting: " ++ render (pretty x))
+
 declareTypePointer :: ASNType a -> Doc
 declareTypePointer (TYPEASS tr _ _) = 
    vcat [
@@ -182,17 +188,20 @@ declareTypePointer (TYPEASS tr _ _) =
 declareTypePointer x =
    error ("Type pointers can only be defined for type assignments, attempting: " ++ render (pretty x))
 
+assignValue :: ASNType a -> a -> Doc
+assignValue (TYPEASS tr ti t) v =
+   newTopLevelNamedTypeValC (NamedType tr ti t) v
+assignValue x _ =
+   error ("Value assignments can only be given for type assignments, attempting: " ++ render (pretty x))
+
 quickC =
    do rs <- genModule''
       let as = map g rs
-          ds = map f rs
+          ds = map a rs
           ps = map h rs
-      return (vcat as $$ vcat ps $$ vcat ds)
+          is = map f rs
+      return (prettyModuleWithVals rs $$ vcat as $$ vcat is $$ vcat ps $$ foldr ($+$) empty (intersperse space ds))
    where
-      f r =
-         case r of
-            RepTypeVal t v ->
-               newTopLevelNamedTypeValC (NamedType "Foo" Nothing t) v
       g r =
          case r of
             RepTypeVal t v ->
@@ -200,7 +209,15 @@ quickC =
       h r =
          case r of
             RepTypeVal t v ->
-               declareTypePointer (TYPEASS "Foo" Nothing t)
+               declareTypePointer t
+      a r =
+         case r of
+            RepTypeVal t v ->
+               assignValue t v
+      f r =
+         case r of
+            RepTypeVal t v ->
+               include t
 
 type9 = 
    CHOICE xs

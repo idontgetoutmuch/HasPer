@@ -12,6 +12,7 @@ import Language.ASN1 hiding (NamedType, BitString, ComponentType)
 import Pretty
 
 data Shadow :: * -> * -> * where
+   STYPEASS   :: TypeRef -> Maybe TagInfo -> Shadow a b -> Shadow a b
    SBOOLEAN   :: Shadow Bool b
    SINTEGER   :: Shadow Integer b
    SBITSTRING :: NamedBits -> Shadow BitString b
@@ -38,6 +39,7 @@ data STagInfo b = STagInfo TagType b TagPlicity
 data SName b = SName b
 
 shadow :: ASNType a -> Shadow a Name
+shadow (TYPEASS tr tv t) = STYPEASS tr tv (shadow t)
 shadow BOOLEAN = SBOOLEAN
 shadow INTEGER = SINTEGER
 shadow (BITSTRING bs) = SBITSTRING bs
@@ -46,6 +48,7 @@ shadow (CHOICE xs) = SCHOICE (shadowChoice xs)
 shadow (SIZE t c em) = SSIZE (shadow t) c em
 
 unShadow :: Shadow a Name -> ASNType a
+unShadow (STYPEASS tr tv t) = TYPEASS tr tv (unShadow t)
 unShadow SBOOLEAN = BOOLEAN
 unShadow SINTEGER = INTEGER
 unShadow (SBITSTRING bs) = BITSTRING bs
@@ -140,6 +143,7 @@ instance Foldable (Shadow a) where
    foldMap = shadowFoldMap
 
 shadowTraverse :: Applicative f => (b -> f c) -> Shadow a b -> f (Shadow a c)
+shadowTraverse g (STYPEASS tr tv t) = STYPEASS <$> pure tr <*> pure tv <*> shadowTraverse g t 
 shadowTraverse g SINTEGER = pure SINTEGER
 shadowTraverse g SBOOLEAN = pure SBOOLEAN
 shadowTraverse g (SBITSTRING bs) = SBITSTRING <$> pure bs
