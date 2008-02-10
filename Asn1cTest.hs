@@ -219,6 +219,49 @@ quickC =
             RepTypeVal t v ->
                include t
 
+header ::  Doc
+header =
+   text "#include <stdio.h>   /* for stdout */" $$
+   text "#include  <stdlib.h> /* for malloc () */" $$
+   text "#include  <assert.h> /* for run-time control */"
+
+arbitraryASN1AndC :: String -> String -> IO Doc
+arbitraryASN1AndC asn1File cFile =
+   do rs <- genModule''
+      let ds = map a rs
+          ps = map h rs
+          is = map f rs
+          am = prettyModuleWithVals rs
+          cm = header $$ 
+               space $$
+               vcat is $$ 
+               space $$
+               preface $$ 
+               space $$
+               text "int main(int ac, char **av) {" $$
+               space $$
+               nest 2 (
+                  vcat ps $$ 
+                  space $$
+                  foldr ($+$) empty (intersperse space ds)
+                  )
+      writeFile asn1File (render am)
+      writeFile cFile (render cm)
+      return (am $$ cm)
+   where
+      h r =
+         case r of
+            RepTypeVal t v ->
+               declareTypePointer t
+      a r =
+         case r of
+            RepTypeVal t v ->
+               assignValue t v
+      f r =
+         case r of
+            RepTypeVal t v ->
+               include t
+
 type9 = 
    CHOICE xs
       where
