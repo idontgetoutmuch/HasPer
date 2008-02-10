@@ -188,6 +188,26 @@ declareTypePointer (TYPEASS tr _ _) =
 declareTypePointer x =
    error ("Type pointers can only be defined for type assignments, attempting: " ++ render (pretty x))
 
+encodeAsPER :: ASNType a -> Doc
+encodeAsPER (TYPEASS tr _ _) =
+   vcat [
+      text "/* Encode " <> text tr <> text " as PER */",
+      text "ec = uper_encode(&asn_DEF_" <> text tr <> text "," <> text (lowerFirst tr) <> text ",write_out,fp);",
+      text "if(ec.encoded == -1) {",
+      nest 5 (
+         vcat [
+            text "fprintf(stderr,\"Could not encode " <> text tr <> text " (at %s)\\n\",",
+            text "ec.failed_type ? ec.failed_type->name : \"unknown\");"
+            ]
+         ),
+      text "exit(65); /* better, EX_DATAERR */",
+      text "} else {",
+      text "fprintf(stderr,\"Created %s with PER encoded " <> text tr <> text "\\n\",filename);",
+      text "}"
+      ]
+encodeAsPER x =
+   error ("PER encoding code can only be generated for type assignments, attempting: " ++ render (pretty x))
+
 assignValue :: ASNType a -> a -> Doc
 assignValue (TYPEASS tr ti t) v =
    newTopLevelNamedTypeValC (NamedType tr ti t) v
@@ -231,20 +251,26 @@ arbitraryASN1AndC asn1File cFile =
       let ds = map a rs
           ps = map h rs
           is = map f rs
+          as = map g rs
           am = prettyModuleWithVals rs
           cm = header $$ 
-               space $$
                vcat is $$ 
                space $$
                preface $$ 
                space $$
                text "int main(int ac, char **av) {" $$
-               space $$
                nest 2 (
+                  space $$
+                  text "/* Encoder return value */" $$
+                  text "asn_enc_rval_t ec;" $$
+                  space $$
                   vcat ps $$ 
                   space $$
-                  foldr ($+$) empty (intersperse space ds)
-                  )
+                  foldr ($+$) empty (intersperse space ds) $$
+                  space $$
+                  fileAndEncode (vcat as)
+                  ) $$
+               text "}"
       writeFile asn1File (render am)
       writeFile cFile (render cm)
       return (am $$ cm)
@@ -253,6 +279,10 @@ arbitraryASN1AndC asn1File cFile =
          case r of
             RepTypeVal t v ->
                declareTypePointer t
+      g r =
+         case r of
+            RepTypeVal t v ->
+               encodeAsPER t
       a r =
          case r of
             RepTypeVal t v ->
@@ -261,6 +291,34 @@ arbitraryASN1AndC asn1File cFile =
          case r of
             RepTypeVal t v ->
                include t
+
+fileAndEncode :: Doc -> Doc
+fileAndEncode encodings =
+   vcat [
+      text "if(ac < 2) {",
+         nest 5 (text "fprintf(stderr,\"Specify filename for PER output\\n\");"),
+         text "} else {",
+         nest 5 (
+            vcat [
+               text "const char *filename = av[1];",
+               text "FILE *fp = fopen(filename,\"wb\");    /* for PER output */",
+               text "if(!fp) {",
+               nest 5 (
+                  vcat [
+                     text "perror(filename);",
+                     text "exit(71); /* better, EX_OSERR */"
+                     ]
+                  ),
+               text "}",
+               encodings,
+               text "fclose(fp);"
+               ]
+            ),
+            text "}",
+            text "/* Also print the constructed " <> text "????" <> text " XER encoded (XML) */",
+            text "/* xer_fprint(stdout,&asn_DEF_" <> text "????" <> text "," <> text "????" <> text "); */",
+            text "return 0; /* Encoding finished successfully */"
+            ]
 
 type9 = 
    CHOICE xs
