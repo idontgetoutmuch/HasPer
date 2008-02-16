@@ -374,8 +374,9 @@ bitStringC prefix a@(BITSTRING []) x =
    prefix <> text ".bits_unused = " <> text (show unusedBits) <> semi <> text " /* Trim unused bits */"
    where
       bufs = map (\x -> prefix <> text ".buf[" <> text (show x) <> text "] = ") [0..]
-      (callocM1, unusedBits) = length ((bitString x)) `quotRem` 8
+      (callocM1, leftOverBits) = length ((bitString x)) `quotRem` 8
       calloc = callocM1 + 1
+      unusedBits = 8 - leftOverBits
 
 type Prefix = [Name]
 
@@ -395,8 +396,9 @@ newBitStringC ns a@(BITSTRING []) x =
    where
       fns = lhs ns 
       bufs = map (\x -> fns <> text ".buf[" <> text (show x) <> text "] = ") [0..]
-      (callocM1, unusedBits) = length ((bitString x)) `quotRem` 8
+      (callocM1, leftOverBits) = length ((bitString x)) `quotRem` 8
       calloc = callocM1 + 1
+      unusedBits = 8 - leftOverBits
 
 bitStringToBytes :: BitString -> [Word8]
 bitStringToBytes =

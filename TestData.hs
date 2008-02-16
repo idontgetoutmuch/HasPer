@@ -47,3 +47,4 @@ type12' = NamedType "Type12" Nothing type12
 val12a = ValueC (3:*:(4:*:Empty)) (NoValueC NoValue EmptyHL)
 val12b = NoValueC NoValue (ValueC (1:*:(2:*:Empty)) EmptyHL)
 
+bitStringType1 = SIZE (SIZE (BITSTRING []) (Elem (1,2)) NoMarker) (Elem (2,2)) NoMarker 
