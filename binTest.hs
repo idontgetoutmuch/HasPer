@@ -23,7 +23,7 @@ foos 0 = return []
 foos n =
    do x <- BG.getBit
       xs <- foos (n-1)
-      return (x:xs)
+      return ((case x of False -> 0; True -> 1):xs)
 
 foos8 0 = return []
 foos8 n =
@@ -98,7 +98,7 @@ runBitPut m =
        (S bytes boff curr) = s
        allBits = B.cons curr bytes
    in 
-      (hexDumpString allBits,hexDumpString (leftShift (fromIntegral (8-boff)) allBits),boff,curr)
+      (leftShift (fromIntegral (8-boff)) allBits,hexDumpString allBits,hexDumpString (leftShift (fromIntegral (8-boff)) allBits),boff,curr)
 
 leftShift :: Int -> B.ByteString -> B.ByteString
 leftShift 0 = id
