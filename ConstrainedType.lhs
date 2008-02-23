@@ -20,6 +20,7 @@ import qualified Data.Set as S
 import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
+import qualified Data.Binary.Strict.BitGet as BG
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType, OctetString)
 import Text.PrettyPrint
 import System
@@ -582,6 +583,25 @@ encodeBool t _    = [0]
 
 \begin{code}
 
+encodeInt' :: ASNType Integer -> Integer -> BG.PutBit ()
+encodeInt' t x =
+   case p of
+      Constrained (Just lb) (Just ub) ->
+         let range = ub - lb + 1 in
+            if range <= 1
+               then return ()
+               else encodeNNBIntBits' ((x-lb),range-1)
+      Constrained (Just lb) Nothing ->
+                undefined -- encodeSCInt x lb
+      Constrained Nothing _ ->
+                undefined -- encodeUInt x
+   where
+      p = bounds t
+
+\end{code}
+
+\begin{code}
+
 encodeInt :: ASNType Integer -> Integer -> BitStream
 encodeInt t x =
    case p of
@@ -636,13 +656,27 @@ encodeNSNNInt n lb
 
 \begin{code}
 
+encodeNNBIntBits' :: (Integer, Integer) -> BG.PutBit ()
+encodeNNBIntBits'
+    = mUnfoldr encodeNNBIntBitsAux
+
+mUnfoldr f b =
+   case f b of
+      Just (a,new_b) -> do BG.putBit a
+                           mUnfoldr f new_b
+      Nothing -> return ()
+
+encodeNNBIntBitsAux (_,0) = Nothing
+encodeNNBIntBitsAux (0,w) = Just (0, (0, w `div` 2))
+encodeNNBIntBitsAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
+
+\end{code}
+
+\begin{code}
+
 encodeNNBIntBits :: (Integer, Integer) -> BitStream
 encodeNNBIntBits
-    = reverse . (map fromInteger) . unfoldr h
-      where
-        h (_,0) = Nothing
-        h (0,w) = Just (0, (0, w `div` 2))
-        h (n,w) = Just (n `mod` 2, (n `div` 2, w `div` 2))
+    = reverse . (map fromInteger) . unfoldr encodeNNBIntBitsAux
 
 \end{code}
 
