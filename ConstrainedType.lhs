@@ -20,7 +20,7 @@ import qualified Data.Set as S
 import Control.Monad.State
 import Control.Monad.Error
 import qualified Data.ByteString.Lazy as B
-import qualified Data.Binary.Strict.BitGet as BG
+import qualified Data.Binary.Strict.BitPut as BP
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType, OctetString)
 import Text.PrettyPrint
 import System
@@ -583,7 +583,7 @@ encodeBool t _    = [0]
 
 \begin{code}
 
-encodeInt' :: ASNType Integer -> Integer -> BG.PutBit ()
+encodeInt' :: ASNType Integer -> Integer -> BP.BitPut
 encodeInt' t x =
    case p of
       Constrained (Just lb) (Just ub) ->
@@ -656,15 +656,21 @@ encodeNSNNInt n lb
 
 \begin{code}
 
-encodeNNBIntBits' :: (Integer, Integer) -> BG.PutBit ()
-encodeNNBIntBits'
-    = mUnfoldr encodeNNBIntBitsAux
-
+encodeNNBIntBits' :: (Integer, Integer) -> BP.BitPut
+encodeNNBIntBits' =
+--     = mUnfoldr encodeNNBIntBitsAux
+   bitPutify . (map fromIntegral) . encodeNNBIntBits
+   where
+      bitPutify [] = return ()
+      bitPutify (x:xs) = do {BP.putAsWord8 1 x; bitPutify xs}
+     
+{-
 mUnfoldr f b =
    case f b of
-      Just (a,new_b) -> do BG.putBit a
+      Just (a,new_b) -> do BP.write1 a {- BP.putAsWord8 1 -}
                            mUnfoldr f new_b
       Nothing -> return ()
+-}
 
 encodeNNBIntBitsAux (_,0) = Nothing
 encodeNNBIntBitsAux (0,w) = Just (0, (0, w `div` 2))
