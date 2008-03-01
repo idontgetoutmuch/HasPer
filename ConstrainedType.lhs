@@ -654,24 +654,19 @@ encodeNSNNInt n lb
  encodeNNBIntBits encodes an integer in the minimum
  number of bits required for the range (assuming the range is at least 2).
 
+Note: we can do much better than put 1 bit a time!!! But this will do for
+now.
+
 \begin{code}
 
 encodeNNBIntBits' :: (Integer, Integer) -> BP.BitPut
 encodeNNBIntBits' =
---     = mUnfoldr encodeNNBIntBitsAux
    bitPutify . (map fromIntegral) . encodeNNBIntBits
    where
-      bitPutify [] = return ()
-      bitPutify (x:xs) = do {BP.putAsWord8 1 x; bitPutify xs}
+      bitPutify = mapM_ g
+      g :: Word8 -> BP.BitPut
+      g = BP.putNBits 1
      
-{-
-mUnfoldr f b =
-   case f b of
-      Just (a,new_b) -> do BP.write1 a {- BP.putAsWord8 1 -}
-                           mUnfoldr f new_b
-      Nothing -> return ()
--}
-
 encodeNNBIntBitsAux (_,0) = Nothing
 encodeNNBIntBitsAux (0,w) = Just (0, (0, w `div` 2))
 encodeNNBIntBitsAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
