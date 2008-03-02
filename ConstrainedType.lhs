@@ -665,10 +665,9 @@ now.
 encodeNNBIntBits' :: (Integer, Integer) -> BP.BitPut
 encodeNNBIntBits' =
    bitPutify . (map fromIntegral) . encodeNNBIntBits
-   where
-      bitPutify = mapM_ g
-      g :: Word8 -> BP.BitPut
-      g = BP.putNBits 1
+
+bitPutify :: [Word8] -> BP.BitPut
+bitPutify = mapM_ (BP.putNBits 1)
      
 encodeNNBIntBitsAux (_,0) = Nothing
 encodeNNBIntBitsAux (0,w) = Just (0, (0, w `div` 2))
@@ -689,6 +688,10 @@ encodeNNBIntBits
 
 \begin{code}
 
+encodeNNBIntOctets' :: Integer -> BP.BitPut
+encodeNNBIntOctets' =
+   bitPutify . (map fromIntegral) . encodeNNBIntOctets
+
 encodeNNBIntOctets :: Integer -> BitStream
 encodeNNBIntOctets =
    reverse . (map fromInteger) . flip (curry (unfoldr (uncurry g))) 8 where
@@ -708,6 +711,9 @@ encodeNNBIntOctets =
 encodeSCInt :: Integer -> Integer -> BitStream
 encodeSCInt v lb
     = encodeOctetsWithLength (encodeNNBIntOctets (v-lb))
+
+encodeSCInt' :: Integer -> Integer -> BP.BitPut
+encodeSCInt' = error "encodeSCInt' not yet defined"
 
 \end{code}
 
@@ -734,6 +740,8 @@ each batch and concatenates their resulting bitstreams together.
 Note the values are encoded using the input function.
 
 \begin{code}
+
+encodeWithLength' f = bitPutify . (map fromIntegral) . (encodeWithLength f)
 
 encodeWithLength :: ([t] -> [Int]) -> [t] -> [Int]
 encodeWithLength fun = addUncLen fun . groupBy 4 . groupBy (16*(2^10))
