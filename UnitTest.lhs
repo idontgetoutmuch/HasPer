@@ -22,13 +22,15 @@ import ConstrainedType
 import Pretty
 import Control.Monad.State
 import Control.Monad.Error
-import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString as B
 import Data.Set hiding (map)
 import Data.List hiding (groupBy)
 import IO
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
 import qualified Data.Set as S
 import Test.HUnit
+import qualified Data.Binary.Strict.BitPut as BP
+import qualified Data.Binary.Strict.BitGet as BG
 
 \end{code}
 
@@ -77,29 +79,6 @@ t11 = CHOICE (ChoiceOption (NamedType "" Nothing t0)
          (ChoiceOption (NamedType "" Nothing t02) NoChoice))))
 t12 = CHOICE (ChoiceOption (NamedType "" Nothing t04)
          (ChoiceOption (NamedType "" Nothing t03) NoChoice))
-
--- Constrained INTEGER
-
-integer8'1 = toPer (RANGE INTEGER (Just 3) (Just 6)) 3
-integer8'2 = toPer (RANGE INTEGER (Just 3) (Just 6)) 4
-integer8'3 = toPer (RANGE INTEGER (Just 3) (Just 6)) 5
-integer8'4 = toPer (RANGE INTEGER (Just 3) (Just 6)) 6
-integer9'1 = toPer (RANGE INTEGER (Just 4000) (Just 4254)) 4002
-integer9'2 = toPer (RANGE INTEGER (Just 4000) (Just 4254)) 4006
-integer10'1 = toPer (RANGE INTEGER (Just 4000) (Just 4255)) 4002
-integer10'2 = toPer (RANGE INTEGER (Just 4000) (Just 4255)) 4006
-integer11'1 = toPer (RANGE INTEGER (Just 0) (Just 32000)) 0
-integer11'2 = toPer (RANGE INTEGER (Just 0) (Just 32000)) 31000
-integer11'3 = toPer (RANGE INTEGER (Just 0) (Just 32000)) 32000
-integer12'1 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 1
-integer12'2 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 257
-integer12'3 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 65538
-
-integer13'1 = toPer (RANGE (RANGE INTEGER (Just 1) (Just 1)) (Just (-2)) Nothing) 1
-integer13'2 = toPer (RANGE (RANGE INTEGER (Just 2) Nothing) (Just (-2)) (Just 3)) 3
-
-
-test0 = toPer t1' 27
 
 \end{code}
 
@@ -681,6 +660,42 @@ mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 
 \end{code}
 
+\subsection{Constrained INTEGER}
+
+\begin{code}
+
+integer8'1 = toPer (RANGE INTEGER (Just 3) (Just 6)) 3
+integer8'2 = toPer (RANGE INTEGER (Just 3) (Just 6)) 4
+integer8'3 = toPer (RANGE INTEGER (Just 3) (Just 6)) 5
+integer8'4 = toPer (RANGE INTEGER (Just 3) (Just 6)) 6
+integer9'1 = toPer (RANGE INTEGER (Just 4000) (Just 4254)) 4002
+integer9'2 = toPer (RANGE INTEGER (Just 4000) (Just 4254)) 4006
+integer10'1 = toPer (RANGE INTEGER (Just 4000) (Just 4255)) 4002
+integer10'2 = toPer (RANGE INTEGER (Just 4000) (Just 4255)) 4006
+integer11'1 = toPer (RANGE INTEGER (Just 0) (Just 32000)) 0
+integer11'2 = toPer (RANGE INTEGER (Just 0) (Just 32000)) 31000
+integer11'3 = toPer (RANGE INTEGER (Just 0) (Just 32000)) 32000
+integer12'1 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 1
+integer12'2 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 257
+integer12'3 = toPer (RANGE INTEGER (Just 1) (Just 65538)) 65538
+
+integer13'1 = toPer (RANGE (RANGE INTEGER (Just 1) (Just 1)) (Just (-2)) Nothing) 1
+integer13'2 = toPer (RANGE (RANGE INTEGER (Just 2) Nothing) (Just (-2)) (Just 3)) 3
+
+
+test0 = toPer t1' 27
+
+constrainedResult1 =
+   let t  = RANGE INTEGER (Just 25) (Just 30)
+       bs = BP.runBitPut (encodeInt' t 27) in
+      BG.runBitGet bs (fromPerInteger' t)
+
+constrainedTest1 =
+   TestCase (
+      assertEqual "Constrained INTEGER Test 1" (Right 27) constrainedResult1
+   )
+
+\end{code}
 
 \section{BIT STRING}
 
@@ -1614,6 +1629,7 @@ tests =
    integerTest3,
    integerTest4,
    semiIntegerTest5,
+   constrainedTest1,
    bitStringTest1,
    bitStringTest1a,
    bitStringTest1',

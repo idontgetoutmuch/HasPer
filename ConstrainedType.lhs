@@ -19,8 +19,11 @@ import Data.Char
 import qualified Data.Set as S
 import Control.Monad.State
 import Control.Monad.Error
-import qualified Data.ByteString.Lazy as B
+-- import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitPut as BP
+import qualified Data.Binary.Strict.BitGet as BG
+-- import Data.Binary.Strict.BitUtil (rightShift)
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType, OctetString)
 import Text.PrettyPrint
 import System
@@ -592,9 +595,9 @@ encodeInt' t x =
                then return ()
                else encodeNNBIntBits' ((x-lb),range-1)
       Constrained (Just lb) Nothing ->
-                undefined -- encodeSCInt x lb
+                error "Semi" -- encodeSCInt x lb
       Constrained Nothing _ ->
-                undefined -- encodeUInt x
+                error "Un" -- encodeUInt x
    where
       p = bounds t
 
@@ -1655,7 +1658,7 @@ posIntStr n [] c
 n16k = 16*(2^10)
 n64k = 64*(2^10)
 
-mmGetBit :: (MonadState (B.ByteString,Int64) m, MonadError String m) => m Word8
+mmGetBit :: (Integral x, MonadState (B.ByteString,x) m, MonadError String m) => m Word8
 mmGetBit =
    do (ys,x) <- get
       y <- mGetBit x ys
@@ -1667,11 +1670,11 @@ mGetBit o xs =
       then throwError ("Unable to decode " ++ show xs ++ " at bit " ++ show o)
       else return u
    where (nBytes,nBits) = o `divMod` 8
-         ys = B.drop nBytes xs
+         ys = B.drop (fromIntegral nBytes) xs
          z = B.head ys
          u = (z .&. ((2^(7 - nBits)))) `shiftR` (fromIntegral (7 - nBits))
 
-mmGetBits :: (MonadState (B.ByteString,Int64) m, MonadError String m, Integral n) => n -> m [Word8]
+mmGetBits :: (Integral x, MonadState (B.ByteString,x) m, MonadError String m, Integral n) => n -> m [Word8]
 mmGetBits n =
    sequence (genericTake n (repeat mmGetBit))
 
@@ -1689,7 +1692,7 @@ lower bound ("lb") is negative, then the result is undefined.
 \begin{code}
 
 decodeLengthDeterminant ::
-   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) =>
+   (Integral x, MonadState (B.ByteString,x) m, MonadError [Char] m) =>
       Constrained Integer -> (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
 decodeLengthDeterminant (Constrained lb ub) f t
    | ub /= Nothing && ub == lb && ub <= (Just n64k) = f (fromJust ub) t
@@ -1709,7 +1712,7 @@ values of the ASN.1 type.
 \begin{code}
 
 decodeLargeLengthDeterminant ::
-   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) =>
+   (Integral x, MonadState (B.ByteString,x) m, MonadError [Char] m) =>
       (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
 decodeLargeLengthDeterminant f t =
    do p <- mmGetBit
@@ -1735,6 +1738,40 @@ decodeLargeLengthDeterminant f t =
                                    return (frag ++ rest)
                         where
                            fragError = "Unable to decode with fragment size of "
+
+{-
+decodeLargeLengthDeterminant' ::
+   (Integral x, MonadState (B.ByteString,x) m, MonadError [Char] m) =>
+      (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
+-}
+decodeLargeLengthDeterminant' f t =
+   do p <- BG.getBit
+      if (not p) 
+         then
+            do j <- BG.getLeftByteString 7
+               let l = fromNonNeg' 7 j
+               f l t
+         else
+            undefined
+{-
+         1 ->
+            do q <- mmGetBit
+               case q of
+                  0 ->
+                     do j <- mmGetBits 14
+                        let l = fromNonNeg j
+                        f l t
+                  1 ->
+                     do j <- mmGetBits 6
+                        let fragSize = fromNonNeg j
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError (fragError ++ show fragSize)
+                           else do frag <- f (fragSize * n16k) t
+                                   rest <- decodeLargeLengthDeterminant f t
+                                   return (frag ++ rest)
+                        where
+                           fragError = "Unable to decode with fragment size of "
+-}
 
 \end{code}
 
@@ -1770,6 +1807,26 @@ fromPerInteger t =
       p        = bounds t
       octets   = decodeLargeLengthDeterminant chunkBy8 undefined
       chunkBy8 = flip (const (mmGetBits . (*8)))
+
+fromPerInteger' t =
+   case p of
+      Constrained (Just lb) (Just ub) ->
+         let range = ub - lb + 1
+             n     = genericLength (encodeNNBIntBits ((ub-lb),range-1)) in
+            if range <= 1
+               then return lb
+               else do j <- BG.getLeftByteString n
+                       return (lb + (fromNonNeg' n j))
+      Constrained (Just lb) Nothing ->
+         do o <- octets
+            return (lb + (fromNonNeg' 8 o))
+      Constrained Nothing _ ->
+         do undefined -- o <- octets
+            -- return (from2sComplement o)
+   where
+      p        = bounds t
+      octets   = decodeLargeLengthDeterminant' chunkBy8 undefined
+      chunkBy8 = flip (const (BG.getLeftByteString . (*8)))
 
 \end{code}
 
@@ -1829,6 +1886,31 @@ fromNonNeg xs =
       f 0 = [0]
       f x = x:(f (x-1))
 
+bottomNBits :: Int -> Word8
+bottomNBits 0 = 0
+bottomNBits 1 = 0x01
+bottomNBits 2 = 0x03
+bottomNBits 3 = 0x07
+bottomNBits 4 = 0x0f
+bottomNBits 5 = 0x1f
+bottomNBits 6 = 0x3f
+bottomNBits 7 = 0x7f
+bottomNBits 8 = 0xff
+bottomNBits x = error ("bottomNBits undefined for " ++ show x)
+
+rightShift :: Int -> B.ByteString -> B.ByteString
+rightShift 0 = id
+rightShift n = snd . B.mapAccumL f 0 where
+  f acc b = (b .&. (bottomNBits n), (b `shiftR` n) .|. (acc `shiftL` (8 - n)))
+
+fromNonNeg' r x = 
+   sum (zipWith (*) (map fromIntegral ys) zs)
+   where
+      s = bSize - (r `mod` bSize)
+      bSize = bitSize (head ys)
+      ys = B.unpack (rightShift s x)
+      zs = map ((2^bSize)^) [0..genericLength ys]
+
 \end{code}
 
 \section{Decoding}
@@ -1839,7 +1921,7 @@ fromNonNeg xs =
 
 \begin{code}
 
-mFromPer :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => ASNType a -> m a
+mFromPer :: (Integral x, MonadState (B.ByteString,x) m, MonadError [Char] m) => ASNType a -> m a
 mFromPer t@INTEGER                 = fromPerInteger t
 mFromPer r@(RANGE i l u)           = fromPerInteger r
 mFromPer t@(BITSTRING _)           = (liftM (BitString . map fromIntegral) . fromPerBitString) t
@@ -1875,7 +1957,7 @@ I'm not really sure if this is true now having thought about it
 
 \begin{code}
 
-mmFromPerSeq :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) => BitStream -> Sequence a -> m a
+mmFromPerSeq :: (Integral x, MonadState (B.ByteString,x) m, MonadError [Char] m) => BitStream -> Sequence a -> m a
 mmFromPerSeq _ Nil = return Empty
 mmFromPerSeq bitmap (Cons (CTMandatory (NamedType _ _ t)) ts) =
    do x <- mFromPer t
@@ -1898,7 +1980,7 @@ mmFromPerSeq bitmap (Cons (CTOptional (NamedType _ _ t)) ts) =
 \begin{code}
 
 fromPerSeqOf ::
-   (MonadState (B.ByteString,Int64) m, MonadError [Char] m) =>
+   (Integral x, MonadState (B.ByteString,x) m, MonadError [Char] m) =>
       ASNType a -> m [a]
 fromPerSeqOf = decodeLargeLengthDeterminant nSequenceOfElements
 
@@ -1921,7 +2003,7 @@ Note we never have negative indices so we don't need to check for $n < 0$.
 
 \begin{code}
 
-decodeChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) =>
+decodeChoice :: (Integral x, MonadState (B.ByteString,x) m, MonadError [Char] m) =>
                    BitStream -> Choice a -> m (HL a (S Z))
 decodeChoice bitmap c =
    case m of
@@ -1934,7 +2016,7 @@ decodeChoice bitmap c =
          n  = fromNonNeg bitmap
          m  = lookup (us!!n) (zip ts [0..])
 
-nthChoice :: (MonadState (B.ByteString,Int64) m, MonadError [Char] m) =>
+nthChoice :: (Integral x, MonadState (B.ByteString,x) m, MonadError [Char] m) =>
                 Integer -> Choice a -> m (HL a (S Z))
 nthChoice n NoChoice =
    throwError ("Unable to select component. Probable cause: index too large")
