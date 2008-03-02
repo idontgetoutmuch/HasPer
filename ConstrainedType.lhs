@@ -595,7 +595,7 @@ encodeInt' t x =
                then return ()
                else encodeNNBIntBits' ((x-lb),range-1)
       Constrained (Just lb) Nothing ->
-                error "Semi" -- encodeSCInt x lb
+                encodeSCInt' x lb
       Constrained Nothing _ ->
                 error "Un" -- encodeUInt x
    where
@@ -712,8 +712,11 @@ encodeSCInt :: Integer -> Integer -> BitStream
 encodeSCInt v lb
     = encodeOctetsWithLength (encodeNNBIntOctets (v-lb))
 
+infixr 7 `c2`
+c2 = (.).(.)
+
 encodeSCInt' :: Integer -> Integer -> BP.BitPut
-encodeSCInt' = error "encodeSCInt' not yet defined"
+encodeSCInt' = bitPutify `c2` (map fromIntegral) `c2` encodeSCInt
 
 \end{code}
 
@@ -799,8 +802,12 @@ for a collection of bits.
 
 \begin{code}
 
+encodeOctetsWithLength' = bitPutify . (map fromIntegral). encodeOctetsWithLength
+
 encodeOctetsWithLength :: [Int] -> [Int]
 encodeOctetsWithLength = encodeWithLength (concat . id) . groupBy 8
+
+encodeBitsWithLength' = bitPutify . (map fromIntegral). encodeBitsWithLength
 
 encodeBitsWithLength :: [Int] -> [Int]
 encodeBitsWithLength = encodeWithLength id
