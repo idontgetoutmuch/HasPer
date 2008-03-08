@@ -18,7 +18,7 @@ Note that some of the tests take a long time to run especially the one for encod
 
 module UnitTest where
 
-import ConstrainedType
+import ConstrainedType hiding (c2)
 import Pretty
 import Control.Monad.State
 import Control.Monad.Error
@@ -664,10 +664,6 @@ mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 
 \begin{code}
 
-integer8'1 = toPer (RANGE INTEGER (Just 3) (Just 6)) 3
-integer8'2 = toPer (RANGE INTEGER (Just 3) (Just 6)) 4
-integer8'3 = toPer (RANGE INTEGER (Just 3) (Just 6)) 5
-integer8'4 = toPer (RANGE INTEGER (Just 3) (Just 6)) 6
 integer9'1 = toPer (RANGE INTEGER (Just 4000) (Just 4254)) 4002
 integer9'2 = toPer (RANGE INTEGER (Just 4000) (Just 4254)) 4006
 integer10'1 = toPer (RANGE INTEGER (Just 4000) (Just 4255)) 4002
@@ -693,6 +689,23 @@ constrainedResult1 =
 constrainedTest1 =
    TestCase (
       assertEqual "Constrained INTEGER Test 1" (Right 27) constrainedResult1
+   )
+
+integerType8 = RANGE INTEGER (Just 3) (Just 6)
+integerVal81 = 3
+integerVal82 = 4
+integerVal83 = 5
+integerVal84 = 6
+
+constrainedResult t n =
+   BG.runBitGet (BP.runBitPut (encodeInt' t n)) (fromPerInteger' t)
+
+constrainedTest2 =
+   let xs = [integerVal81,integerVal82,integerVal83,integerVal84] in
+      TestCase (
+         assertEqual "Constrained INTEGER Test 2" 
+                     (map Right xs)
+                     (map (constrainedResult integerType8) xs)
    )
 
 \end{code}
@@ -1630,6 +1643,7 @@ tests =
    integerTest4,
    semiIntegerTest5,
    constrainedTest1,
+   constrainedTest2,
    bitStringTest1,
    bitStringTest1a,
    bitStringTest1',
