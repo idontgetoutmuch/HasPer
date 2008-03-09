@@ -598,7 +598,7 @@ encodeInt' t x =
       Constrained (Just lb) Nothing ->
                 encodeSCInt' x lb
       Constrained Nothing _ ->
-                error "Un" -- encodeUInt x
+                encodeUInt' x
    where
       p = bounds t
 
@@ -729,6 +729,9 @@ encodeSCInt' = bitPutify `c2` (map fromIntegral) `c2` encodeSCInt
 
 encodeUInt :: Integer -> BitStream
 encodeUInt x = encodeOctetsWithLength (to2sComplement x)
+
+encodeUInt' :: Integer -> BP.BitPut
+encodeUInt' = bitPutify . (map fromIntegral) . encodeUInt
 
 \end{code}
 
@@ -1768,7 +1771,7 @@ decodeLargeLengthDeterminant' f t =
                let l = fromNonNeg' 7 j
                f l t
          else
-            undefined
+            error "you are here"
 {-
          1 ->
             do q <- mmGetBit
@@ -1848,8 +1851,8 @@ fromPerInteger' t =
             let n = 8 * (B.length o)
             return (lb + (fromNonNeg' n o))
       Constrained Nothing _ ->
-         do undefined -- o <- octets
-            -- return (from2sComplement o)
+         do o <- octets
+            return (from2sComplement' o)
    where
       p        = bounds t
       octets   = decodeLargeLengthDeterminant' chunkBy8 undefined

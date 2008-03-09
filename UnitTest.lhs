@@ -561,6 +561,14 @@ unConIntegerTest1 =
       assertEqual "Unconstrained INTEGER Test 1" vInteger1 mUn1
    )
 
+unConIntegerTest8 =
+   let xs = [vInteger1,1,2,127,128,255,256,257] in
+      TestCase (
+         assertEqual "Unconstrained INTEGER Test 8" 
+                     (map Right xs)
+                     (map (constrainedResult tUnConInteger1) xs)
+      )
+
 longInteger1 = toPer tUnConInteger1 longIntegerVal1
 mUnLong1 = mDecodeEncode tUnConInteger1 longInteger1
 
@@ -635,7 +643,7 @@ semiIntegerTest5 =
    )
 
 semiIntegerTest6 =
-   let xs = [vInteger5] in
+   let xs = [vInteger5,-1,0] in
       TestCase (
          assertEqual "Semi-Constrained INTEGER Test 2" 
                      (map Right xs)
@@ -645,6 +653,15 @@ semiIntegerTest6 =
 tInteger6 = RANGE INTEGER (Just 1) Nothing
 vInteger6 = 127
 integer6  = toPer (RANGE INTEGER (Just 1) Nothing) 127
+
+semiIntegerTest7 =
+   let xs = [vInteger6,1,2,127,128,255,256,257] in
+      TestCase (
+         assertEqual "Semi-Constrained INTEGER Test 3" 
+                     (map Right xs)
+                     (map (constrainedResult tInteger6) xs)
+      )
+
 tInteger7 = RANGE INTEGER (Just 0) Nothing
 vInteger7 = 128
 integer7  = toPer (RANGE INTEGER (Just 0) Nothing) 128
@@ -665,6 +682,14 @@ longIntegerPER3 = toPer natural longIntegerVal3
 mSemiUnLong3 = mDecodeEncode natural longIntegerPER3
 mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 
+semiIntegerTest8 =
+   let xs = [longIntegerVal3] in
+      TestCase (
+         assertEqual "Semi-Constrained INTEGER Test 4" 
+                     (map Right xs)
+                     (map (constrainedResult natural) xs)
+      )
+
 \end{code}
 
 \subsection{Constrained INTEGER}
@@ -673,6 +698,7 @@ mUnLongTest3 = longIntegerVal3 == mSemiUnLong3
 
 integer9'1 = toPer (RANGE INTEGER (Just 4000) (Just 4254)) 4002
 integer9'2 = toPer (RANGE INTEGER (Just 4000) (Just 4254)) 4006
+
 integer10'1 = toPer (RANGE INTEGER (Just 4000) (Just 4255)) 4002
 integer10'2 = toPer (RANGE INTEGER (Just 4000) (Just 4255)) 4006
 integer11'1 = toPer (RANGE INTEGER (Just 0) (Just 32000)) 0
@@ -1645,11 +1671,14 @@ tests =
    unConIntegerTest2,
    unConIntegerTest3,
    -- unConIntegerTest4, --
+   unConIntegerTest8,
    integerTest2,
    integerTest3,
    integerTest4,
    semiIntegerTest5,
    semiIntegerTest6,
+   semiIntegerTest7,
+   -- semiIntegerTest8, -- Do not run until decodeLargeLengthDeterminant' is completed
    constrainedTest1,
    constrainedTest2,
    bitStringTest1,
