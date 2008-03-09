@@ -29,6 +29,7 @@ import Text.PrettyPrint
 import System
 import IO
 import Data.Int
+import Data.Bits
 import Data.Word
 import Data.Maybe
 \end{code}
@@ -1904,6 +1905,16 @@ from2sComplement a@(x:xs) =
       f 0 = [0]
       f x = x:(f (x-1))
 
+from2sComplement' a = x
+   where
+      l = fromIntegral (B.length a)
+      b = l*8 - 1 
+      (z:zs) = B.unpack a
+      t = (fromIntegral (shiftR (0x80 .&. z) 7)) * 2^b
+      powersOf256 = 1:(map (256*) powersOf256)
+      r = zipWith (*) powersOf256 (map fromIntegral (reverse ((0x7f .&. z):zs)))
+      x = -t + (sum r)
+
 fromNonNeg xs =
    sum (zipWith (*) (map fromIntegral xs) ys)
    where
@@ -1932,7 +1943,7 @@ rightShift n = snd . B.mapAccumL f 0 where
 fromNonNeg' r x = 
    sum (zipWith (*) (map fromIntegral ys) zs)
    where
-      s = (-r) `mod` bSize -- bSize - (r `mod` bSize)
+      s = (-r) `mod` bSize
       bSize = bitSize (head ys)
       ys = reverse (B.unpack (rightShift s x))
       zs = map ((2^bSize)^) [0..genericLength ys]
