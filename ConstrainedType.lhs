@@ -1823,6 +1823,16 @@ fromPerInteger t =
       octets   = decodeLargeLengthDeterminant chunkBy8 undefined
       chunkBy8 = flip (const (mmGetBits . (*8)))
 
+\end{code}
+
+{\em fromNonNeg'} works on bits and when the {\em INTEGER is} semi-constrained
+we know the value is in octets so we can use something which works on e.g.
+{\em Word8} which should be more efficient.
+
+Oh and we should write a QuickCheck test for {\em fromNonNeg'}.
+
+\begin{code}
+
 fromPerInteger' t =
    case p of
       Constrained (Just lb) (Just ub) ->
@@ -1834,7 +1844,8 @@ fromPerInteger' t =
                        return (lb + (fromNonNeg' n j))
       Constrained (Just lb) Nothing ->
          do o <- octets
-            return (lb + (fromNonNeg' 8 o))
+            let n = 8 * (B.length o)
+            return (lb + (fromNonNeg' n o))
       Constrained Nothing _ ->
          do undefined -- o <- octets
             -- return (from2sComplement o)
@@ -1921,9 +1932,9 @@ rightShift n = snd . B.mapAccumL f 0 where
 fromNonNeg' r x = 
    sum (zipWith (*) (map fromIntegral ys) zs)
    where
-      s = bSize - (r `mod` bSize)
+      s = (-r) `mod` bSize -- bSize - (r `mod` bSize)
       bSize = bitSize (head ys)
-      ys = B.unpack (rightShift s x)
+      ys = reverse (B.unpack (rightShift s x))
       zs = map ((2^bSize)^) [0..genericLength ys]
 
 \end{code}

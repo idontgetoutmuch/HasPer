@@ -635,6 +635,14 @@ semiIntegerTest5 =
       assertEqual "Semi-Constrained INTEGER Test 1" eInteger5 integer5
    )
 
+semiIntegerTest6 =
+   let xs = [vInteger5] in
+      TestCase (
+         assertEqual "Semi-Constrained INTEGER Test 2" 
+                     (map Right xs)
+                     (map (constrainedResult tInteger5) xs)
+      )
+
 tInteger6 = RANGE INTEGER (Just 1) Nothing
 vInteger6 = 127
 integer6  = toPer (RANGE INTEGER (Just 1) Nothing) 127
@@ -689,7 +697,7 @@ constrainedResult1 =
 constrainedTest1 =
    TestCase (
       assertEqual "Constrained INTEGER Test 1" (Right 27) constrainedResult1
-   )
+      )
 
 integerType8 = RANGE INTEGER (Just 3) (Just 6)
 integerVal81 = 3
@@ -1637,11 +1645,12 @@ tests =
    unConIntegerTest1,
    unConIntegerTest2,
    unConIntegerTest3,
---    unConIntegerTest4, --
+   -- unConIntegerTest4, --
    integerTest2,
    integerTest3,
    integerTest4,
    semiIntegerTest5,
+   semiIntegerTest6,
    constrainedTest1,
    constrainedTest2,
    bitStringTest1,
@@ -1675,14 +1684,14 @@ tests =
    eSeqOfTest4,
    eSeqOfTest5,
    sSeqTest1,
---    dub439e1, --
+   -- dub439e1, --
    lar303e1,
    lar303e2,
-   lar303e3,
-   lar303e4 --,
---    lar303e6, --
---    lar303e7a, --
---    lar303e7b --
+   lar303e3 -- if you uncomment the tests below you need a comma here!!!
+   -- lar303e4, --,
+   -- lar303e6, --
+   -- lar303e7a, --
+   -- lar303e7b --
    ]
 
 
