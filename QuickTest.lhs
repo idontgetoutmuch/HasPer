@@ -26,9 +26,9 @@ import Data.Char
 import Data.Maybe
 import Data.Monoid
 import Data.List hiding (groupBy)
-import qualified Data.Set as S
 import Control.Monad.Error
-import qualified Data.ByteString.Lazy as B
+-- import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString as B
 import Data.Int
 import Relabel
 import qualified Rename as R

@@ -27,7 +27,6 @@ import Data.Set hiding (map)
 import Data.List hiding (groupBy)
 import IO
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType)
-import qualified Data.Set as S
 import Test.HUnit
 import qualified Data.Binary.Strict.BitPut as BP
 import qualified Data.Binary.Strict.BitGet as BG
