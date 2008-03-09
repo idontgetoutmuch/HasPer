@@ -245,6 +245,34 @@ header =
    text "#include  <stdlib.h> /* for malloc () */" $$
    text "#include  <assert.h> /* for run-time control */"
 
+generateC :: ASNType a -> a -> Doc
+generateC t v =
+   header $$
+   include t $$
+   space $$
+   preface $$
+   space $$
+   text "int main(int ac, char **av) {" $$
+   nest 2 (
+      space $$
+      text "/* Encoder return value */" $$
+      text "asn_enc_rval_t ec;" $$
+      space $$
+      declareTypePointer t $$ 
+      space $$
+      assignValue t v $$
+      space $$
+      fileAndEncode (encodeAsPER t)
+      ) $$
+   text "}"
+
+generateASN1 t v =
+   prettyModuleWithVals [RepTypeVal t v]
+
+writeASN1AndC asn1File cFile t v =
+   do writeFile asn1File (render (generateASN1 t v))
+      writeFile cFile    (render (generateC    t v))
+
 arbitraryASN1AndC :: String -> String -> IO Doc
 arbitraryASN1AndC asn1File cFile =
    do rs <- genModule''
@@ -332,6 +360,8 @@ type9 =
          s3 = NamedType "subElement3" (Just (Context,5,Implicit)) INTEGER
 
 type9' = NamedType "Type9" Nothing type9
+
+type9'' = TYPEASS "Type9" Nothing type9
 
 val9 = NoValueC NoValue (ValueC (ValueC 7 (NoValueC NoValue (NoValueC NoValue EmptyHL))) (NoValueC NoValue EmptyHL))
 

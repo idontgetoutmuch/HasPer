@@ -48,3 +48,14 @@ val12a = ValueC (3:*:(4:*:Empty)) (NoValueC NoValue EmptyHL)
 val12b = NoValueC NoValue (ValueC (1:*:(2:*:Empty)) EmptyHL)
 
 bitStringType1 = SIZE (SIZE (BITSTRING []) (Elem (1,2)) NoMarker) (Elem (2,2)) NoMarker 
+
+tInteger5 = RANGE INTEGER (Just (-1)) Nothing
+tInteger5' = TYPEASS "Integer5" Nothing tInteger5
+vInteger5 = 4096
+
+integerType8 = RANGE INTEGER (Just 3) (Just 6)
+integerType8' = TYPEASS "Integer8" Nothing integerType8
+integerVal81 = 3
+integerVal82 = 4
+integerVal83 = 5
+integerVal84 = 6
