@@ -8,11 +8,13 @@ import System.Directory
 import Text.PrettyPrint
 import Pretty
 import ConstrainedType
-import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString as B
+import qualified Data.Binary.Strict.BitGet as BG
 import Control.Monad.State
 import Control.Monad.Error
 import UnitTest (type9, val9, val91)
 import IO
+import TestData
 
 runTest f =
    runCommands [
@@ -56,17 +58,16 @@ main =
       setCurrentDirectory u
       c <- getCurrentDirectory
       putStrLn c
-      writeFile "generated.asn1" (render (genASN1 type7))
-      writeFile "generated.c" (render (genC type7 val7))
+      writeASN1AndC "generated.asn1" "generated.c" integerType8' integerVal81
       runTest "generated.asn1"
-      r <- readGen type7
-      putStrLn r
+      readGen "generated.per" integerType8'
       setCurrentDirectory d
 
-readGen (NamedType _ _ t) =
-   do h <- openFile "generated.per" ReadMode
+readGen :: String -> ASNType a -> IO ()
+readGen perFile t =
+   do h <- openFile perFile ReadMode
       b <- B.hGetContents h
-      let d = runState (runErrorT (mFromPer t)) (b,0)
+      let d = BG.runBitGet b (mFromPer' t)
       case d of
-         (Left e,s)  -> return (e ++ " " ++ show s)
-         (Right n,s) -> return (show n ++ " " ++ show s)
+         Left s  -> putStrLn ("Left " ++ show s)
+         Right x -> putStrLn ("Right " ++ render (prettyTypeVal t x))

@@ -1987,6 +1987,11 @@ mFromPer t@(CHOICE c) =
       l NoChoice = 0
       l (ChoiceOption t ts) = 1+(l ts)
 
+mFromPer' :: ASNType a -> BG.BitGet a
+mFromPer' t@INTEGER                 = fromPerInteger' t
+mFromPer' r@(RANGE i l u)           = fromPerInteger' r
+mFromPer' t@(TYPEASS _ _ u)         = mFromPer' u
+
 \end{code}
 
 \subsection{SEQUENCE}
