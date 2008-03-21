@@ -528,6 +528,7 @@ toPer (SIZE (TYPEASS r tg t) s em) x            = let nt = multiRSize t
                                                   in
                                                       toPer (SIZE nt s em) x
 
+toPer' = bitPutify . (map fromIntegral) `c2` toPer
 
 toPer8s ct v
     = let bts = toPer ct v
@@ -539,6 +540,8 @@ toPer8s ct v
                      then bts
                      else
                        bts ++ take (8-rb) (repeat 0)
+
+toPer8s' = bitPutify . (map fromIntegral) `c2` toPer8s
 
 \end{code}
 
@@ -1991,6 +1994,14 @@ mFromPer' :: ASNType a -> BG.BitGet a
 mFromPer' t@INTEGER                 = fromPerInteger' t
 mFromPer' r@(RANGE i l u)           = fromPerInteger' r
 mFromPer' t@(TYPEASS _ _ u)         = mFromPer' u
+mFromPer' (SEQUENCE s)              =
+   do ps <- BG.getLeftByteString (l s)
+      fromPerSeq' ps s
+   where
+      l :: Integral n => Sequence a -> n
+      l Nil = 0
+      l (Cons (CTMandatory _) ts) = l ts
+      l (Cons (CTOptional _ ) ts) = 1+(l ts)
 
 \end{code}
 
@@ -2017,6 +2028,14 @@ mmFromPerSeq bitmap (Cons (CTOptional (NamedType _ _ t)) ts) =
             do x <- mFromPer t
                xs <- mmFromPerSeq (tail bitmap) ts
                return ((Just x):*:xs)
+
+fromPerSeq' :: B.ByteString -> Sequence a -> BG.BitGet a
+fromPerSeq' _ Nil = return Empty
+fromPerSeq' bitmap (Cons (CTMandatory (NamedType _ _ t)) ts) =
+   do x <- mFromPer' t
+      xs <- fromPerSeq' bitmap ts
+      return (x:*:xs)
+fromPerSeq' _ _ = error "fromPerSeq' fall through"
 
 \end{code}
 

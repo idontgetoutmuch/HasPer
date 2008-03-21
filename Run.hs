@@ -12,14 +12,18 @@ import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitGet as BG
 import Control.Monad.State
 import Control.Monad.Error
+import qualified Control.Exception as CE
 import UnitTest (type9, val9, val91)
 import IO
 import TestData
 
+runas1nc f =
+   runCommands [
+      ("asn1c -gen-PER -fnative-types " ++ f, "Failure in asn1c")
+   ]
+
 runTest f =
    runCommands [
-      ("asn1c -gen-PER " ++ f, "Failure in asn1c"),
-      ("mv converter-sample.c converter-sample.c.old", "Failure in mv of converter-sample.c"),
       ("gcc -I. -o test *.c",  "Failure in gcc"),
       ("./test generated.per", "Failure in ./test")
    ]
@@ -50,18 +54,21 @@ genASN1 t =
         text "END"
         )
 
-main = 
+test ty val =
    do d <- getCurrentDirectory
       t <- getCurrentTime
       let u = "asn1c." ++ show (utctDay t) ++ "." ++ show (utctDayTime t)
       createDirectory u
       setCurrentDirectory u
-      c <- getCurrentDirectory
-      putStrLn c
-      writeASN1AndC "generated.asn1" "generated.c" integerType8' integerVal81
-      runTest "generated.asn1"
-      readGen "generated.per" integerType8'
+      CE.catch (do writeASN1AndC "generated.asn1" "generated.c" ty val
+                   runas1nc "generated.asn1"
+                   renameFile "converter-sample.c" "converter-sample.c.old"
+                   runTest "generated.asn1"
+                   readGen "generated.per" ty)
+               (\e -> hPutStr stderr ("Problem with generating / compiling " ++ show e))
       setCurrentDirectory d
+
+main = test tSequence6' tSeqVal61
 
 readGen :: String -> ASNType a -> IO ()
 readGen perFile t =

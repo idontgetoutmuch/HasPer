@@ -30,6 +30,7 @@ import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, Co
 import Test.HUnit
 import qualified Data.Binary.Strict.BitPut as BP
 import qualified Data.Binary.Strict.BitGet as BG
+import TestData
 
 \end{code}
 
@@ -627,10 +628,6 @@ integerTest4 =
 
 \begin{code}
 
-tInteger5 = RANGE INTEGER (Just (-1)) Nothing
-vInteger5 = 4096
-integer5  = toPer (RANGE INTEGER (Just (-1)) Nothing) 4096
-
 eInteger5 = [
    0,0,0,0,0,0,1,0,
    0,0,0,1,0,0,0,0,
@@ -639,7 +636,7 @@ eInteger5 = [
 
 semiIntegerTest5 =
    TestCase (
-      assertEqual "Semi-Constrained INTEGER Test 1" eInteger5 integer5
+      assertEqual "Semi-Constrained INTEGER Test 1" eInteger5 (toPer (RANGE INTEGER (Just (-1)) Nothing) 4096)
    )
 
 semiIntegerTest6 =
@@ -666,7 +663,7 @@ tInteger7 = RANGE INTEGER (Just 0) Nothing
 vInteger7 = 128
 integer7  = toPer (RANGE INTEGER (Just 0) Nothing) 128
 
-mUnSemi5 = mDecodeEncode tInteger5 integer5
+mUnSemi5 = mDecodeEncode tInteger5 (toPer (RANGE INTEGER (Just (-1)) Nothing) 4096)
 mSemiTest5 = vInteger5 == mUnSemi5
 
 mUnSemi6 = mDecodeEncode tInteger6 integer6
@@ -719,16 +716,16 @@ constrainedResult1 =
        bs = BP.runBitPut (encodeInt' t 27) in
       BG.runBitGet bs (fromPerInteger' t)
 
+idem :: ASNType a -> a -> Either String a
+idem t v = 
+   let bs = BP.runBitPut (toPer' t v) 
+      in
+         BG.runBitGet bs (mFromPer' t)
+
 constrainedTest1 =
    TestCase (
       assertEqual "Constrained INTEGER Test 1" (Right 27) constrainedResult1
       )
-
-integerType8 = RANGE INTEGER (Just 3) (Just 6)
-integerVal81 = 3
-integerVal82 = 4
-integerVal83 = 5
-integerVal84 = 6
 
 constrainedResult t n =
    BG.runBitGet (BP.runBitPut (encodeInt' t n)) (fromPerInteger' t)
@@ -1583,18 +1580,6 @@ type3 =
       Cons (CTMandatory (NamedType "first" Nothing INTEGER)) (
          Cons (CTMandatory (NamedType "second" Nothing INTEGER)) Nil)))
 
-type7       = NamedType "T3" Nothing (SEQUENCE (Cons (CTMandatory type7First) (Cons (CTMandatory type7Second) (Cons (CTMandatory type7Nest1) Nil))))
-type7First  = NamedType "first" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-type7Second = NamedType "second" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-
-type7Nest1   = NamedType "nest1" Nothing (SEQUENCE (Cons (CTMandatory type7Fifth) (Cons (CTMandatory type7Fourth) (Cons (CTMandatory type7Nest2) Nil))))
-type7Third  = NamedType "third" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-type7Fourth = NamedType "fourth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-
-type7Nest2  = NamedType "nest2" Nothing (SEQUENCE (Cons (CTMandatory type7Fifth) (Cons (CTMandatory type7Sixth) Nil)))
-type7Fifth  = NamedType "fifth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-type7Sixth  = NamedType "sixth" Nothing (RANGE INTEGER (Just 0) (Just 65535))
-
 testType7 = let NamedType _ _ t = type7Nest1 in toPer t (7:*:(11:*:((13:*:(17:*:Empty)):*:Empty)))
 
 testType7' = let NamedType _ _ t = type7 in toPer t (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty)))
@@ -1602,14 +1587,6 @@ testType7' = let NamedType _ _ t = type7 in toPer t (3:*:( 5:*:((7:*:(11:*:((13:
 thereAndBack7 =
    let NamedType _ _ t = type7 in
       mmIdem t (toPer t (3:*:( 5:*:((7:*:(11:*:((13:*:(17:*:Empty)):*:Empty))):*:Empty))))
-
-type8       = NamedType "T4" Nothing (SEQUENCE (Cons (CTMandatory type8First) (Cons (CTMandatory type8Second) (Cons (CTMandatory type8Nest1) Nil))))
-type8First  = NamedType "first"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
-type8Second = NamedType "second" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
-
-type8Nest1  = NamedType "nest1"  Nothing (SEQUENCE (Cons (CTMandatory type8Third) (Cons (CTMandatory type8Fourth) Nil)))
-type8Third  = NamedType "third"  Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
-type8Fourth = NamedType "fourth" Nothing (SIZE (BITSTRING []) (Elem (0,65537)) NoMarker)
 
 testType8 =
    let (NamedType _ _ t) = type8 in

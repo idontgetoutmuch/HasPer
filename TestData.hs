@@ -1,7 +1,9 @@
 module TestData where
 
-import Language.ASN1 hiding (BitString)
+import Language.ASN1 hiding (BitString, ComponentType)
 import ConstrainedType
+
+
 
 type7       = NamedType "T3" Nothing (SEQUENCE (Cons (CTMandatory type7First) (Cons (CTMandatory type7Second) (Cons (CTMandatory type7Nest1) Nil))))
 type7First  = NamedType "first" Nothing (RANGE INTEGER (Just 0) (Just 65535))
@@ -59,3 +61,25 @@ integerVal81 = 3
 integerVal82 = 4
 integerVal83 = 5
 integerVal84 = 6
+
+integerType8s = SEQUENCE (Cons (CTMandatory (NamedType "three" Nothing integerType8)) 
+                               (Cons (CTMandatory (NamedType "four" Nothing integerType8))
+                                     (Cons (CTMandatory (NamedType "five" Nothing integerType8))
+                                           (Cons (CTMandatory (NamedType "six" Nothing integerType8)) Nil))))
+integerType8s' = TYPEASS "Sequence8" Nothing integerType8s
+tSeqVal8s  = (3:*:(4:*:(5:*:(6:*:Empty))))
+
+
+tInteger41 = CTMandatory (NamedType "first" Nothing (RANGE INTEGER (Just (-256)) (Just 256)))
+tInteger42 = CTMandatory (NamedType "second" Nothing (RANGE INTEGER (Just (-256)) (Just 256)))
+tInteger43 = CTMandatory (NamedType "third" Nothing (RANGE INTEGER (Just (-256)) (Just 256)))
+tInteger44 = CTMandatory (NamedType "fourth" Nothing (RANGE INTEGER (Just (-256)) (Just 256)))
+
+
+tSequence5 = SEQUENCE (Cons tInteger41 (Cons tInteger42 Nil))
+tSequence5' = TYPEASS "Sequence5" Nothing tSequence5
+tSeqVal51  = (3:*:(5:*:Empty))
+
+tSequence6 = SEQUENCE (Cons tInteger41 (Cons tInteger42 (Cons tInteger43 (Cons tInteger44 Nil))))
+tSequence6' = TYPEASS "Sequence6" Nothing tSequence6
+tSeqVal61  = ((-256):*:((-255):*:(0:*:(256:*:Empty))))
