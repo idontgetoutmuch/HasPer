@@ -104,6 +104,37 @@ this can also be used to generate ``quick starts'' for C programs using asn1c.
 Note that no performance testing has been undertaken and there are no
 guarantees about the speed of encoding and decoding.
 
+\section{Inter-Operability Testing on Windows}
+
+The inter-operability tests have been performed using
+\htmladdnormallinkfoot
+{lcc-win32: A Compiler system for windows}
+{http://www.cs.virginia.edu/~lcc-win32}
+(lcc). Note that this is free for non-commercial use only.
+
+\begin{itemize}
+\item
+Install lcc into c:\\lcc (or whatever directory you prefer).
+\item
+Add c:\\lcc\\bin to the end of your path (Windows XP):
+\begin{itemize}
+\item
+Go to the Control Panel.
+\item
+Select 'System'.
+\item
+Select 'Advanced system settings'.
+\item
+Click 'Environment variables'.
+\item
+Find the 'PATH' environment variable and choose to edit it.
+\item
+Add ';c:\\lcc\\bin' to the end of the 'PATH' environment variable.
+\item
+Save and close the windows.
+\end{itemize}
+\end{itemize}
+
 \section{ASN.1 Support}
 
 Note that the types are deduced automatically by the compiler are 
