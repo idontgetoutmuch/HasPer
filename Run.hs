@@ -20,8 +20,8 @@ import System.FilePath
 import System.Info
 
 skeletons = "c:\\Users\\Dom\\asn1c-0.9.21\\skeletons"
-
-asn1c = "asn1c -gen-PER -fnative-types -S c:\\Users\\Dom\\asn1c-0.9.21\\skeletons "
+asn1c = "asn1c"
+asn1cOptions = "-gen-PER -fnative-types -S"
 
 cc = 
    case os of
@@ -39,17 +39,6 @@ cIncludes =
       _         -> ""
 
 compile f = (cc ++ " " ++ cIncludes ++ " " ++ f, "Failure compiling " ++ f)
-
-runas1nc f =
-   runCommands [
-      (asn1c ++ f, "Failure in asn1c")
-   ]
-
-runTest f =
-   runCommands [
-      ("gcc -I. -o test *.c",  "Failure in gcc"),
-      ("./test generated.per", "Failure in ./test")
-   ]
 
 runCommands [] =
    return "Success"
@@ -69,7 +58,7 @@ test genFile ty@(TYPEASS name _ _) val =
       createDirectory u
       setCurrentDirectory u
       CE.catch (do writeASN1AndC (genFile <.> "asn1") (genFile <.> "c") ty val
-                   runas1nc (genFile <.> "asn1")
+                   runCommands [(asn1c ++ " " ++ asn1cOptions ++ " " ++ skeletons ++ " " ++ (genFile <.> "asn1"), "Failure in asn1c")]
                    d <- getCurrentDirectory
                    fs <- getDirectoryContents d
                    let cFiles = 
@@ -99,8 +88,6 @@ test genFile ty@(TYPEASS name _ _) val =
       linkerOut f = "-o " ++ f
 test _ _ _  = error "Can only test type assignments"
 
-main = test "generated" tSequence6' tSeqVal61
-
 readGen :: String -> ASNType a -> IO ()
 readGen perFile t =
    do h <- openFile perFile ReadMode
@@ -109,3 +96,6 @@ readGen perFile t =
       case d of
          Left s  -> putStrLn ("Left " ++ show s)
          Right x -> putStrLn ("Right " ++ render (prettyTypeVal t x))
+
+main = test "generated" tSequence6' tSeqVal61
+
