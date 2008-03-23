@@ -17,10 +17,16 @@ import UnitTest (type9, val9, val91)
 import IO
 import TestData
 import System.FilePath
+import System.Info
 
 skeletons = "c:\\Users\\Dom\\asn1c-0.9.21\\skeletons"
 
 asn1c = "asn1c -gen-PER -fnative-types -S c:\\Users\\Dom\\asn1c-0.9.21\\skeletons "
+
+cc = "lcc"
+cIncludes = "-I" ++ skeletons
+
+compile f = (cc ++ " " ++ cIncludes ++ " " ++ f, "Failure compiling " ++ f)
 
 runas1nc f =
    runCommands [
@@ -44,61 +50,38 @@ runCommands ((c,e):xs) =
          ExitFailure n ->
             return (e ++ ": " ++ show n)
 
-genASN1 :: NamedType a -> Doc
-genASN1 t =
-   let (NamedType n _ u) = t in 
-      text "FooBar {1 2 3 4 5 6} DEFINITIONS ::=" $$
-      nest 3 (
-         text "BEGIN" $$
-         nest 3 (
-            text n <> text " ::= " $$
-            nest 3 (
-               prettyType u
-               ) 
-           ) $$
-        text "END"
-        )
-
-test ty val =
+test ty@(TYPEASS name _ _) val =
    do d <- getCurrentDirectory
       t <- getCurrentTime
       let u = "asn1c." ++ show (utctDay t) ++ "." ++ show (utctDayTime t)
       createDirectory u
       setCurrentDirectory u
-{-
-      CE.catch (do writeASN1AndC "generated.asn1" "generated.c" ty val
-                   runas1nc "generated.asn1"
-                   renameFile "converter-sample.c" "converter-sample.c.old"
-                   runTest "generated.asn1"
-                   readGen "generated.per" ty)
-               (\e -> hPutStrLn stderr ("Problem with generating / compiling " ++ show e))
--}
       CE.catch (do writeASN1AndC "generated.asn1" "generated.c" ty val
                    runas1nc "generated.asn1"
                    d <- getCurrentDirectory
                    fs <- getDirectoryContents d
-                   let cfiles = map (skeletons </>) .
-                                map (flip addExtension ".c") . 
-                                map fst . 
-                                filter ((== ".c.lnk"). snd) . 
-                                (map splitExtensions) $ 
-                                fs
-                   putStrLn (show cfiles))
+                   let cFiles = 
+                          case os of
+                             "mingw32" -> 
+                                cFiles' ".c.lnk" fs
+                             _ ->
+                                cFiles' ".c" fs
+                   putStrLn (show cFiles)
+                   runCommands (map compile cFiles)
+                   return ())
                (\e -> hPutStrLn stderr ("Problem with generating / compiling " ++ show e))
       setCurrentDirectory d
+   where
+      cFiles' suffix =
+         map (skeletons </>) .
+         filter (/= "converter-sample.c") .
+         map (flip addExtension ".c") . 
+         map fst . 
+         filter ((== suffix). snd) . 
+         (map splitExtensions)
+test _ _ = error "Can only test type assignments"
 
 main = test tSequence6' tSeqVal61
-
-foo = 
-   do d <- getCurrentDirectory
-      fs <- getDirectoryContents d
-      putStrLn (show fs)
-      let cfiles = map (flip addExtension ".c") . map fst . filter ((== ".c.lnk"). snd) . (map splitExtensions) $ fs
-      putStrLn (show cfiles)
-      let (n,e) = splitExtensions (fs!!4)
-      h <- openFile (skeletons </> (n <.> "c")) ReadMode
-      b <- hGetContents h
-      putStrLn (show b)
 
 readGen :: String -> ASNType a -> IO ()
 readGen perFile t =
