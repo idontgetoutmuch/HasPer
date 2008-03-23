@@ -23,8 +23,15 @@ skeletons = "c:\\Users\\Dom\\asn1c-0.9.21\\skeletons"
 
 asn1c = "asn1c -gen-PER -fnative-types -S c:\\Users\\Dom\\asn1c-0.9.21\\skeletons "
 
-cc = "lcc"
-cIncludes = "-I" ++ skeletons
+cc = 
+   case os of
+      "mingw32" -> "lcc"
+      _         -> "gcc"
+
+cIncludes = 
+   case os of
+      "mingw32" -> "-I" ++ skeletons
+      _         -> ""
 
 compile f = (cc ++ " " ++ cIncludes ++ " " ++ f, "Failure compiling " ++ f)
 
@@ -50,38 +57,38 @@ runCommands ((c,e):xs) =
          ExitFailure n ->
             return (e ++ ": " ++ show n)
 
-test ty@(TYPEASS name _ _) val =
+test genFile ty@(TYPEASS name _ _) val =
    do d <- getCurrentDirectory
       t <- getCurrentTime
       let u = "asn1c." ++ show (utctDay t) ++ "." ++ show (utctDayTime t)
       createDirectory u
       setCurrentDirectory u
-      CE.catch (do writeASN1AndC "generated.asn1" "generated.c" ty val
-                   runas1nc "generated.asn1"
+      CE.catch (do writeASN1AndC (genFile <.> "asn1") (genFile <.> "c") ty val
+                   runas1nc (genFile <.> "asn1")
                    d <- getCurrentDirectory
                    fs <- getDirectoryContents d
                    let cFiles = 
                           case os of
                              "mingw32" -> 
-                                cFiles' ".c.lnk" fs
+                                (name <.> "c"):(cFiles' ".c.lnk" fs)
                              _ ->
                                 cFiles' ".c" fs
                    putStrLn (show cFiles)
                    runCommands (map compile cFiles)
                    return ())
-               (\e -> hPutStrLn stderr ("Problem with generating / compiling " ++ show e))
+               (\e -> hPutStrLn stderr ("Problem with generating / compiling\n" ++ show e))
       setCurrentDirectory d
    where
       cFiles' suffix =
          map (skeletons </>) .
          filter (/= "converter-sample.c") .
-         map (flip addExtension ".c") . 
+         map (<.> ".c") . 
          map fst . 
          filter ((== suffix). snd) . 
          (map splitExtensions)
-test _ _ = error "Can only test type assignments"
+test _ _ _  = error "Can only test type assignments"
 
-main = test tSequence6' tSeqVal61
+main = test "generated" tSequence6' tSeqVal61
 
 readGen :: String -> ASNType a -> IO ()
 readGen perFile t =
