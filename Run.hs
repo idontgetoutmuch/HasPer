@@ -28,6 +28,11 @@ cc =
       "mingw32" -> "lcc"
       _         -> "gcc"
 
+linker =
+   case os of
+      "mingw32" -> "lcclnk"
+      _         -> "gcc"
+
 cIncludes = 
    case os of
       "mingw32" -> "-I" ++ skeletons
@@ -70,13 +75,18 @@ test genFile ty@(TYPEASS name _ _) val =
                    let cFiles = 
                           case os of
                              "mingw32" -> 
-                                (name <.> "c"):(cFiles' ".c.lnk" fs)
+                                (genFile <.> "c"):(name <.> "c"):(cFiles' ".c.lnk" fs)
                              _ ->
                                 cFiles' ".c" fs
                    putStrLn (show cFiles)
                    runCommands (map compile cFiles)
+                   runCommands [
+                      (linker ++ " " ++ linkerOut (genFile <.> "exe") ++ " *.obj", "Failure linking"),
+                      ((genFile <.> "exe") ++ " " ++ (genFile <.> "per"), "Failure executing")
+                      ]
                    return ())
                (\e -> hPutStrLn stderr ("Problem with generating / compiling\n" ++ show e))
+      readGen (genFile <.> "per") ty
       setCurrentDirectory d
    where
       cFiles' suffix =
@@ -86,6 +96,7 @@ test genFile ty@(TYPEASS name _ _) val =
          map fst . 
          filter ((== suffix). snd) . 
          (map splitExtensions)
+      linkerOut f = "-o " ++ f
 test _ _ _  = error "Can only test type assignments"
 
 main = test "generated" tSequence6' tSeqVal61

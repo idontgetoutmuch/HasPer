@@ -16,7 +16,7 @@ genC nt@(NamedType name tagInfo t) v =
    text "#include <stdio.h>   /* for stdout */" $$
    text "#include  <stdlib.h> /* for malloc () */" $$
    text "#include  <assert.h> /* for run-time control */" $$
-   text "#include <" <> text name <> text ".h>" <> space <> text "/* " <> text name <> text " ASN.1 type */" $$
+   text "#include \"" <> text name <> text ".h\"" <> space <> text "/* " <> text name <> text " ASN.1 type */" $$
    space $$
    preface $$
    space $$
@@ -167,7 +167,7 @@ newTopLevelNamedTypeValC nt@(NamedType name tagInfo t) v =
 
 include :: ASNType a -> Doc
 include (TYPEASS tr _ _) =
-   text "#include <" <> text tr <> text ".h>" <> space <> text "/* " <> text tr <> text " ASN.1 type */"
+   text "#include \"" <> text tr <> text ".h\"" <> space <> text "/* " <> text tr <> text " ASN.1 type */"
 include x =
    error ("Include files can only be defined for type assignments, attempting: " ++ render (pretty x))
 
