@@ -19,7 +19,12 @@ import TestData
 import System.FilePath
 import System.Info
 
-skeletons = "c:\\Users\\Dom\\asn1c-0.9.21\\skeletons"
+-- Uncomment the line below for Windows
+-- skeletons = "c:\\Users\\Dom\\asn1c-0.9.21\\skeletons"
+
+-- Comment the line below for Windows
+skeletons = "/usr/local/share/asn1c"
+
 asn1c = "asn1c"
 asn1cOptions = "-gen-PER -fnative-types -S"
 
@@ -31,14 +36,25 @@ cc =
 linker =
    case os of
       "mingw32" -> "lcclnk"
-      _         -> "gcc"
+      _         -> "ld"
+
+objectSuffix =
+   case os of
+      "mingw32" -> "obj"
+      _         -> "o"
+      
 
 cIncludes = 
    case os of
       "mingw32" -> "-I" ++ skeletons
-      _         -> ""
+      _         -> "-I" ++ skeletons
 
-compile f = (cc ++ " " ++ cIncludes ++ " " ++ f, "Failure compiling " ++ f)
+ccOptions =
+   case os of
+      "mingw32" -> ""
+      _         -> "-c"
+
+compile f = (cc ++ " " ++ ccOptions ++ " " ++ cIncludes ++ " " ++ f, "Failure compiling " ++ f)
 
 runCommands [] =
    return "Success"
@@ -68,14 +84,14 @@ test genFile ty@(TYPEASS name _ _) val =
                              _ ->
                                 cFiles' ".c" fs
                    putStrLn (show cFiles)
+                   putStrLn (show (map compile cFiles))
                    runCommands (map compile cFiles)
                    runCommands [
-                      (linker ++ " " ++ linkerOut (genFile <.> "exe") ++ " *.obj", "Failure linking"),
+                      (linker ++ " " ++ linkerOut (genFile <.> "exe") ++ ("*" <.> "obj"), "Failure linking"),
                       ((genFile <.> "exe") ++ " " ++ (genFile <.> "per"), "Failure executing")
                       ]
-                   return ())
+                   readGen (genFile <.> "per") ty)
                (\e -> hPutStrLn stderr ("Problem with generating / compiling\n" ++ show e))
-      readGen (genFile <.> "per") ty
       setCurrentDirectory d
    where
       cFiles' suffix =
