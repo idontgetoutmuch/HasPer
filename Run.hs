@@ -36,7 +36,7 @@ cc =
 linker =
    case os of
       "mingw32" -> "lcclnk"
-      _         -> "ld"
+      _         -> "gcc"
 
 objectSuffix =
    case os of
@@ -80,30 +80,39 @@ test genFile ty@(TYPEASS name _ _) val =
                    let cFiles = 
                           case os of
                              "mingw32" -> 
-                                (genFile <.> "c"):(name <.> "c"):(cFiles' ".c.lnk" fs)
+                                (genFile <.> "c"):(name <.> "c"):(cFiles' ["converter-sample.c"] ".c.lnk" fs)
                              _ ->
-                                cFiles' ".c" fs
+                                (genFile <.> "c"):(name <.> "c"):(cFiles' [genFile <.> "c", name <.> "c", "converter-sample" <.> "c"] ".c" fs)
                    putStrLn (show cFiles)
                    putStrLn (show (map compile cFiles))
                    runCommands (map compile cFiles)
+                   putStrLn (linker ++ " " ++ linkerOut genFile ++ " " ++ ("*" <.> objectSuffix))
                    runCommands [
-                      (linker ++ " " ++ linkerOut (genFile <.> "exe") ++ ("*" <.> "obj"), "Failure linking"),
-                      ((genFile <.> "exe") ++ " " ++ (genFile <.> "per"), "Failure executing")
+                      (linker ++ " " ++ linkerOut genFile ++ " " ++ ("*" <.> objectSuffix), "Failure linking"),
+                      ((executable genFile) ++ " " ++ (genFile <.> "per"), "Failure executing")
                       ]
                    readGen (genFile <.> "per") ty)
                (\e -> hPutStrLn stderr ("Problem with generating / compiling\n" ++ show e))
       setCurrentDirectory d
    where
-      cFiles' suffix =
+      cFiles' excls suffix =
          map (skeletons </>) .
-         filter (/= "converter-sample.c") .
+         filters (map (/=) excls) . 
          map (<.> ".c") . 
          map fst . 
          filter ((== suffix). snd) . 
          (map splitExtensions)
-      linkerOut f = "-o " ++ f
+      filters = flip (foldr filter)
+      linkerOut f = 
+         case os of
+            "mingw32" -> "-o " ++ (f <.> "exe")
+            _         -> "-o " ++ f
+      executable f = 
+         case os of
+            "mingw32" -> f <.> "exe"
+            _         -> joinPath [".",f]
 test _ _ _  = error "Can only test type assignments"
-
+    
 readGen :: String -> ASNType a -> IO ()
 readGen perFile t =
    do h <- openFile perFile ReadMode
