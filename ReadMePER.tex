@@ -4,8 +4,6 @@
 \usepackage{a4}
 \usepackage{courier}
 \usepackage{hyperref}
-\usepackage{html}
-
 
 \lstdefinelanguage{ASN1} {
   morekeywords={},
@@ -104,35 +102,47 @@ this can also be used to generate ``quick starts'' for C programs using asn1c.
 Note that no performance testing has been undertaken and there are no
 guarantees about the speed of encoding and decoding.
 
-\section{Inter-Operability Testing on Windows}
+\section{Inter-Operability Testing}
+
+\subsection{Inter-Operability Testing on Windows}
 
 The inter-operability tests have been performed using
 \htmladdnormallinkfoot
-{lcc-win32: A Compiler system for windows}
+{asn1c}
+{http://lionet.info/asn1c}
+--- an open source ASN.1 compiler for C and
+\htmladdnormallinkfoot
+{lcc}
 {http://www.cs.virginia.edu/~lcc-win32}
-(lcc). Note that this is free for non-commercial use only.
+--- lcc-win32: a compiler system for windows.
+Note that this is free for non-commercial use only.
+
+In order to perform the inter-operability tests yourself, follow the
+instructions below.
 
 \begin{itemize}
 \item
-Install lcc into c:\\lcc (or whatever directory you prefer).
+Install lcc into c:$\backslash$lcc (or whatever directory you prefer).
 \item
-Add c:\\lcc\\bin to the end of your path (Windows XP):
+Add c:$\backslash$lcc$\backslash$bin to the end of your path (Windows Vista):
 \begin{itemize}
 \item
 Go to the Control Panel.
 \item
-Select 'System'.
+Select \lq System\rq .
 \item
-Select 'Advanced system settings'.
+Select \lq Advanced system settings\rq .
 \item
-Click 'Environment variables'.
+Click \lq Environment variables \rq .
 \item
-Find the 'PATH' environment variable and choose to edit it.
+Find the \lq PATH\rq\ environment variable and choose to edit it.
 \item
-Add ';c:\\lcc\\bin' to the end of the 'PATH' environment variable.
+Add \lq ;c:$\backslash$lcc$\backslash$bin\rq\ to the end of the \lq PATH\rq\ environment variable.
 \item
 Save and close the windows.
 \end{itemize}
+\item
+
 \end{itemize}
 
 \section{ASN.1 Support}
