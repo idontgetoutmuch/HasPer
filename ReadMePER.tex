@@ -5,15 +5,29 @@
 \usepackage{courier}
 \usepackage{hyperref}
 
+\lstdefinelanguage{shell} {
+  sensitive=true
+  }
+
+\lstnewenvironment{ccode}[1][]
+  {\lstset{language=c,captionpos=b,frame=single,basicstyle=\scriptsize,float,#1}}
+  {} 
+
+\lstnewenvironment{code}[1][]
+  {\lstset{language=haskell,captionpos=b,frame=single,basicstyle=\scriptsize,float,#1}}
+  {} 
+
 \lstdefinelanguage{ASN1} {
-  morekeywords={},
+  keywords={CHOICE, SEQUENCE, BEGIN, END, IMPLICIT, EXPLICIT, INTEGER, DEFINITIONS},
   sensitive=false,
   morecomment=[s]{(--}{--)}
   }
 
-\lstdefinelanguage{shell} {
-  sensitive=true
-  }
+\lstnewenvironment{asn1}[1][]
+  {\lstset{language=ASN1,captionpos=b,frame=single,basicstyle=\scriptsize,float,#1}}
+  {} 
+
+\def\asn#1{{\it #1}}
 
 \setlength{\parskip}{\medskipamount}
 \setlength{\parindent}{0pt}
@@ -149,7 +163,6 @@ Save and close the windows.
 Install asnc1 into 
 c:$\backslash$users$\backslash$yourname$\backslash$asn1c-0.9.21
 (or whatever directory you prefer).
-\end{itemize}
 \item
 Add c:$\backslash$users$\backslash$yourname$\backslash$asn1c-0.9.21
 to the end of your path (Windows Vista):
@@ -169,13 +182,13 @@ Add \lq c:$\backslash$users$\backslash$yourname$\backslash$asn1c-0.9.21\rq\
 to the end of the \lq PATH\rq\ environment variable.
 \item
 Save and close the windows.
+\end{itemize}
 \item
 Edit Run.hs and make sure the paths are correctly set. If you have
-installed asn1c as above then the paths should be as below.
+installed asn1c as above then the paths should be as shown in
+Listing~\ref{WindowsSettings}.
 
-\lstset{language=Haskell}
-
-\begin{lstlisting}[frame=single]
+\begin{code}[caption={Windows Settings},label=WindowsSettings]
 
 -- Uncomment the line below for Windows
 skeletons = "c:\\Users\\Yourname\\asn1c-0.9.21\\skeletons"
@@ -183,7 +196,7 @@ skeletons = "c:\\Users\\Yourname\\asn1c-0.9.21\\skeletons"
 -- Comment the line below for Windows
 -- skeletons = "/usr/local/share/asn1c"
 
-\end{lstlisting}
+\end{code}
 \item
 Now compile or load Run.hs and run it or type main at the command prompt.
 This will:
