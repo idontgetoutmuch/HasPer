@@ -104,6 +104,10 @@ guarantees about the speed of encoding and decoding.
 
 \section{Inter-Operability Testing}
 
+\subsection{Inter-Operability Testing on Linux}
+
+
+
 \subsection{Inter-Operability Testing on Windows}
 
 The inter-operability tests have been performed using
@@ -142,6 +146,67 @@ Add \lq ;c:$\backslash$lcc$\backslash$bin\rq\ to the end of the \lq PATH\rq\ env
 Save and close the windows.
 \end{itemize}
 \item
+Install asnc1 into 
+c:$\backslash$users$\backslash$yourname$\backslash$asn1c-0.9.21
+(or whatever directory you prefer).
+\end{itemize}
+\item
+Add c:$\backslash$users$\backslash$yourname$\backslash$asn1c-0.9.21
+to the end of your path (Windows Vista):
+\begin{itemize}
+\item
+Go to the Control Panel.
+\item
+Select \lq System\rq .
+\item
+Select \lq Advanced system settings\rq .
+\item
+Click \lq Environment variables \rq .
+\item
+Find the \lq PATH\rq\ environment variable and choose to edit it.
+\item
+Add \lq c:$\backslash$users$\backslash$yourname$\backslash$asn1c-0.9.21\rq\
+to the end of the \lq PATH\rq\ environment variable.
+\item
+Save and close the windows.
+\item
+Edit Run.hs and make sure the paths are correctly set. If you have
+installed asn1c as above then the paths should be as below.
+
+\lstset{language=Haskell}
+
+\begin{lstlisting}[frame=single]
+
+-- Uncomment the line below for Windows
+skeletons = "c:\\Users\\Yourname\\asn1c-0.9.21\\skeletons"
+
+-- Comment the line below for Windows
+-- skeletons = "/usr/local/share/asn1c"
+
+\end{lstlisting}
+\item
+Now compile or load Run.hs and run it or type main at the command prompt.
+This will:
+
+\begin{itemize}
+\item
+Create a directory.
+\item
+Generate ASN.1 types and values from the test data.
+\item
+Compile the ASN.1 with asn1c to generate C stubs.
+\item
+Generate a main C program.
+\item
+Compile the C.
+\item
+Run the C to encode the test values into a file.
+\item
+Read the test values back from the file and decode them using the Haskell
+ASN.1 Library.
+\item
+Compare the original values with the ones decoded.
+\end{itemize}
 
 \end{itemize}
 
