@@ -51,6 +51,10 @@ val12b = NoValueC NoValue (ValueC (1:*:(2:*:Empty)) EmptyHL)
 
 bitStringType1 = SIZE (SIZE (BITSTRING []) (Elem (1,2)) NoMarker) (Elem (2,2)) NoMarker 
 
+{-
+INTEGER Tests
+-}
+
 tInteger5 = RANGE INTEGER (Just (-1)) Nothing
 tInteger5' = TYPEASS "Integer5" Nothing tInteger5
 vInteger5 = 4096
@@ -83,3 +87,9 @@ tSeqVal51  = (3:*:(5:*:Empty))
 tSequence6 = SEQUENCE (Cons tInteger41 (Cons tInteger42 (Cons tInteger43 (Cons tInteger44 Nil))))
 tSequence6' = TYPEASS "Sequence6" Nothing tSequence6
 tSeqVal61  = ((-256):*:((-255):*:(0:*:(256:*:Empty))))
+
+bigIntSeq1Type = SEQUENCE (Cons (CTMandatory (NamedType "bigInt11" Nothing tSequence6))
+                                (Cons (CTMandatory (NamedType "bigInt12" Nothing tSequence5))
+                                      (Cons (CTMandatory (NamedType "bigInt13" Nothing integerType8s)) Nil)))
+bigIntSeq1Type' = TYPEASS "BigIntSeq1" Nothing bigIntSeq1Type
+bigIntSeq1Val = tSeqVal61:*:(tSeqVal51:*:(tSeqVal8s:*:Empty))

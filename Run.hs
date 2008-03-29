@@ -13,7 +13,6 @@ import qualified Data.Binary.Strict.BitGet as BG
 import Control.Monad.State
 import Control.Monad.Error
 import qualified Control.Exception as CE
-import UnitTest (type9, val9, val91)
 import IO
 import TestData
 import System.FilePath
@@ -122,5 +121,5 @@ readGen perFile t =
          Left s  -> putStrLn ("Left " ++ show s)
          Right x -> putStrLn ("Right " ++ render (prettyTypeVal t x))
 
-main = test "generated" tSequence6' tSeqVal61
+main = test "generated" bigIntSeq1Type' bigIntSeq1Val 
 
