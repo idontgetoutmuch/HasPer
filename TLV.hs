@@ -62,9 +62,10 @@ tlv = tlv_
 
 tlv_ :: BG.BitGet (Length,Encoding)
 tlv_ =  
-   do tagValueVal        <- BG.getLeftByteString tagValueLen
+   do tagTypeVal         <- BG.getLeftByteString tagTypeLen
       tagConstructionVal <- BG.getLeftByteString tagConstructionLen
-      tagTypeVal         <- BG.getLeftByteString tagTypeLen
+      tagValueVal        <- BG.getLeftByteString tagValueLen
+      -- error (show (B.unpack tagValueVal) ++ " " ++ show (B.unpack tagConstructionVal) ++ " " ++ show (B.unpack tagTypeVal))
       let tagType  = toEnum . fromIntegral . head . B.unpack . (BU.rightShift (8 - tagTypeLen)) $ tagTypeVal
           tagValue = fromIntegral . head . B.unpack . (BU.rightShift (8 - tagValueLen)) $ tagValueVal
           tagConstruction = fromIntegral . head . B.unpack . (BU.rightShift (8 - tagConstructionLen)) $ tagConstructionVal
@@ -97,3 +98,41 @@ tlvs_ curLen
    | otherwise   = do (l,x)  <- tlv_ 
                       ys     <- tlvs_ (curLen-l)
                       return (x:ys)
+
+{-
+
+3.1 in Larmouth
+
+null NULL ::= NULL
+
+-}
+
+larNull = B.pack [0x05,0x00]
+
+{-
+
+3.2 in Larmouth
+
+boolean1 BOOLEAN ::= TRUE
+boolean2 BOOLEAN ::= FALSE
+
+-}
+
+larBoolean1 = B.pack [0x01,0x01,0xff]
+larBoolean2 = B.pack [0x01,0x01,0x00]
+
+{-
+
+Larmouth 3.3
+
+integer1 INTEGER ::= 72
+integer2 INTEGER ::= 127
+integer3 INTEGER ::= -128
+integer4 INTEGER ::= 128
+
+-}
+
+larInteger1 = B.pack [0x02,0x01,0x48]
+larInteger2 = B.pack [0x02,0x01,0x7F]
+larInteger3 = B.pack [0x02,0x01,0x80]
+larInteger4 = B.pack [0x02,0x02,0x00,0x80]
