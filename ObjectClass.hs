@@ -79,3 +79,30 @@ h' = undefined
 gee' = Mn (otherFunction2 :*: otherFunction3 :*: otherFunction4 :*: gee')
 
 i = h' gee' (2 :*: IA5STRING :*: 0)
+
+data Beta a b c = Nn ((:*:) ((:*:) ((:*:) a b) c) (Maybe (Beta a b c)))
+
+hee = Nn (otherFunction2 :*: otherFunction3 :*: otherFunction4 :*: Nothing)
+
+hee' = Nn (otherFunction2 :*: otherFunction3 :*: otherFunction4 :*: (Just hee'))
+
+hee'' = Nn (otherFunction2 :*: otherFunction3 :*: otherFunction4 :*: (Just hee))
+
+hh :: Beta (ObjClassComponent a) (ObjClassComponent b) (ObjClassComponent c) -> a :*: b :*: c :*: (Beta (ObjClassComponent a) (ObjClassComponent b) (ObjClassComponent c)) -> String
+hh = undefined
+
+j = hh hee' (2 :*: IA5STRING :*: 0 :*: hee)
+
+k = hh hee (2 :*: IA5STRING :*: 0 :*: undefined)
+
+data Gamma a b c = On (Maybe ((:*:) ((:*:) ((:*:) a b) c) (Gamma a b c)))
+
+hoo = On (Just (otherFunction2 :*: otherFunction3 :*: otherFunction4 :*: hoo))
+
+ff :: Gamma (ObjClassComponent a) (ObjClassComponent b) (ObjClassComponent c) -> a :*: b :*: c :*: (Gamma (ObjClassComponent a) (ObjClassComponent b) (ObjClassComponent c)) -> String
+ff = undefined
+
+kk = ff hoo (2 :*: IA5STRING :*: 0 :*: (On Nothing))
+
+-- This doesn't make sense but typechecks or does it (make sense that is)
+kk1 x = ff hoo (2 :*: IA5STRING :*: 0 :*: hoo)
