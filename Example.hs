@@ -43,6 +43,8 @@ oF2 = OCFTV "code" INTEGER
 
 oF = Lift (Inl (Cons (OCIO "another" oF) (Singleton oF2)))
 
+oFV = Inlx (Tuple oFV (3::Integer))
+
 oG = Lift (Inr (Cons oF2 (Singleton (OCIO "another" oG))))
 
 oH = Lift (Inl (Cons (OCIO "another" oH) (Cons oF2 (Singleton oF2))))
@@ -54,6 +56,8 @@ oK = Lift (Inr (Cons oF2 (Lift (Inl (Cons (OCIO "foo" oK) (Singleton oF2))))))
 data Mu :: * -> * -> * where
    Inl :: ObjClass (Tuple (Mu a b) b) -> Mu a b
    Inr :: ObjClass (Tuple a (Mu a b)) -> Mu a b
+   Inlx :: Tuple (Mu a b) b -> Mu a b
+   Inrx :: Tuple a (Mu a b) -> Mu a b 
 
 prettyOCC :: ObjClassComponent a -> String
 prettyOCC (OCFTV fn ty) = fn ++ " " ++ prettyASN ty
@@ -71,6 +75,9 @@ prettyOC (Lift mu) = prettyMu mu
 prettyMu :: Mu a b -> String
 prettyMu (Inl oc) = prettyOC oc
 prettyMu (Inr oc) = prettyOC oc
+
+f :: ObjClass a -> a -> String
+f (Singleton occ) x = undefined
 
 data ObjClassComponent1 :: * -> * where
    OCType :: FieldName -> ObjClassComponent1 a
