@@ -1,3 +1,5 @@
+import Text.PrettyPrint
+
 data ZeroTuple = ZeroTuple
 data Tuple e es = Tuple e es
 
@@ -7,6 +9,12 @@ data ASNType :: * -> * where
    BOOLEAN   :: ASNType Bool
    INTEGER   :: ASNType Integer
    IA5STRING :: ASNType IA5String
+
+prettyType :: ASNType a -> Doc
+prettyType BOOLEAN   = text "BOOLEAN"
+prettyType INTEGER   = text "INTEGER"
+prettyType IA5STRING = text "IA5STRING"
+
 
 data UbjClass :: * where
    USingleton :: UbjClassComponent -> UbjClass
@@ -72,14 +80,6 @@ data ObjClassComponent1 :: * -> * where
    OCVariableTypeValueSet :: FieldName -> ObjClassComponent1 a -> ObjClassComponent1 a
    OCInformationObject :: FieldName -> ObjClass1 a -> ObjClassComponent1 a
 
-x1 = OCType "ArgumentType"
-x2 = OCFixedTypeValue "code" INTEGER
-x3 = OCType "ResultType"
-x4 = OCVariableTypeValue "result-if-error" x3
-x5 = OCFixedTypeValueSet "Alphabet" IA5STRING
-x6 = OCVariableTypeValueSet "Supported Arguments" x1
-x7 = OCFixedTypeValueSet "Errors" BOOLEAN
-
 data ObjClass1 :: * -> * where
    Singleton1 :: ObjClassComponent1 a -> ObjClass1 a
    Cons1      :: ObjClassComponent1 a -> ObjClass1 l -> ObjClass1 (Tuple a l)
@@ -89,4 +89,48 @@ data Mu1 :: * -> * -> * where
    Inl1 :: ObjClass1 (Tuple (Mu1 a b) b) -> Mu1 a b
    Inr1 :: ObjClass1 (Tuple a (Mu1 a b)) -> Mu1 a b
 
-x = Lift1 (Inl1 (Cons1 (OCInformationObject "other function" x) (Cons1 x6 (Cons1 x5 (Cons1 x4 (Cons1 x3 (Cons1 x2 (Singleton1 x1))))))))
+{-
+
+The definition in Haskell below is very similar to the one on page 314 in
+Dubuisson which is reproduced below.
+
+OTHER-FUNCTION ::= CLASS {
+  &code                INTEGER (0..MAX) UNIQUE,
+  &Alphabet            BMPString
+    DEFAULT {Latin1 INTERSECTION Level1},
+  &ArgumentType        ,
+  &SupportedArguments &ArgumentType OPTIONAL,
+  &ResultType          DEFAULT NULL,
+  &result-if-error     &ResultType DEFAULT NULL,
+  &associated-function OTHER-FUNCTION OPTIONAL,
+  &Errors              ERROR DEFAULT
+    {rejected-argument | memory-fault} }
+
+-}
+
+x1 = OCType "ArgumentType"
+x2 = OCFixedTypeValue "code" INTEGER
+x3 = OCType "ResultType"
+x4 = OCVariableTypeValue "result-if-error" x3
+x5 = OCFixedTypeValueSet "Alphabet" IA5STRING
+x6 = OCVariableTypeValueSet "Supported Arguments" x1
+x7 = OCFixedTypeValueSet "Errors" BOOLEAN
+
+x = Lift1 (Inr1 (Cons1 x7 (Lift1 (Inl1 (Cons1 (OCInformationObject "other function" x) (Cons1 x6 (Cons1 x5 (Cons1 x4 (Cons1 x3 (Cons1 x2 (Singleton1 x1)))))))))))
+
+printObjClassComp (OCType fn) = text "Type" <+> text fn
+printObjClassComp (OCFixedTypeValue fn t) = text "Fixed Type Value" <+> text fn <+> prettyType t
+printObjClassComp (OCVariableTypeValue fn c) = text "Variable Type Value" <+> text fn <+> braces (printObjClassComp c)
+printObjClassComp (OCFixedTypeValueSet fn t) = text "Fixed Type Value Set" <+> text fn <+> prettyType t
+printObjClassComp (OCVariableTypeValueSet fn c) = text "Variable Type Value Set" <+> text fn <+> braces (printObjClassComp c)
+printObjClassComp (OCInformationObject fn oc)  = text "Information Object" <+> text fn
+
+prettyOC1 :: ObjClass1 a -> Doc
+prettyOC1 (Singleton1 occ) = printObjClassComp occ
+prettyOC1 (Cons1 occ oc) = printObjClassComp occ $$ prettyOC1 oc
+prettyOC1 (Lift1 mu) = prettyMu1 mu
+
+prettyMu1 :: Mu1 a b -> Doc
+prettyMu1 (Inl1 oc) = prettyOC1 oc
+prettyMu1 (Inr1 oc) = prettyOC1 oc
+
