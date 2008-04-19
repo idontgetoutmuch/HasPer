@@ -36,6 +36,8 @@ prettyType INTEGER =
    text "INTEGER"
 prettyType BOOLEAN =
    text "BOOLEAN"
+prettyType IA5STRING =
+   text "IA5STRING"
 prettyType(RANGE x l u) =
    prettyType x <+> outer x l u
 prettyType (SEQUENCE x) =
