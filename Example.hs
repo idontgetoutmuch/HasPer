@@ -141,3 +141,89 @@ prettyMu1 :: Mu1 a b -> Doc
 prettyMu1 (Inl1 oc) = prettyOC1 oc
 prettyMu1 (Inr1 oc) = prettyOC1 oc
 
+{-
+Email to the ASN.1 mailing list from Jeffrey Walton
+
+AlgorithmIdentifier ::= SEQUENCE {
+algorithm ALGORITHM.&id ({SupportedAlgorithms}),
+parameters ALGORITHM.&Type ({SupportedAlgorithms}{ @algorithm}) OPTIONAL }
+
+[1] X.509, The Directory: Public-key and Attribute Certificate
+Frameworks, http://www.itu.int/rec/T-REC-X/recommendation.asp?lang=en&parent=T-REC-X.509,
+August 2008, p 11.
+
+Response from Conrad Sigona
+
+If you look for the definition of ALGORITHM on p. 101, you'll find
+
+  ALGORITHM ::= TYPE-IDENTIFIER
+
+and if you look in a textbook about ASN.1 or in the ASN.1 standard documents, you'll find
+
+  TYPE-IDENTIFIER ::= CLASS {
+     &id   OBJECT IDENTIFIER UNIQUE,
+     &Type }
+  WITH SYNTAX { &Type IDENTIFIED BY &id }
+
+Thus ALGORITHM is not a type, but a CLASS. On the other hand, ALGORITHM.&id is a type, namely, an OBJECT IDENTIFIER. ALGORITHM.&Type is also a type, an open type. This means it can be various types, but since it is constrained by ({SupportedAlgorithms}{ @algorithm}), it is not just any type, but one that fits the constraint. Let's look at the two elements one at a time.
+
+ALGORITHM.&id is, as we said above, an OBJECT IDENTIFIER. Since it appears as
+
+  ALGORITHM.&id ({SupportedAlgorithms})
+
+it is constrained to be one of the OBJECT IDENTIFIERs in the SupportedAlgorithms object set. Page 22 shows
+
+  -- Definition of the following information object set
+  -- is deferred, perhaps to standardized profiles or
+  -- to protocol implementation conformance statements.
+  -- The set is required to specify a table constraint
+  -- on the parameters component of AlgorithmIdentifier.
+  -- SupportedAlgorithms ALGORITHM ::= { ... }
+
+which says that SupportedAlgorithms should be defined but isn't (yet). If it were defined, it would look something like
+
+  SupportedAlgorithms ALGORITHM ::= {
+       Algo1 IDENTIFIED BY { 1 2 3 4 1 } |
+       Algo2 IDENTIFIED BY { 1 2 3 4 2 } |
+       Algo3 IDENTIFIED BY { 1 2 3 4 3 },
+       ...
+  }
+
+I just made up some types (Algo1, Algo2, and Algo3) and objects identifiers. They serve only as examples and have no meaning per se.
+
+Note the "WITH SYNTAX" in the definition of TYPE-IDENTIFIER above. It describes the way to specify each object as a type (&Type) followed by the string "IDENTIFIED BY" followed by an OBJECT IDENTIFIER (&id). Thus Algo1 is associated with { 1 2 3 4 1 }; Algo2 is associated with { 1 2 3 4 2 }; and Algo3 is associated with { 1 2 3 4 3 }.
+
+I wrote above that ALGORITHM.&id is constrained to be one of the OBJECT IDENTIFIERS in the SupportedAlgorithms object set. Using my example above, you see that it is limited to taking the value of one of the three object identifiers.
+
+ALGORITHM.&Type ({SupportedAlgorithms}{ @algorithm}) is an open type constrained to be one of the types specified in SupportedAlgorithms depending upon algorithm. Bear in mind the definition of algorithm, and you'll see that what
+
+
+  AlgorithmIdentifier ::= SEQUENCE {
+     algorithm ALGORITHM.&id ({SupportedAlgorithms}),
+     parameters ALGORITHM.&Type
+             ({SupportedAlgorithms}{ @algorithm}) OPTIONAL
+   }
+
+means is that we have a SEQUENCE consisting of
+
+a) algorithm, which is one of the OBJECT IDENTIFIERs drawn from the set above, and
+
+b) parameters, which is an open type also drawn from the set above, but which depends upon algorithm.
+
+You can look at SupportedAlgorithm as a set of rules, namely,
+if algorithm = { 1 2 3 4 1 }, then parameters is Algo1;
+if algorithm = { 1 2 3 4 2 }, then parameters is Algo2;
+if algorithm = { 1 2 3 4 3 }, then parameters is Algo3;
+if algorithm is anything else (...), then parameters can be anything, that is, some type, but unspecified.
+
+So what can you do with this information? Now you know what the syntax means, but you still need either a fully specified SupportedAlgorithms or else knowledge from some external source (e.g., a sheet of paper) that tells you which type is associated with which object identifier.
+
+I guess you were hoping to get a simpler and more pointed answer. Unfortunately I have none. If you wish to learn more about information object classes, information object sets, and open types, permit me to suggest
+
+   http://www.oss.com/asn1/booksintro.html
+
+where you can download two ASN.1 reference manuals. They are both
+comprehensive, although with different emphasis. Each has its own fans,
+but both are quite good.
+
+-}
