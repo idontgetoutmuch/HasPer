@@ -23,12 +23,12 @@ prettyType IA5STRING = text "IA5STRING"
 type FieldName = String
 
 data ObjClassComponent :: * -> * where
-   OCType :: FieldName -> ObjClassComponent a
-   OCFixedTypeValue :: FieldName -> ASNType a -> ObjClassComponent a
-   OCVariableTypeValue :: FieldName -> ObjClassComponent a -> ObjClassComponent a
-   OCFixedTypeValueSet :: FieldName -> ASNType a -> ObjClassComponent a
+   OCType                 :: FieldName -> ObjClassComponent a
+   OCFixedTypeValue       :: FieldName -> ASNType a -> ObjClassComponent a
+   OCVariableTypeValue    :: FieldName -> ObjClassComponent a -> ObjClassComponent a
+   OCFixedTypeValueSet    :: FieldName -> ASNType a -> ObjClassComponent a
    OCVariableTypeValueSet :: FieldName -> ObjClassComponent a -> ObjClassComponent a
-   OCInformationObject :: FieldName -> ObjClass a -> ObjClassComponent a
+   OCInformationObject    :: FieldName -> ObjClass a -> ObjClassComponent a
 
 data ObjClass :: * -> * where
    Singleton :: ObjClassComponent a -> ObjClass a
@@ -198,3 +198,25 @@ f oc v = ()
 s = Tuple a1 (Tuple a2 (Tuple a3 ZeroTuple))
 
 -- But how do we select from them? And do we need to?
+
+data ObjSet :: * -> * where
+   ObjZero :: ObjSet ZeroTuple
+   ObjCons :: ObjClass a -> a -> ObjSet b -> ObjSet (Tuple a b)
+
+b1 = ObjCons y3 a1 ObjZero
+b2 = ObjCons y3 a2 b1
+
+-- Here's an example of how you could use the "library".
+
+type ErrorMsg = String
+
+data SupportedTypes = SupportedBool Bool | SupportedInteger Integer | Unsupported ErrorMsg
+   deriving Show
+
+h :: ObjClass (Tuple a Integer) -> (Tuple (ASNType a) Integer) -> String -> SupportedTypes
+h (Cons _ (Singleton (OCFixedTypeValue _ _))) (Tuple _ 12341) s = SupportedInteger (read s)
+h (Cons _ (Singleton (OCFixedTypeValue _ _))) (Tuple _ 12342) s = SupportedBool (read s)
+h _                                           (Tuple _ x)     _ = Unsupported ("OID: " ++ (show x) ++ " not supported")
+
+-- ObjSet is too general. We want to constrain only the right "shaped" ObjClass values to be added.
+-- It's not clear how to do this.
