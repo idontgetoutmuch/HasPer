@@ -5,6 +5,8 @@ data Tuple e es = Tuple e es
 
 newtype IA5String = IA5String {unIA5String :: String}
 
+-- A cut down representation for ASN.1 types.
+
 data ASNType :: * -> * where
    BOOLEAN   :: ASNType Bool
    INTEGER   :: ASNType Integer
@@ -22,6 +24,8 @@ prettyType IA5STRING = text "IA5STRING"
 
 type FieldName = String
 
+-- Object class components
+
 data ObjClassComponent :: * -> * where
    OCType                 :: FieldName -> ObjClassComponent a
    OCFixedTypeValue       :: FieldName -> ASNType a -> ObjClassComponent a
@@ -30,10 +34,14 @@ data ObjClassComponent :: * -> * where
    OCVariableTypeValueSet :: FieldName -> ObjClassComponent a -> ObjClassComponent a
    OCInformationObject    :: FieldName -> ObjClass a -> ObjClassComponent a
 
+-- And object classes themselves
+
 data ObjClass :: * -> * where
    Singleton :: ObjClassComponent a -> ObjClass a
    Cons      :: ObjClassComponent a -> ObjClass l -> ObjClass (Tuple a l)
    Lift      :: Mu a l -> ObjClass (Mu a l)
+
+-- We need recursive types because in ASN.1 an object class can refer to itself.
 
 data Mu :: * -> * -> * where
    Inl :: ObjClass (Tuple (Mu a b) b) -> Mu a b
@@ -85,6 +93,8 @@ prettyMu (Inl oc) = prettyOC oc
 prettyMu (Inr oc) = prettyOC oc
 
 {-
+A good explanation of object classes, their motivation and use.
+
 Email to the ASN.1 mailing list from Jeffrey Walton
 
 AlgorithmIdentifier ::= SEQUENCE {
@@ -182,22 +192,13 @@ y2 = OCFixedTypeValue "id" INTEGER -- for the time being since we don't bother w
 y3 = Cons y1 (Singleton y2)
 
 -- Should we "tuple" with ZeroTuple as well?
+
 a1 = Tuple BOOLEAN   12341
 a2 = Tuple INTEGER   12342
 a3 = Tuple IA5STRING 12343
 
-project :: ASNType a -> a
-project _ = undefined
-
-f :: ObjClass a -> a -> ()
-f oc v = ()
-
 -- Object Sets aren't really sets as they are inhabited by objects of different types.
 -- We can represent them as "tuples".
-
-s = Tuple a1 (Tuple a2 (Tuple a3 ZeroTuple))
-
--- But how do we select from them? And do we need to?
 
 data ObjSet :: * -> * where
    ObjZero :: ObjSet ZeroTuple
