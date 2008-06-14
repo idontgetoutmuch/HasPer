@@ -10,9 +10,35 @@
 Testing encoding for UNALIGNED PER
 
 \begin{code}
+{-# OPTIONS_GHC -fglasgow-exts -fwarn-incomplete-patterns #-}
+
 module TestCTR where
 
 import CTRestruct
+import Text.PrettyPrint
+
+prettyValueRange (R (x,y)) = text (show x) <+> text ".." <+> text (show y)
+
+prettyElem (S s) = prettySingleValue s
+prettyElem (V r) = prettyValueRange r
+
+prettySingleValue (SV e) = text (show e)
+
+prettyInterSectionElement (E e) = prettyElem e
+prettyInterSectionElement (Exc e exc) = prettyElem e <+> text "EXCEPT" <+> prettyExclusion exc
+
+prettyExclusion (EXCEPT e) = prettyElem e
+
+prettyIntersectionConstraint (ATOM ie) = prettyInterSectionElement ie
+prettyIntersectionConstraint (INTER ic ie) = prettyIntersectionConstraint ic <+> text "^" <+> prettyInterSectionElement ie
+
+prettyUnion (IC ic) = prettyIntersectionConstraint ic
+prettyUnion (UC u i) = prettyUnion u <+> text "|" <+> prettyIntersectionConstraint i
+
+prettyConstraint (UNION u) = prettyUnion u
+prettyConstraint (ALL e) = prettyExcept e
+
+prettyExcept (EXCEPT e) = prettyElem e
 
 sc1 = UNION (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
 sc2 = UNION (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))

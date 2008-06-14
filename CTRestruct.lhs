@@ -10,14 +10,14 @@
 The encoding is for UNALIGNED PER
 
 \begin{code}
+{-# OPTIONS_GHC -fglasgow-exts -fwarn-incomplete-patterns #-}
+
 module CTRestruct where
 
 import qualified Data.Map as Map
-import Data.Monoid
 import Data.List hiding (groupBy)
 import Data.Bits
 import Data.Char
-import qualified Data.Set as S
 import Control.Monad.State
 import Control.Monad.Error
 -- import qualified Data.ByteString.Lazy as B
@@ -773,12 +773,6 @@ not very efficient since we know $log_2 16*(2^{10}) = 14$
 Note there is no clause for $>= 16*(2^10)$ as we have groupBy $16*(2^10)$
 
 \end{enumerate}
-
-x
-
-\end{code}
-
-
 
 \section{Two's Complement Arithmetic}
 
