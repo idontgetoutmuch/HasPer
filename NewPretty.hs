@@ -12,6 +12,17 @@ import Text.PrettyPrint
 prettyType :: ASNType a -> Doc
 prettyType (BT bt) = prettyBuiltinType bt
 
+prettySeq :: Sequence a -> Doc
+prettySeq Nil =
+   empty
+prettySeq (Cons x Nil) =
+   prettyComponentType x
+prettySeq (Cons x xs) =
+   vcat [prettyComponentType x <> comma, prettySeq xs]
+
+prettyComponentType :: ComponentType a -> Doc
+prettyComponentType (CTMandatory m) = prettyNamedType m
+
 prettyBuiltinType :: ASNBuiltin a -> Doc
 prettyBuiltinType (BITSTRING []) =
    text "BIT STRING"
@@ -21,6 +32,18 @@ prettyBuiltinType BOOLEAN =
    text "BOOLEAN"
 prettyBuiltinType IA5STRING =
    text "IA5STRING"
+prettyBuiltinType (CHOICE c) =
+   prettyChoice c
+prettyBuiltinType (SEQUENCE s) =
+   prettySeq s
+
+prettyChoice :: Choice a -> Doc
+prettyChoice NoChoice =
+   empty
+prettyChoice (ChoiceOption nt NoChoice) =
+   prettyNamedType nt
+prettyChoice (ChoiceOption nt xs) =
+   vcat [prettyNamedType nt <> comma, prettyChoice xs]
 
 prettyPlicity :: TagPlicity -> Doc
 prettyPlicity Implicit = text "IMPLICIT"
