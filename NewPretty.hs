@@ -91,6 +91,8 @@ prettyValueRange (BT INTEGER) (R (x,y)) = text (show x) <> text ".." <> text (sh
 
 prettySingleValue :: ASNType a -> SV a -> Doc
 prettySingleValue (BT INTEGER) (SV e) = text (show e)
-prettySingleValue (BT (BITSTRING _)) (SV e) = text (show e)
+prettySingleValue (BT (BITSTRING _)) (SV e) = prettyBitString e
 prettySingleValue (BT IA5STRING) (SV e) = text (show e)
 prettySingleValue (BT PRINTABLESTRING) (SV e) = text (show e)
+
+prettyBitString = (<> text "B") . (quotes . text . concat . map show .  bitString)
