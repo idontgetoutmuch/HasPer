@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -XMultiParamTypeClasses -XFlexibleInstances -fwarn-incomplete-patterns #-}
+
 module Pretty(
    prettyType,
    prettyTypeVal,

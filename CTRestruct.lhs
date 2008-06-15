@@ -10,7 +10,7 @@
 The encoding is for UNALIGNED PER
 
 \begin{code}
-{-# OPTIONS_GHC -fglasgow-exts -fwarn-incomplete-patterns #-}
+{-# OPTIONS_GHC -XGADTs -XTypeOperators -XEmptyDataDecls -XFlexibleInstances -XFlexibleContexts #-}
 
 module CTRestruct where
 
@@ -201,12 +201,12 @@ X.680 16.1
 Type ::= BuiltinType | ReferencedType | ConstrainedType
 
 \begin{code}
-data ASNType :: * -> * where
+data ASNType a {- :: * -> * -} where
     BT    :: ASNBuiltin a -> ASNType a
     RT    :: ReferencedType -> ASNType a
     ConsT :: ASNType a -> ESS a -> ASNType a
 
-data ASNBuiltin :: * -> * where
+data ASNBuiltin a {- :: * -> * -} where
    EXTADDGROUP     :: Sequence a -> ASNBuiltin a
    BOOLEAN         :: ASNBuiltin Bool
    INTEGER         :: ASNBuiltin Int
@@ -328,7 +328,7 @@ types. Nil is the empty sequence, Cons adds components to a
 sequence and Extens signals an extension marker.
 
 \begin{code}
-data Sequence :: * -> * where
+data Sequence a {- :: * -> * -} where
    Nil     :: Sequence Nil
    Extens  :: Sequence l    -> Sequence l
    Cons    :: ComponentType a -> Sequence l -> Sequence (a:*:l)
@@ -346,14 +346,14 @@ associates a name and possibly a tag with a type.
 
 \begin{code}
 
-data ComponentType :: * -> * where
+data ComponentType a {- :: * -> * -} where
    CTMandatory :: NamedType a -> ComponentType a
    CTExtMand   :: NamedType a -> ComponentType (Maybe a)
    CTOptional  :: NamedType a -> ComponentType (Maybe a)
    CTDefault   :: NamedType a -> a -> ComponentType (Maybe a)
    CTCompOf    :: ASNType a   -> ComponentType a
 
-data NamedType :: * -> * where
+data NamedType a {- :: * -> * -} where
    NamedType :: Name -> Maybe TagInfo -> ASNType a -> NamedType a
 
 \end{code}
@@ -386,13 +386,13 @@ list is not incremented.
 
 \begin{code}
 
-data Choice :: * -> *  where
+data Choice a {- :: * -> * -} where
     NoChoice     :: Choice Nil
     ChoiceExt    :: Choice l -> Choice l
     ChoiceEAG    :: Choice l -> Choice l
     ChoiceOption :: NamedType a -> Choice l -> Choice (a:*:l)
 
-data HL :: * -> * -> * where
+data HL a l {- :: * -> * -> * -} where
     EmptyHL  :: HL Nil Z
     ValueC   :: a -> HL l Z -> HL (a:*:l) (S Z)
     NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n
@@ -435,11 +435,11 @@ with an integer.
 
 \begin{code}
 
-data EnumerationItem :: * -> * where
+data EnumerationItem a {- :: * -> * -} where
     Identifier :: Name -> EnumerationItem Name
     NamedNumber :: Name -> Int -> EnumerationItem Name
 
-data Enumerate :: * -> * where
+data Enumerate a {- :: * -> * -} where
     NoEnum      :: Enumerate Nil
     EnumOption  :: EnumerationItem a -> Enumerate l -> Enumerate ((Maybe a):*:l)
     EnumExt     :: Enumerate l -> Enumerate l
@@ -457,9 +457,11 @@ data NamedBit = NB String Int
 
 \end{code}
 
+This is dross left over from previous thinking
+
 Need a mechanism for associating type references with types.
 
-\begin{code}
+-- \begin{code}
 data HostType :: * where
     MV :: ASNType a -> HostType
 
@@ -474,8 +476,7 @@ getType tr host =  host Map.! tr
 
 
 
-\end{code}
-
+-- \end{code}
 
 PER Top-Level encode function. There are three cases:
 i.   The input is a builtin type: toPer is called on this type.
