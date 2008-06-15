@@ -11,6 +11,7 @@ import Text.PrettyPrint
 
 prettyType :: ASNType a -> Doc
 prettyType (BT bt) = prettyBuiltinType bt
+prettyType (ConsT t e) = prettyType t <+> parens (prettyElementSetSpecs t e)
 
 prettySeq :: Sequence a -> Doc
 prettySeq Nil =
@@ -33,9 +34,11 @@ prettyBuiltinType BOOLEAN =
 prettyBuiltinType IA5STRING =
    text "IA5STRING"
 prettyBuiltinType (CHOICE c) =
-   prettyChoice c
+   text "CHOICE" <+> braces (prettyChoice c)
 prettyBuiltinType (SEQUENCE s) =
-   prettySeq s
+   text "SEQUENCE" <> space <> braces (prettySeq s)
+prettyBuiltinType (SET s) =
+   text "SET" <> space <> braces (prettySeq s)
 
 prettyChoice :: Choice a -> Doc
 prettyChoice NoChoice =
@@ -44,10 +47,6 @@ prettyChoice (ChoiceOption nt NoChoice) =
    prettyNamedType nt
 prettyChoice (ChoiceOption nt xs) =
    vcat [prettyNamedType nt <> comma, prettyChoice xs]
-
-prettyPlicity :: TagPlicity -> Doc
-prettyPlicity Implicit = text "IMPLICIT"
-prettyPlicity Explicit = text "EXPLICIT"
 
 prettyNamedType :: NamedType a -> Doc
 prettyNamedType (NamedType n ti ct) =
@@ -61,29 +60,37 @@ prettyNamedType (NamedType n ti ct) =
             _ ->
                text n <+> brackets (text (show tt) <+> text (show tv)) <+> prettyPlicity tp <+> prettyType ct
 
-prettyElementSetSpecs (RE c) = prettyConstraint c
-prettyElementSetSpecs (EXT c) = prettyConstraint c <> comma <+> text "..."
-prettyElementSetSpecs (EXTWITH c1 c2) = prettyConstraint c1 <> comma <+> text "..." <> comma <+> prettyConstraint c2
+prettyPlicity Implicit = text "IMPLICIT"
+prettyPlicity Explicit = text "EXPLICIT"
 
-prettyConstraint (UNION u) = prettyUnion u
-prettyConstraint (ALL e) = prettyExcept e
+prettyElementSetSpecs t (RE c) = prettyConstraint t c
+prettyElementSetSpecs t (EXT c) = prettyConstraint t c <> comma <+> text "..."
+prettyElementSetSpecs t (EXTWITH c1 c2) = prettyConstraint t c1 <> comma <+> text "..." <> comma <+> prettyConstraint t c2
 
-prettyExcept (EXCEPT e) = prettyElem e
+prettyConstraint t (UNION u) = prettyUnion t u
+prettyConstraint t (ALL e) = prettyExcept t e
 
-prettyUnion (IC ic) = prettyIntersectionConstraint ic
-prettyUnion (UC u i) = prettyUnion u <+> text "|" <+> prettyIntersectionConstraint i
+prettyExcept t (EXCEPT e) = prettyElem t e
 
-prettyIntersectionConstraint (ATOM ie) = prettyInterSectionElement ie
-prettyIntersectionConstraint (INTER ic ie) = prettyIntersectionConstraint ic <+> text "^" <+> prettyInterSectionElement ie
+prettyUnion t (IC ic) = prettyIntersectionConstraint t ic
+prettyUnion t (UC u i) = prettyUnion t u <+> text "|" <+> prettyIntersectionConstraint t i
 
-prettyInterSectionElement (E e) = prettyElem e
-prettyInterSectionElement (Exc e exc) = prettyElem e <+> text "EXCEPT" <+> prettyExclusion exc
+prettyIntersectionConstraint t (ATOM ie) = prettyInterSectionElement t ie
+prettyIntersectionConstraint t (INTER ic ie) = prettyIntersectionConstraint t ic <+> text "^" <+> prettyInterSectionElement t ie
 
-prettyExclusion (EXCEPT e) = prettyElem e
+prettyInterSectionElement t (E e) = prettyElem t e
+prettyInterSectionElement t (Exc e exc) = prettyElem t e <+> text "EXCEPT" <+> prettyExclusion t exc
 
-prettyElem (S s) = prettySingleValue s
-prettyElem (V r) = prettyValueRange r
+prettyExclusion t (EXCEPT e) = prettyElem t e
 
-prettyValueRange (R (x,y)) = text (show x) <> text ".." <> text (show y)
+prettyElem t (S s) = prettySingleValue t s
+prettyElem t (V r) = prettyValueRange t r
 
-prettySingleValue (SV e) = text (show e)
+prettyValueRange :: ASNType a -> VR a -> Doc
+prettyValueRange (BT INTEGER) (R (x,y)) = text (show x) <> text ".." <> text (show y)
+
+prettySingleValue :: ASNType a -> SV a -> Doc
+prettySingleValue (BT INTEGER) (SV e) = text (show e)
+prettySingleValue (BT (BITSTRING _)) (SV e) = text (show e)
+prettySingleValue (BT IA5STRING) (SV e) = text (show e)
+prettySingleValue (BT PRINTABLESTRING) (SV e) = text (show e)
