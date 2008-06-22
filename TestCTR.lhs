@@ -49,6 +49,12 @@ test9 = encode t7 251 []
 test10 = encode t7 271 []
 \end{code}
 
+\begin{code}
+dash  = ATOM (E (S (SV (PrintableString "-"))))
+dot   = ATOM (E (S (SV (PrintableString "."))))
+blank = ATOM (E (S (SV (PrintableString " "))))
 
+morse = RE (UNION (UC (UC (IC dash) dot) blank))
+\end{code}
 
 \end{document}

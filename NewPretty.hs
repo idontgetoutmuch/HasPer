@@ -85,6 +85,10 @@ prettyExclusion t (EXCEPT e) = prettyElem t e
 
 prettyElem t (S s) = prettySingleValue t s
 prettyElem t (V r) = prettyValueRange t r
+prettyElem t (P a) = prettyPermittedAlphabet t a
+
+prettyPermittedAlphabet :: ASNType a -> PA a -> Doc
+prettyPermittedAlphabet t (FR a) = prettyElementSetSpecs t a
 
 prettyValueRange :: ASNType a -> VR a -> Doc
 prettyValueRange (BT INTEGER) (R (x,y)) = text (show x) <> text ".." <> text (show y)
@@ -96,6 +100,6 @@ prettySingleValue :: ASNType a -> SV a -> Doc
 prettySingleValue (BT INTEGER) (SV e) = text (show e)
 prettySingleValue (BT (BITSTRING _)) (SV e) = prettyBitString e
 prettySingleValue (BT IA5STRING) (SV e) = text (show e)
-prettySingleValue (BT PRINTABLESTRING) (SV e) = text (show e)
+prettySingleValue (BT PRINTABLESTRING) (SV e) = doubleQuotes (text (printableString e))
 
 prettyBitString = (<> text "B") . (quotes . text . concat . map show .  bitString)
