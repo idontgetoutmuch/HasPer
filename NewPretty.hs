@@ -29,6 +29,8 @@ prettyBuiltinType (BITSTRING []) =
    text "BIT STRING"
 prettyBuiltinType INTEGER =
    text "INTEGER"
+prettyBuiltinType PRINTABLESTRING =
+   text "PrintableString"
 prettyBuiltinType BOOLEAN =
    text "BOOLEAN"
 prettyBuiltinType IA5STRING =
@@ -88,7 +90,7 @@ prettyElem t (V r) = prettyValueRange t r
 prettyElem t (P a) = prettyPermittedAlphabet t a
 
 prettyPermittedAlphabet :: ASNType a -> PA a -> Doc
-prettyPermittedAlphabet t (FR a) = prettyElementSetSpecs t a
+prettyPermittedAlphabet t (FR a) = text "FROM" <+> parens (prettyElementSetSpecs t a)
 
 prettyValueRange :: ASNType a -> VR a -> Doc
 prettyValueRange (BT INTEGER) (R (x,y)) = text (show x) <> text ".." <> text (show y)

@@ -49,12 +49,18 @@ test9 = encode t7 251 []
 test10 = encode t7 271 []
 \end{code}
 
+Examples from 13.6.1 of Dubuisson:
+
 \begin{code}
 dash  = ATOM (E (S (SV (PrintableString "-"))))
 dot   = ATOM (E (S (SV (PrintableString "."))))
 blank = ATOM (E (S (SV (PrintableString " "))))
 
-morse = RE (UNION (UC (UC (IC dash) dot) blank))
+morseChars = RE (UNION (UC (UC (IC dash) dot) blank))
+
+morseAlphabet = ConsT (BT PRINTABLESTRING) morseChars
+
+morse = ConsT (BT PRINTABLESTRING ) (RE (UNION (IC (ATOM ((E (P (FR morseChars))))))))
 \end{code}
 
 \end{document}
