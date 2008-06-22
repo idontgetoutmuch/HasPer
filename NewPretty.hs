@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+{-# OPTIONS_GHC -XGADTs -fwarn-incomplete-patterns #-}
 
 module NewPretty where
 
@@ -88,6 +88,9 @@ prettyElem t (V r) = prettyValueRange t r
 
 prettyValueRange :: ASNType a -> VR a -> Doc
 prettyValueRange (BT INTEGER) (R (x,y)) = text (show x) <> text ".." <> text (show y)
+prettyValueRange (BT IA5STRING) (R (x,y)) = text (iA5String x) <> text ".." <> text (iA5String y)
+prettyValueRange (BT PRINTABLESTRING) (R (x,y)) = text (printableString x) <> text ".." <> text (printableString y)
+prettyValueRange (BT NUMERICSTRING) (R (x,y)) = text (numericString x) <> text ".." <> text (numericString y)
 
 prettySingleValue :: ASNType a -> SV a -> Doc
 prettySingleValue (BT INTEGER) (SV e) = text (show e)
