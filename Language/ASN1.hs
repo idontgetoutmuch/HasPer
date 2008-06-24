@@ -297,6 +297,9 @@ countryName = modName "CountryName" absPrintableString
 localityName :: TypeDefn
 localityName = modName "LocalityName" absPrintableString
 
+stateOrProvinceName :: TypeDefn
+stateOrProvinceName = modName "StateOrProvinceName" absPrintableString
+
 organization :: TypeDefn
 organization = modName "Organization" absPrintableString
 
@@ -322,6 +325,7 @@ oids =
        (OID [2,5,4,3],commonName),
        (OID [2,5,4,6],countryName),
        (OID [2,5,4,7],localityName),
+       (OID [2,5,4,8],stateOrProvinceName),
        (OID [2,5,4,10],organization),
        (OID [2,5,4,11],organizationUnitName),
        (OID [1,2,840,113549,1,9,1],emailAddress),
