@@ -61,6 +61,9 @@ morseChars = RE (UNION (UC (UC (IC dash) dot) blank))
 morseAlphabet = ConsT (BT PRINTABLESTRING) morseChars
 
 morse = ConsT (BT PRINTABLESTRING ) (RE (UNION (IC (ATOM ((E (P (FR morseChars))))))))
+
+thereAndBack = flip (BG.runBitGet . BP.runBitPut . bitPutify . encodeUInt) decodeUInt (-1)
+
 \end{code}
 
 \end{document}

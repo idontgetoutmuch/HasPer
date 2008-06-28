@@ -23,6 +23,7 @@ import Control.Monad.Error
 import qualified Data.ByteString as B
 import Data.Binary.Strict.BitUtil (rightShift)
 import qualified Data.Binary.Strict.BitGet as BG
+import qualified Data.Binary.Strict.BitPut as BP
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType, OctetString)
 import Text.PrettyPrint
 import System
@@ -1003,6 +1004,9 @@ processCT (ConsT t c) cl  = let pvc = perVisible t c
 
 \begin{code}
 
+bitPutify :: BitStream -> BP.BitPut
+bitPutify = mapM_ (BP.putNBits 1)
+
 decodeUInt =
    do o <- octets
       return (from2sComplement o)
@@ -1029,29 +1033,12 @@ decodeLargeLengthDeterminant f t =
                         let fragSize = fromNonNeg 6 n
                         if fragSize <= 0 || fragSize > 4
                            then fail (fragError ++ show fragSize)
-                           else error "you are here"
+                           else do f (fragSize * n16k) t
+                                   decodeLargeLengthDeterminant f t
                         where
                            fragError = "Unable to decode with fragment size of "
 
-{-
-         1 ->
-            do q <- mmGetBit
-               case q of
-                  0 ->
-                     do j <- mmGetBits 14
-                        let l = fromNonNeg j
-                        f l t
-                  1 ->
-                     do j <- mmGetBits 6
-                        let fragSize = fromNonNeg j
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError (fragError ++ show fragSize)
-                           else do frag <- f (fragSize * n16k) t
-                                   rest <- decodeLargeLengthDeterminant f t
-                                   return (frag ++ rest)
-                        where
-                           fragError = "Unable to decode with fragment size of "
--}
+n16k = 16*(2^10)
 
 fromNonNeg r x = 
    sum (zipWith (*) (map fromIntegral ys) zs)
