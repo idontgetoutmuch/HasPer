@@ -10,6 +10,8 @@
 The encoding is for UNALIGNED PER
 
 \begin{code}
+{-# OPTIONS_GHC -fglasgow-exts #-}
+
 module ConstrainedType where
 
 import Data.Monoid

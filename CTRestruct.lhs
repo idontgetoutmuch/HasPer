@@ -20,11 +20,9 @@ import Data.Bits
 import Data.Char
 import Control.Monad.State
 import Control.Monad.Error
--- import qualified Data.ByteString.Lazy as B
--- import qualified Data.ByteString as B
--- import qualified Data.Binary.Strict.BitPut as BP
--- import qualified Data.Binary.Strict.BitGet as BG
--- import Data.Binary.Strict.BitUtil (rightShift)
+import qualified Data.ByteString as B
+import Data.Binary.Strict.BitUtil (rightShift)
+import qualified Data.Binary.Strict.BitGet as BG
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType, OctetString)
 import Text.PrettyPrint
 import System
@@ -666,9 +664,6 @@ encodeSCInt :: Int -> Int -> BitStream
 encodeSCInt v lb
     = encodeOctetsWithLength (encodeNNBIntOctets (v-lb))
 
-infixr 7 `c2`
-c2 = (.).(.)
-
 \end{code}
 
  10.8 Encoding of an unconstrained integer. The integer is
@@ -1006,5 +1001,76 @@ processCT (ConsT t c) cl  = let pvc = perVisible t c
 
 \end{code}
 
+\begin{code}
+
+decodeUInt =
+   do o <- octets
+      return (from2sComplement o)
+   where
+      chunkBy8 = flip (const (BG.getLeftByteString . (*8)))
+      octets   = decodeLargeLengthDeterminant chunkBy8 undefined
+
+decodeLargeLengthDeterminant f t =
+   do p <- BG.getBit
+      if (not p) 
+         then
+            do j <- BG.getLeftByteString 7
+               let l = fromNonNeg 7 j
+               f l t
+         else
+            do q <- BG.getBit
+               if (not q)
+                  then
+                     do k <- BG.getLeftByteString 14
+                        let m = fromNonNeg 14 k
+                        f m t
+                  else
+                     do n <- BG.getLeftByteString 6
+                        let fragSize = fromNonNeg 6 n
+                        if fragSize <= 0 || fragSize > 4
+                           then fail (fragError ++ show fragSize)
+                           else error "you are here"
+                        where
+                           fragError = "Unable to decode with fragment size of "
+
+{-
+         1 ->
+            do q <- mmGetBit
+               case q of
+                  0 ->
+                     do j <- mmGetBits 14
+                        let l = fromNonNeg j
+                        f l t
+                  1 ->
+                     do j <- mmGetBits 6
+                        let fragSize = fromNonNeg j
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError (fragError ++ show fragSize)
+                           else do frag <- f (fragSize * n16k) t
+                                   rest <- decodeLargeLengthDeterminant f t
+                                   return (frag ++ rest)
+                        where
+                           fragError = "Unable to decode with fragment size of "
+-}
+
+fromNonNeg r x = 
+   sum (zipWith (*) (map fromIntegral ys) zs)
+   where
+      s = (-r) `mod` bSize
+      bSize = bitSize (head ys)
+      ys = reverse (B.unpack (rightShift s x))
+      zs = map ((2^bSize)^) [0..genericLength ys]
+
+from2sComplement a = x
+   where
+      l = fromIntegral (B.length a)
+      b = l*8 - 1 
+      (z:zs) = B.unpack a
+      t = (fromIntegral (shiftR (0x80 .&. z) 7)) * 2^b
+      powersOf256 = 1:(map (256*) powersOf256)
+      r = zipWith (*) powersOf256 (map fromIntegral (reverse ((0x7f .&. z):zs)))
+      x = -t + (sum r)
+
+\end{code}
 
 \end{document}
