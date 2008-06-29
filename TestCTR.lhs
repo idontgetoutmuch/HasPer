@@ -17,6 +17,9 @@ module TestCTR where
 import CTRestruct
 import Text.PrettyPrint
 import NewPretty
+import qualified Data.Binary.Strict.BitGet as BG
+import qualified Data.Binary.Strict.BitPut as BP
+import Control.Monad.Error
 
 sc1 = UNION (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
 sc2 = UNION (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
@@ -62,7 +65,9 @@ morseAlphabet = ConsT (BT PRINTABLESTRING) morseChars
 
 morse = ConsT (BT PRINTABLESTRING ) (RE (UNION (IC (ATOM ((E (P (FR morseChars))))))))
 
-thereAndBack = flip (BG.runBitGet . BP.runBitPut . bitPutify . encodeUInt) decodeUInt (-1)
+-- Note that the outer monad is BitGet and the inner monad is the Error
+
+thereAndBack = flip (BG.runBitGet . BP.runBitPut . bitPutify . encodeUInt ) (runErrorT decodeUInt) (-1)
 
 \end{code}
 

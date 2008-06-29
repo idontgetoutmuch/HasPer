@@ -1011,28 +1011,28 @@ decodeUInt =
    do o <- octets
       return (from2sComplement o)
    where
-      chunkBy8 = flip (const (BG.getLeftByteString . (*8)))
+      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . (*8))))
       octets   = decodeLargeLengthDeterminant chunkBy8 undefined
 
 decodeLargeLengthDeterminant f t =
-   do p <- BG.getBit
+   do p <- lift BG.getBit
       if (not p) 
          then
-            do j <- BG.getLeftByteString 7
+            do j <- lift $ BG.getLeftByteString 7
                let l = fromNonNeg 7 j
                f l t
          else
-            do q <- BG.getBit
+            do q <- lift BG.getBit
                if (not q)
                   then
-                     do k <- BG.getLeftByteString 14
+                     do k <- lift $ BG.getLeftByteString 14
                         let m = fromNonNeg 14 k
                         f m t
                   else
-                     do n <- BG.getLeftByteString 6
+                     do n <- lift $ BG.getLeftByteString 6
                         let fragSize = fromNonNeg 6 n
                         if fragSize <= 0 || fragSize > 4
-                           then fail (fragError ++ show fragSize)
+                           then throwError (fragError ++ show fragSize)
                            else do f (fragSize * n16k) t
                                    decodeLargeLengthDeterminant f t
                         where
