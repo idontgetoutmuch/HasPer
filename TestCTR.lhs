@@ -67,7 +67,7 @@ morse = ConsT (BT PRINTABLESTRING ) (RE (UNION (IC (ATOM ((E (P (FR morseChars))
 
 -- Note that the outer monad is BitGet and the inner monad is the Error
 
-thereAndBack = flip (BG.runBitGet . BP.runBitPut . bitPutify . encodeUInt ) (runErrorT decodeUInt) (-1)
+thereAndBack x = flip (BG.runBitGet . BP.runBitPut . bitPutify . encodeUInt ) (runErrorT decodeUInt) x
 
 \end{code}
 

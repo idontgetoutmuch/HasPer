@@ -1007,11 +1007,12 @@ processCT (ConsT t c) cl  = let pvc = perVisible t c
 bitPutify :: BitStream -> BP.BitPut
 bitPutify = mapM_ (BP.putNBits 1)
 
+decodeUInt :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet Integer
 decodeUInt =
    do o <- octets
       return (from2sComplement o)
    where
-      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . (*8))))
+      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
       octets   = decodeLargeLengthDeterminant chunkBy8 undefined
 
 decodeLargeLengthDeterminant f t =
@@ -1033,8 +1034,9 @@ decodeLargeLengthDeterminant f t =
                         let fragSize = fromNonNeg 6 n
                         if fragSize <= 0 || fragSize > 4
                            then throwError (fragError ++ show fragSize)
-                           else do f (fragSize * n16k) t
-                                   decodeLargeLengthDeterminant f t
+                           else do frag <- f (fragSize * n16k) t
+                                   rest <- decodeLargeLengthDeterminant f t
+                                   return (B.append frag rest)
                         where
                            fragError = "Unable to decode with fragment size of "
 
