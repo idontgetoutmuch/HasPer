@@ -1062,4 +1062,25 @@ from2sComplement a = x
 
 \end{code}
 
+\begin{code}
+
+-- This isn't quite right - we may need to run the inner monad
+
+decConsInt baseConstraint extensionConstraint isNoExtension value =
+   if isNoExtension
+      then
+         do mb <- baseConstraint
+            do (l,u) <- mb
+               let range = u - l + 1
+                   n     = genericLength (encodeNNBIntBits ((u-l),range-1)) in
+                   if range <= 1
+                      then 
+                         return l
+                      else
+                         undefined
+      else
+         undefined
+
+\end{code}
+
 \end{document}
