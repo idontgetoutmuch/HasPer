@@ -32,6 +32,10 @@ import Data.Int
 import Data.Bits
 import Data.Word
 import Data.Maybe
+import qualified Data.Foldable as F
+import Data.Monoid
+import qualified Data.Traversable as T
+import Control.Applicative
 \end{code}
 
 We need to mimic the ASN.1 {\tt Type} as defined in X.680
@@ -1064,22 +1068,82 @@ from2sComplement a = x
 
 \begin{code}
 
--- This isn't quite right - we may need to run the inner monad
-
-decConsInt baseConstraint extensionConstraint isNoExtension value =
-   if isNoExtension
+decConsInt rootConstraint extensionConstraint isExtension value =
+   if (not isExtension)
       then
-         do mb <- baseConstraint
-            do (l,u) <- mb
-               let range = u - l + 1
-                   n     = genericLength (encodeNNBIntBits ((u-l),range-1)) in
-                   if range <= 1
-                      then 
-                         return l
-                      else
-                         undefined
+         do mr <- rootConstraint -- If we get an error (Right for now) then this will percolate upwards
+            return (encodeWithRootConstraint mr)
       else
          undefined
+   where
+      encodeWithRootConstraint mr =
+         do (l,u) <- mr -- If there is no constraint then Nothing will percolate upwards
+            let range = u - l + 1
+                n     = genericLength (encodeNNBIntBits ((u-l),range-1))
+            if range <= 1
+               then 
+                  return l
+               else
+                  do j <- BG.getLeftByteString n
+                     return (l + (fromNonNeg n j))
+
+encodeWithRootConstraint mr =
+   do (l,u) <- mr -- If there is no constraint then Nothing will percolate upwards
+      let range = u - l + 1
+          n     = genericLength (encodeNNBIntBits ((u-l),range-1))
+      if range <= 1
+         then 
+            return l
+         else
+            do j <- BG.getLeftByteString n
+               return (l + (fromNonNeg n j))
+
+swap :: (Functor m, Monad m) => Either String (m a) -> m (Either String a)
+swap (Left s) = return (Left s)
+swap (Right x) = fmap Right x
+
+instance F.Foldable (Either String) where
+   foldMap f (Left s)  = mempty
+   foldMap f (Right x) = f x
+
+instance T.Traversable (Either String) where
+   traverse f (Left s)  = pure (Left s)
+   traverse f (Right x) = Right <$> f x
+
+instance Functor BG.BitGet -- kludge
+
+bar :: Either String (Int,Int) -> BG.BitGet (Either String Int)
+bar x =
+   case x of
+      Left err -> return (Left err)
+      Right (x,y) -> do b <- BG.getBit
+                        return (Right (fromEnum b))
+
+boo :: Either String (Int,Int) -> Either String (BG.BitGet Int)
+boo x =
+   case x of
+      Left err -> Left err
+      Right (u,v) -> Right (do b <- BG.getBit; return (fromEnum b))
+      
+buz :: Either String (Int,Int) -> Either String (BG.BitGet Int)
+buz x =
+   do (u,v) <- x
+      return (do b <- BG.getBit; return (fromEnum b))
+
+bux :: Either String (Int,Int) -> Either String (BG.BitGet Int)
+bux x =
+   do (u,v) <- x
+      return (f u v)
+   where
+      f u v =
+         do b <- BG.getBit
+            if b
+               then return u
+               else return v
+
+option1 = swap . bux
+
+option2 = T.sequence . bux
 
 \end{code}
 
