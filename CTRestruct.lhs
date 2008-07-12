@@ -1087,20 +1087,44 @@ decConsInt rootConstraint extensionConstraint isExtension value =
                   do j <- BG.getLeftByteString n
                      return (l + (fromNonNeg n j))
 
-encodeWithRootConstraint mr =
-   do (l,u) <- mr -- If there is no constraint then Nothing will percolate upwards
-      let range = u - l + 1
-          n     = genericLength (encodeNNBIntBits ((u-l),range-1))
-      if range <= 1
-         then 
-            return l
-         else
-            do j <- BG.getLeftByteString n
-               return (l + (fromNonNeg n j))
+type MyIntConstraint = Either String (Maybe (Int,Int))
 
-swap :: (Functor m, Monad m) => Either String (m a) -> m (Either String a)
+decConsInt' :: MyIntConstraint -> MyIntConstraint -> Bool -> BG.BitGet (Either String (Maybe Int))
+decConsInt' rootConstraint extensionConstraint isExtension =
+   if (not isExtension)
+      then
+         let
+            r = 
+               do mr <- rootConstraint -- If we get an error (Right for now) then this will percolate upwards
+                  return (decodeWithRootConstraint mr)
+         in
+            T.sequence r
+      else
+         undefined
+
+decodeWithRootConstraint :: Maybe (Int, Int) -> BG.BitGet (Maybe Int)
+decodeWithRootConstraint mr =
+   T.sequence . f $ mr
+   where
+      f mr = do (l,u) <- mr -- If there is no constraint then Nothing will percolate upwards
+                let range = u - l + 1
+                    n     = genericLength (encodeNNBIntBits ((u-l),range-1))
+                return (
+                   if range <= 1
+                      then 
+                         return l
+                      else
+                         do j <- BG.getLeftByteString n
+                            return (l + (fromNonNeg n j))
+                   )
+
+myConstraint = Right (Just (25,30))
+
+testMyMonad = BG.runBitGet (B.pack [0x50]) (decConsInt' myConstraint undefined False)
+
+swap :: Monad m => Either String (m a) -> m (Either String a)
 swap (Left s) = return (Left s)
-swap (Right x) = fmap Right x
+swap (Right x) = liftM Right x
 
 instance F.Foldable (Either String) where
    foldMap f (Left s)  = mempty
@@ -1109,8 +1133,6 @@ instance F.Foldable (Either String) where
 instance T.Traversable (Either String) where
    traverse f (Left s)  = pure (Left s)
    traverse f (Right x) = Right <$> f x
-
-instance Functor BG.BitGet -- kludge
 
 bar :: Either String (Int,Int) -> BG.BitGet (Either String Int)
 bar x =
