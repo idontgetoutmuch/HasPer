@@ -1008,6 +1008,16 @@ processCT (ConsT t c) cl  = let pvc = perVisible t c
 
 \begin{code}
 
+type ElementSetSpecs a = ESS a
+
+decode :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => ASNType a -> [ElementSetSpecs a] -> t BG.BitGet a
+decode (BT t) cl = fromPer t cl
+
+fromPer :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
+fromPer t@INTEGER cl  = decodeInt cl
+
+decodeInt [] = decodeUInt >>= \x -> return (fromIntegral x)
+
 bitPutify :: BitStream -> BP.BitPut
 bitPutify = mapM_ (BP.putNBits 1)
 
@@ -1102,7 +1112,7 @@ decConsInt' rootConstraint extensionConstraint isExtension =
       else
          undefined
 
-decodeWithRootConstraint :: Maybe (Int, Int) -> BG.BitGet (Maybe Int)
+-- decodeWithRootConstraint :: Maybe (Int, Int) -> BG.BitGet (Maybe Int)
 decodeWithRootConstraint mr =
    T.sequence . f $ mr
    where
