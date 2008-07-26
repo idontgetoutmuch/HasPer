@@ -620,6 +620,7 @@ encConsInt (Left (Just (l,u))) (Left (Just (el,eu))) _ v
 
 data IntegerConstraintType = Constrained | SemiConstrained | UnConstrained
 
+lEncConsInt1 :: (MonadError [Char] m) => m L.MyLatConstraint -> m L.MyLatConstraint -> Integer -> m BP.BitPut
 lEncConsInt1 mrc mec v =
    do rc <- mrc
       ec <- mec
@@ -652,6 +653,7 @@ lEncConsInt1 mrc mec v =
                extensionConstraint &&
                inRange ec
                   = return (BP.putNBits 1 (0::Int))
+
              | rootConstraint &&
                inRange rc
                    = return $ do BP.putNBits 1 (0::Int)
@@ -1268,6 +1270,47 @@ from2sComplement a = x
 \end{code}
 
 \begin{code}
+
+-- lDecConsInt1 :: (MonadError [Char] m) => m L.MyLatConstraint -> m L.MyLatConstraint -> m (BG.BitGet Integer)
+lDecConsInt1 mrc mec =
+   do rc <- mrc
+      ec <- mec
+      let extensionConstraint    = ec /= L.bottom
+          extensionRange         = (L.upper ec) - (L.lower ec) + 1
+          rootConstraint         = rc /= L.bottom
+          rootLower              = let L.V x = L.lower rc in x
+          rootRange              = fromIntegral $ let (L.V x) = (L.upper rc) - (L.lower rc) + 1 in x -- fromIntegral means there's an Int bug lurking here
+          numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
+          emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
+          inRange x              = undefined -- (L.V v) >= (L.lower x) &&  (L.V v) <= (L.upper x)
+          unconstrained x        = (L.lower x) == minBound
+          semiconstrained x      = (L.upper x) == maxBound
+          constrained x          = not (unconstrained x) && not (semiconstrained x)
+          constraintType x
+             | unconstrained x   = UnConstrained
+             | semiconstrained x = SemiConstrained
+             | otherwise         = Constrained
+          foobar
+             | emptyConstraint   
+                  = throwError "Empty constraint"
+             | rootConstraint &&
+               extensionConstraint &&
+               inRange ec
+                  = undefined
+             | rootConstraint &&
+               inRange rc -- we need to check the range and also check the value of the extension bit
+                   = return $ if rootRange <= 1
+                                 then
+                                    return rootLower
+                                 else
+                                    do j <- BG.getLeftByteString numOfRootBits
+                                       return (rootLower + (fromNonNeg numOfRootBits j))
+             | extensionConstraint &&
+               inRange ec
+                  = undefined
+             | otherwise
+                  = throwError "Value out of range"
+      foobar
 
 decConsInt rootConstraint extensionConstraint isExtension value =
    if (not isExtension)
