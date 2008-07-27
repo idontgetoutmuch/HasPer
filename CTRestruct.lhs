@@ -666,6 +666,8 @@ lEncExtConsInt {-lEncConsInt1-} mrc mec v =
              | unconstrained x   = UnConstrained
              | semiconstrained x = SemiConstrained
              | otherwise         = Constrained
+          rootLower              = let (L.V y) = L.lower rc in y
+          rootUpper              = let (L.V y) = L.upper rc in y
           foobar
              | emptyConstraint   
                   = throwError "Empty constraint"
@@ -680,7 +682,7 @@ lEncExtConsInt {-lEncConsInt1-} mrc mec v =
                                    SemiConstrained ->
                                       bitPutify (encodeSCInt (fromIntegral v) undefined)
                                    Constrained ->
-                                      error "You are here"
+                                      bitPutify (encodeNNBIntBits (fromIntegral (v - rootLower), fromIntegral (rootUpper - rootLower)))
 
              | rootConstraint &&
                extensionConstraint &&
@@ -1191,12 +1193,6 @@ buildItUp =
    do b <- lift BG.getBit
       throwError "foo"
       return b
-
-{-
-other = 
-   do x <- Right True
-      return x
--}
 
 swivel :: Either a b -> Either b a
 swivel (Left x) = Right x

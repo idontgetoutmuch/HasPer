@@ -17,6 +17,7 @@ module TestCTR where
 import CTRestruct
 import Text.PrettyPrint
 import NewPretty
+import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.Strict.BitPut as BP
 import Control.Monad.Error
@@ -89,7 +90,12 @@ mt7 = ConsT (ConsT (BT MYINTEGER) myCon5) myCon1
 myTest t x =
    case lEncode t x [] of
       Left s  -> s
-      Right m -> show (BP.runBitPut m)
+      Right m -> show (B.unpack (BP.runBitPut m))
+
+dansTest t x =
+   case encode t x [] of
+      Right s -> s
+      Left x -> show x
 
 \end{code}
 
