@@ -69,6 +69,28 @@ morse = ConsT (BT PRINTABLESTRING ) (RE (UNION (IC (ATOM ((E (P (FR morseChars))
 
 thereAndBack x = flip (BG.runBitGet . BP.runBitPut . bitPutify . encodeUInt ) (runErrorT decodeUInt) x
 
+mySc1 = UNION (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
+mySc2 = UNION (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
+
+myCon1 = RE (UNION (IC (ATOM (E (V (R (250,253)))))))
+myCon2 = RE (UNION (IC (ATOM (E (V (R (245,253)))))))
+myCon3 = RE mySc1
+myCon4 = EXT mySc1
+myCon5 = EXTWITH mySc1 mySc2
+
+mt1 = ConsT (BT MYINTEGER) myCon1
+mt2 = ConsT mt1 myCon2
+mt3 = ConsT (ConsT (BT MYINTEGER) myCon2) myCon1
+mt4 = ConsT (BT MYINTEGER) myCon3
+mt5 = ConsT (BT MYINTEGER) myCon4
+mt6 = ConsT (BT MYINTEGER) myCon5
+mt7 = ConsT (ConsT (BT MYINTEGER) myCon5) myCon1
+
+myTest t x =
+   case lEncode t x [] of
+      Left s  -> s
+      Right m -> show (BP.runBitPut m)
+
 \end{code}
 
 \end{document}

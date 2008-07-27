@@ -216,6 +216,7 @@ data ASNBuiltin a {- :: * -> * -} where
    EXTADDGROUP     :: Sequence a -> ASNBuiltin a
    BOOLEAN         :: ASNBuiltin Bool
    INTEGER         :: ASNBuiltin Int
+   MYINTEGER       :: ASNBuiltin Integer
    ENUMERATED      :: Enumerate a -> ASNBuiltin a
    BITSTRING       :: NamedBits -> ASNBuiltin BitString
    OCTETSTRING     :: ASNBuiltin OctetString
@@ -286,6 +287,7 @@ instance ValueRange IA5String
 instance ValueRange PrintableString
 instance ValueRange NumericString
 instance ValueRange Int
+instance ValueRange Integer -- Another example of the Int / Integer problem
 
 
 class PermittedAlphabet a
@@ -513,12 +515,26 @@ encode (ConsT t c) v cl
       in
         encode t v (pvc:cl)
 
+lEncode :: ASNType a -> a -> [ESS a] -> Either String BP.BitPut
+lEncode (BT t) v cl = 
+   lToPer t v cl
+lEncode (RT _) _ _ = 
+   error "RT"
+lEncode (ConsT t c) v cl = 
+   let
+      b   = getBT t
+      pvc = perVisible b c
+   in
+      lEncode t v (pvc:cl)
+
 -- need to deal with per-visible constraint list here.
 -- generate effective root and effective extension here.
 toPer :: ASNBuiltin a -> a -> [ESS a] -> Either BitStream String
 toPer t@BOOLEAN x cl  = encodeBool t x
 toPer t@INTEGER x cl  = encodeInt cl x
 
+lToPer :: (L.Lattice (m L.MyLatConstraint), MonadError [Char] m) => ASNBuiltin a -> a -> [ESS a] -> m BP.BitPut
+lToPer t@MYINTEGER x cl = lEncodeInt cl x
 
 getBT :: ASNType a -> ASNType a
 getBT b@(BT t) = b
@@ -527,6 +543,7 @@ getBT (RT r)      = error "TO DO!!!"
 
 perVisible :: ASNType a -> ESS a -> ESS a
 perVisible (BT INTEGER) c = c
+perVisible (BT MYINTEGER) c = c
 
 
 
@@ -569,6 +586,16 @@ encodeInt c v
       in
             eitherTest parentRoot lc v
 
+myEncodeUInt = bitPutify . encodeUInt . fromIntegral -- Another Int bug waiting to happen
+
+lEncodeInt [] v = return (myEncodeUInt v)
+lEncodeInt cs v =
+   lEitherTest parentRoot lc v
+   where
+      lc         = last cs
+      ic         = init cs
+      parentRoot = lApplyIntCons L.top ic
+
 eitherTest :: IntConstraint -> ESS Int -> Int -> Either BitStream String
 eitherTest (Right s) lc v = Right s
 eitherTest pr@(Left c) lc v
@@ -578,14 +605,11 @@ eitherTest pr@(Left c) lc v
       in
         encConsInt effRoot effExt b v
 
-myEncodeInt constraints value =
-   case constraints of
-      [] -> return (encodeUInt value)
-      cs -> do let lc = last cs
-                   ic = init cs 
-               parentRoot    <- undefined
-               effectiveRoot <- undefined
-               return undefined
+lEitherTest pr lc v =
+   lEncConsInt effRoot effExt b v
+   where
+      (effExt,b) = lApplyExt pr lc
+      effRoot    = lEvalC lc pr
 
 \end{code}
 
@@ -618,10 +642,17 @@ encConsInt (Left (Just (l,u))) (Left (Just (el,eu))) _ v
                     then Left (0:encodeNNBIntBits (v-l,u-l))
                     else Right "Value out of range."
 
+lEncConsInt rootCon extCon extensible v
+    = if (not extensible)
+        then lEncNonExtConsInt rootCon v
+        else lEncExtConsInt rootCon extCon v
+
+lEncNonExtConsInt = error "lEncNonExtConsInt"
+
 data IntegerConstraintType = Constrained | SemiConstrained | UnConstrained
 
-lEncConsInt1 :: (MonadError [Char] m) => m L.MyLatConstraint -> m L.MyLatConstraint -> Integer -> m BP.BitPut
-lEncConsInt1 mrc mec v =
+lEncExtConsInt {-lEncConsInt1-} :: (MonadError [Char] m) => m L.MyLatConstraint -> m L.MyLatConstraint -> Integer -> m BP.BitPut
+lEncExtConsInt {-lEncConsInt1-} mrc mec v =
    do rc <- mrc
       ec <- mec
       let extensionConstraint    = ec /= L.bottom       
@@ -638,6 +669,7 @@ lEncConsInt1 mrc mec v =
           foobar
              | emptyConstraint   
                   = throwError "Empty constraint"
+
              | rootConstraint &&
                extensionConstraint &&
                inRange rc
@@ -648,7 +680,8 @@ lEncConsInt1 mrc mec v =
                                    SemiConstrained ->
                                       bitPutify (encodeSCInt (fromIntegral v) undefined)
                                    Constrained ->
-                                      undefined
+                                      error "You are here"
+
              | rootConstraint &&
                extensionConstraint &&
                inRange ec
@@ -657,70 +690,22 @@ lEncConsInt1 mrc mec v =
              | rootConstraint &&
                inRange rc
                    = return $ do BP.putNBits 1 (0::Int)
-                                 case constraintType ec of
+                                 case constraintType rc of
                                     UnConstrained ->
                                        bitPutify (encodeUInt (fromIntegral v))
                                     SemiConstrained ->
                                        bitPutify (encodeSCInt (fromIntegral v) undefined)
                                     Constrained ->
                                        undefined
+
              | extensionConstraint &&
                inRange ec
                   = return $ do BP.putNBits 1 (0::Int)
                                 bitPutify (encodeUInt (fromIntegral v))
+
              | otherwise
                   = throwError "Value out of range"
       foobar
-
--- lEncConsInt :: MonadError String m => L.MyLatConstraint -> L.MyLatConstraint -> Integer -> m ()
-lEncConsInt rc ec v = 
-   if emptyConstraint
-      then
-         throwError "Empty constraint"
-      else
-         if noExtensionConstraint && (inRange ec)
-            then
-               case constraintType ec of
-                  UnConstrained ->
-                     lift $ do BP.putNBits 1 (0::Int)
-                               bitPutify (encodeUInt (fromIntegral v))
-                  SemiConstrained ->
-                     lift $ do BP.putNBits 1 (0::Int)
-                               bitPutify (encodeSCInt (fromIntegral v) undefined)
-                  Constrained ->
-                     undefined
-            else
-               undefined
-
-{-
-   | rc == L.bottom && ec == L.bottom = throwError "Empty constraint"
-   | noExtensionConstraint &&
-     inRange &&
-     unconstrained ec                 = lift $ do BP.putNBits 1 (0::Int)
-                                                  bitPutify (encodeUInt (fromIntegral v))
-   | noExtensionConstraint &&
-     inRange &&
-     semiconstrained ec               = lift $ do BP.putNBits 1 (0::Int)
-                                                  bitPutify (encodeSCInt (fromIntegral v) undefined)
-
-   | noExtensionConstraint &&
-     inRange &&
-     constrained ec                   = lift $ do BP.putNBits 1 (0::Int)
-                                                  bitPutify (encodeSCInt (fromIntegral v) undefined)
-   | otherwise                        = throwError "Value not in range"
--}
-   where
-      inRange x = (L.V v) >= (L.lower x) &&  (L.V v) <= (L.upper x)
-      unconstrained x = (L.lower x) == minBound
-      noExtensionConstraint = ec == L.bottom
-      noRootConstraint = rc == L.bottom
-      emptyConstraint = noRootConstraint && noExtensionConstraint
-      semiconstrained x = (L.upper x) == maxBound
-      constrained x = not (unconstrained x) && not (semiconstrained x)
-      constraintType x
-         | unconstrained x   = UnConstrained
-         | semiconstrained x = SemiConstrained
-         | otherwise         = Constrained
 
 lEncConsInt'' rc ec v = 
    if emptyConstraint
@@ -955,6 +940,10 @@ applyExt rp (EXTWITH _ c)
                       in
                         (applyExtWithRt rp ec, True)
 
+lApplyExt rp (RE _)  = (L.bottom, False)
+lApplyExt rp (EXT _) = (L.bottom, False)
+lApplyExt rp (EXTWITH _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
+
 -- Need to define calcEC (follow rules outlined in X.680 G.4.3.8)
 -- and appExtWithRt
 -- For Integer constraints, set operators are only applied to
@@ -965,12 +954,16 @@ applyExt rp (EXTWITH _ c)
 calcEC :: Constr Int -> IntConstraint
 calcEC c = calcC c
 
+lCalcEC c = lCalcC c
+
 -- applyExtWithRt is simply serialC (defined below) since it is
 -- the serial application of the parent root and the extension of the
 -- final constraint. Only values in the paernt root may appear in the
 -- extension (see X.680 section G.4.2.3).
 applyExtWithRt :: IntConstraint -> IntConstraint -> IntConstraint
 applyExtWithRt a b = serialC a b
+
+lApplyExtWithRt a b = lSerialC a b
 
 -- need to define encInt
 encInt :: Maybe (Int,Int) -> Maybe (Int,Int) -> Bool -> Int -> BitStream
@@ -997,6 +990,9 @@ applyIntCons x (c:rs)
     = let c2 = evalC c x
       in applyIntCons c2 rs
 
+lApplyIntCons x [] = x
+lApplyIntCons x (c:cs) = lApplyIntCons (lEvalC c x) cs
+
 evalC :: ESS Int -> IntConstraint -> IntConstraint
 evalC (RE c) x
     = let c2 = calcC c
@@ -1013,6 +1009,10 @@ evalC (EXTWITH c d) x
     = let c2 = calcC c
       in
         serialC x c2
+
+lEvalC (RE c) x       = lSerialC x (lCalcC c)
+lEvalC (EXT c) x      = lSerialC x (lCalcC c)
+lEvalC (EXTWITH c d) x = lSerialC x (lCalcC c)
 
 -- See X.680 section G.4.2.3 for details on the serial application
 -- of constraints. The second input is the new constraint whose
@@ -1043,9 +1043,23 @@ serialC a@(Left (Just (m,n))) b@(Left (Just (x,y)))
                       then Right "Constraint and parent type mismatch."
                        else interC a b
 
+lSerialC mx my =
+   do a <- mx
+      b <- my
+      let foobar
+             | b == L.bottom =
+                  return L.bottom
+             | a `L.meet` b == b =
+                  return (a `L.meet` b)
+             | otherwise =
+                  throwError ("Constraint and parent type mismatch: " ++ show a ++ " does not match " ++ show b) -- Somehow we should prettyConstraint here
+      foobar
+
 calcC :: Constr Int -> IntConstraint
 calcC (UNION u) = calcU u
 calcC (ALL e)   = exceptC (Left (Just (minBound,maxBound))) (calcEx e)
+
+lCalcC (UNION u) = lCalcU u
 
 -- Need to define unionC which returns the union of two
 -- constraints
@@ -1054,6 +1068,9 @@ calcU (IC i )  = calcI i
 calcU (UC u i) = let x = calcU u
                      y = calcI i
                  in unionC x y
+
+lCalcU (IC i) = lCalcI i
+lCalcU(UC u i) = (lCalcU u) `L.ljoin` (lCalcI i)
 
 unionC :: IntConstraint -> IntConstraint -> IntConstraint
 unionC a@(Right s) _      = a
@@ -1078,6 +1095,9 @@ calcI (INTER i e) = let x = calcI i
                     in interC x y
 calcI (ATOM a)    = calcA a
 
+lCalcI (INTER i e) = (lCalcI i) `L.meet` (lCalcA e)
+lCalcI (ATOM a)    = lCalcA a
+
 interC :: IntConstraint -> IntConstraint -> IntConstraint
 interC a@(Right s) _      = a
 interC _ b@(Right s)      = b
@@ -1099,6 +1119,8 @@ calcA (E e )     = calcE e
 calcA (Exc e ex) = let x = calcE e
                        y = calcEx ex
                    in exceptC x y
+
+lCalcA (E e) = lCalcE e
 
 -- Note that the resulting constraint is always a contiguous set.
 exceptC :: IntConstraint -> IntConstraint -> IntConstraint
@@ -1123,7 +1145,9 @@ calcE (S (SV i))    = Left (Just (i,i))
 calcE (C (Inc t))   = processCT t []
 calcE (V (R (l,u))) = Left (Just (l,u))
 
-
+lCalcE (S (SV i)) = return (L.MyLatConstraint (L.V i) (L.V i))
+lCalcE (C (Inc t)) = lProcessCT t []
+lCalcE (V (R (l,u))) = return (L.MyLatConstraint (L.V l) (L.V u))
 
 calcEx :: Excl Int -> IntConstraint
 calcEx (EXCEPT e) = calcE e
@@ -1137,6 +1161,10 @@ processCT (RT r) cl       = error "Need to do"
 processCT (ConsT t c) cl  = let pvc = perVisible t c
                             in
                             processCT t (pvc:cl)
+
+lProcessCT :: (L.Lattice (m L.MyLatConstraint), MonadError String m) => ASNType Integer -> [ESS Integer] -> m L.MyLatConstraint
+lProcessCT (BT MYINTEGER) cl = lApplyIntCons L.top cl
+lProcessCT (ConsT t c) cl    = let pvc = perVisible t c in lProcessCT t (pvc:cl)
 
 
 \end{code}
@@ -1158,16 +1186,6 @@ fromPer t@INTEGER cl  = decodeInt cl
 
 decodeInt [] = decodeUInt >>= \x -> return (fromIntegral x)
 
-myDecodeInt constraints value =
-   case constraints of
-      [] -> do x <- decodeUInt
-               return (fromIntegral x)
-      cs -> do let lc = last cs
-                   ic = init cs 
-               parentRoot    <- undefined -- applyIntCons (Left Nothing) [] -- This does not mean no constraint it means a cosntraint which cannot be satisfied
-               effectiveRoot <- undefined
-               return undefined
-
 buildItUp :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet Bool
 buildItUp =
    do b <- lift BG.getBit
@@ -1187,13 +1205,6 @@ swivel (Right x) = Left x
 domsApplyIntCons :: Bool -> DansEither Int
 domsApplyIntCons False = DansRight "Oops"
 domsApplyIntCons True  = DansLeft 3
-
-{-
-domsWithBitGet x =
-   do b <- BG.getBit
-      y <- lift (domsApplyIntCons b)
-      undefined
--}
 
 data DansEither a = DansLeft a | DansRight String
 
@@ -1271,47 +1282,6 @@ from2sComplement a = x
 
 \begin{code}
 
--- lDecConsInt1 :: (MonadError [Char] m) => m L.MyLatConstraint -> m L.MyLatConstraint -> m (BG.BitGet Integer)
-lDecConsInt1 mrc mec =
-   do rc <- mrc
-      ec <- mec
-      let extensionConstraint    = ec /= L.bottom
-          extensionRange         = (L.upper ec) - (L.lower ec) + 1
-          rootConstraint         = rc /= L.bottom
-          rootLower              = let L.V x = L.lower rc in x
-          rootRange              = fromIntegral $ let (L.V x) = (L.upper rc) - (L.lower rc) + 1 in x -- fromIntegral means there's an Int bug lurking here
-          numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
-          emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
-          inRange x              = undefined -- (L.V v) >= (L.lower x) &&  (L.V v) <= (L.upper x)
-          unconstrained x        = (L.lower x) == minBound
-          semiconstrained x      = (L.upper x) == maxBound
-          constrained x          = not (unconstrained x) && not (semiconstrained x)
-          constraintType x
-             | unconstrained x   = UnConstrained
-             | semiconstrained x = SemiConstrained
-             | otherwise         = Constrained
-          foobar
-             | emptyConstraint   
-                  = throwError "Empty constraint"
-             | rootConstraint &&
-               extensionConstraint &&
-               inRange ec
-                  = undefined
-             | rootConstraint &&
-               inRange rc -- we need to check the range and also check the value of the extension bit
-                   = return $ if rootRange <= 1
-                                 then
-                                    return rootLower
-                                 else
-                                    do j <- BG.getLeftByteString numOfRootBits
-                                       return (rootLower + (fromNonNeg numOfRootBits j))
-             | extensionConstraint &&
-               inRange ec
-                  = undefined
-             | otherwise
-                  = throwError "Value out of range"
-      foobar
-
 decConsInt rootConstraint extensionConstraint isExtension value =
    if (not isExtension)
       then
@@ -1332,20 +1302,6 @@ decConsInt rootConstraint extensionConstraint isExtension value =
                      return (l + (fromNonNeg n j))
 
 type MyIntConstraint = Either String (Maybe (Int,Int))
-
-decConsInt' :: MyIntConstraint -> MyIntConstraint -> Bool -> BG.BitGet (Either String (Maybe Int))
-decConsInt' rootConstraint extensionConstraint isExtension =
-   if (not isExtension)
-      then
-         let
-            r = 
-               -- rootConstraint >>= \mr -> return (decodeWithRootConstraint mr) 
-               do mr <- rootConstraint -- If we get an error (Right for now) then this will percolate upwards
-                  return (decodeWithRootConstraint mr)
-         in
-            T.sequence r
-      else
-         undefined
 
 -- decodeWithRootConstraint :: Maybe (Int, Int) -> BG.BitGet (Maybe Int)
 decodeWithRootConstraint mr =
@@ -1384,8 +1340,6 @@ myConstraint :: MyIntConstraint
 myConstraint = Right (Just (25,30))
 
 badConstraint = Left "Invalid"
-
-testMyMonad x = BG.runBitGet (B.pack [0x50]) (decConsInt' x undefined False)
 
 swap :: Monad m => Either String (m a) -> m (Either String a)
 swap (Left s) = return (Left s)

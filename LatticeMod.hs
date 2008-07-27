@@ -57,8 +57,8 @@ instance Lattice LatConstraint where
 instance Lattice MyLatConstraint where
    bottom = MyLatConstraint PosInf NegInf
    top = MyLatConstraint NegInf PosInf
-   (MyLatConstraint l1 u1) `meet` (MyLatConstraint l2 u2) = MyLatConstraint (min l1 l2) (max u1 u2)
-   (MyLatConstraint l1 u1) `ljoin` (MyLatConstraint l2 u2)
+   (MyLatConstraint l1 u1) `ljoin` {-`meet`-} (MyLatConstraint l2 u2) = MyLatConstraint (min l1 l2) (max u1 u2)
+   (MyLatConstraint l1 u1) `meet` {-`ljoin`-} (MyLatConstraint l2 u2)
       | u2 < l1   = bottom
       | l2 > u2   = bottom
       | otherwise = MyLatConstraint (max l1 l2) (min u1 u2)
