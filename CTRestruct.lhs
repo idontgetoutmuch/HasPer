@@ -1183,40 +1183,34 @@ decode (ConsT t c) cl
       in
         decode t (pvc:cl)
 
+decode1 (BT t) cl = fromPer1 t cl
+decode1 (ConsT t c) cl
+    = let b = getBT t
+          pvc = perVisible b c
+      in
+        decode1 t (pvc:cl)
+
 fromPer :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
 fromPer t@INTEGER cl  = decodeInt cl
 
+fromPer1 :: (L.Lattice (m L.MyLatConstraint), MonadError String m) => ASNBuiltin a -> [ElementSetSpecs a] -> m (BG.BitGet a)
+fromPer1 t@MYINTEGER cl = decodeInt1 cl
+
 decodeInt [] = decodeUInt >>= \x -> return (fromIntegral x)
 
-buildItUp :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet Bool
-buildItUp =
-   do b <- lift BG.getBit
-      throwError "foo"
-      return b
+decodeInt1 [] = error "you haven't done unconstrained decoding!"
+decodeInt1 cs =
+   lEitherTest1 parentRoot lc
+   where
+      lc         = last cs
+      ic         = init cs
+      parentRoot = lApplyIntCons L.top ic
 
-swivel :: Either a b -> Either b a
-swivel (Left x) = Right x
-swivel (Right x) = Left x
-
-domsApplyIntCons :: Bool -> DansEither Int
-domsApplyIntCons False = DansRight "Oops"
-domsApplyIntCons True  = DansLeft 3
-
-data DansEither a = DansLeft a | DansRight String
-
-instance Monad DansEither where
-   return x = DansLeft x
-   m >>= k =
-       case m of
-           DansLeft x -> k x
-           DansRight s -> DansRight s
-
-df x =
-   if x 
-      then
-         return 3
-      else
-         throwError "False"
+lEitherTest1 pr lc =
+   lDecConsInt1 effRoot effExt
+   where
+      (effExt,b) = lApplyExt pr lc
+      effRoot    = lEvalC lc pr
 
 bitPutify :: BitStream -> BP.BitPut
 bitPutify = mapM_ (BP.putNBits 1)
@@ -1278,109 +1272,46 @@ from2sComplement a = x
 
 \begin{code}
 
-decConsInt rootConstraint extensionConstraint isExtension value =
-   if (not isExtension)
-      then
-         do mr <- rootConstraint -- If we get an error (Right for now) then this will percolate upwards
-            return (encodeWithRootConstraint mr)
-      else
-         undefined
-   where
-      encodeWithRootConstraint mr =
-         do (l,u) <- mr -- If there is no constraint then Nothing will percolate upwards
-            let range = u - l + 1
-                n     = genericLength (encodeNNBIntBits ((u-l),range-1))
-            if range <= 1
-               then 
-                  return l
-               else
-                  do j <- BG.getLeftByteString n
-                     return (l + (fromNonNeg n j))
-
-type MyIntConstraint = Either String (Maybe (Int,Int))
-
--- decodeWithRootConstraint :: Maybe (Int, Int) -> BG.BitGet (Maybe Int)
-decodeWithRootConstraint mr =
-   T.sequence . f $ mr
-   where
-      f mr = do (l,u) <- mr -- If there is no constraint then Nothing will percolate upwards
-                let range = u - l + 1
-                    n     = genericLength (encodeNNBIntBits ((u-l),range-1))
-                return (
-                   if range <= 1
-                      then 
-                         return l
-                      else
-                         do j <- BG.getLeftByteString n
-                            return (l + (fromNonNeg n j))
-                   )
-
--- decodeWithRootConstraint' :: Maybe (Int, Int) -> BG.BitGet (Maybe Int)
-decodeWithRootConstraint' mr =
-   f mr
-   where
-      f mr = do (l,u) <- mr -- If there is no constraint then Nothing will percolate upwards
-                let range = u - l + 1
-                    n     = genericLength (encodeNNBIntBits ((u-l),range-1))
-                return (
-                   if range <= 1
-                      then 
-                         return l
-                      else
-                         do j <- BG.getLeftByteString n
-                            return (l + (fromNonNeg n j))
-                   )
-
-
-myConstraint :: MyIntConstraint
-myConstraint = Right (Just (25,30))
-
-badConstraint = Left "Invalid"
-
-swap :: Monad m => Either String (m a) -> m (Either String a)
-swap (Left s) = return (Left s)
-swap (Right x) = liftM Right x
-
-instance F.Foldable (Either String) where
-   foldMap f (Left s)  = mempty
-   foldMap f (Right x) = f x
-
-instance T.Traversable (Either String) where
-   traverse f (Left s)  = pure (Left s)
-   traverse f (Right x) = Right <$> f x
-
-bar :: Either String (Int,Int) -> BG.BitGet (Either String Int)
-bar x =
-   case x of
-      Left err -> return (Left err)
-      Right (x,y) -> do b <- BG.getBit
-                        return (Right (fromEnum b))
-
-boo :: Either String (Int,Int) -> Either String (BG.BitGet Int)
-boo x =
-   case x of
-      Left err -> Left err
-      Right (u,v) -> Right (do b <- BG.getBit; return (fromEnum b))
-      
-buz :: Either String (Int,Int) -> Either String (BG.BitGet Int)
-buz x =
-   do (u,v) <- x
-      return (do b <- BG.getBit; return (fromEnum b))
-
-bux :: Either String (Int,Int) -> Either String (BG.BitGet Int)
-bux x =
-   do (u,v) <- x
-      return (f u v)
-   where
-      f u v =
-         do b <- BG.getBit
-            if b
-               then return u
-               else return v
-
-option1 = swap . bux
-
-option2 = T.sequence . bux
+-- lDecConsInt1 :: (MonadError [Char] m) => m L.MyLatConstraint -> m L.MyLatConstraint -> m (BG.BitGet Integer)
+lDecConsInt1 mrc mec =
+   do rc <- mrc
+      ec <- mec
+      let extensionConstraint    = ec /= L.bottom
+          extensionRange         = (L.upper ec) - (L.lower ec) + 1
+          rootConstraint         = rc /= L.bottom
+          rootLower              = let L.V x = L.lower rc in x
+          rootRange              = fromIntegral $ let (L.V x) = (L.upper rc) - (L.lower rc) + 1 in x -- fromIntegral means there's an Int bug lurking here
+          numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
+          emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
+          inRange x              = error "You haven't defined in range" -- undefined -- (L.V v) >= (L.lower x) &&  (L.V v) <= (L.upper x)
+          unconstrained x        = (L.lower x) == minBound
+          semiconstrained x      = (L.upper x) == maxBound
+          constrained x          = not (unconstrained x) && not (semiconstrained x)
+          constraintType x
+             | unconstrained x   = UnConstrained
+             | semiconstrained x = SemiConstrained
+             | otherwise         = Constrained
+          foobar
+             | emptyConstraint
+                  = throwError "Empty constraint"
+             | rootConstraint &&
+               extensionConstraint &&
+               inRange ec
+                  = error "Root constraint and extension constraint and in range"
+             | rootConstraint &&
+               inRange rc -- we need to check the range and also check the value of the extension bit
+                   = return $ if rootRange <= 1
+                                 then
+                                    return rootLower
+                                 else
+                                    do j <- BG.getLeftByteString numOfRootBits
+                                       return (rootLower + (fromNonNeg numOfRootBits j))
+             | extensionConstraint &&
+               inRange ec
+                  = error "Extension constraint and in range"
+             | otherwise
+                  = throwError "Value out of range"
+      foobar
 
 \end{code}
 
