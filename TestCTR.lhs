@@ -10,7 +10,7 @@
 Testing encoding for UNALIGNED PER
 
 \begin{code}
-{-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+{-# OPTIONS_GHC -fwarn-incomplete-patterns -XFlexibleContexts #-}
 
 module TestCTR where
 
@@ -21,6 +21,8 @@ import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.Strict.BitPut as BP
 import Control.Monad.Error
+
+import qualified LatticeMod as L
 
 sc1 = UNION (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
 sc2 = UNION (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
@@ -96,6 +98,15 @@ dansTest t x =
    case encode t x [] of
       Right s -> s
       Left x -> show x
+
+type Foo a = ErrorT String BG.BitGet a
+
+foo :: (MonadError String m, L.Lattice (m L.MyLatConstraint)) => ASNType a -> [ElementSetSpecs a] -> m (ErrorT String BG.BitGet a)
+foo x ss = decode2 x ss
+
+bar = case foo mt1 [] of Left s -> undefined; Right x -> runErrorT x    
+
+baz = case decode2 mt1 [] of Left s -> undefined; Right x -> runErrorT x    
 
 \end{code}
 
