@@ -36,7 +36,6 @@ instance Num InfInteger where
    _ - NegInf = PosInf
    (V x) - (V y) = V (x - y)
 
-
 instance Lattice LatConstraint where
    bottom = Bottom
    top = Top

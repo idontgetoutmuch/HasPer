@@ -647,7 +647,7 @@ lEncConsInt rootCon extCon extensible v
         then lEncNonExtConsInt rootCon v
         else lEncExtConsInt rootCon extCon v
 
-lEncNonExtConsInt = error "lEncNonExtConsInt"
+lEncNonExtConsInt rootCon v = lEncExtConsInt rootCon L.bottom v -- error "lEncNonExtConsInt"
 
 data IntegerConstraintType = Constrained | SemiConstrained | UnConstrained
 
@@ -691,14 +691,14 @@ lEncExtConsInt {-lEncConsInt1-} mrc mec v =
 
              | rootConstraint &&
                inRange rc
-                   = return $ do BP.putNBits 1 (0::Int)
-                                 case constraintType rc of
-                                    UnConstrained ->
-                                       bitPutify (encodeUInt (fromIntegral v))
-                                    SemiConstrained ->
-                                       bitPutify (encodeSCInt (fromIntegral v) undefined)
-                                    Constrained ->
-                                       undefined
+                  = return $ do BP.putNBits 1 (0::Int)
+                                case constraintType rc of
+                                   UnConstrained ->
+                                      bitPutify (encodeUInt (fromIntegral v))
+                                   SemiConstrained ->
+                                      bitPutify (encodeSCInt (fromIntegral v) undefined)
+                                   Constrained ->
+                                      bitPutify (encodeNNBIntBits (fromIntegral (v - rootLower), fromIntegral (rootUpper - rootLower)))
 
              | extensionConstraint &&
                inRange ec
@@ -1355,7 +1355,7 @@ lDecConsInt2 mrc mec =
           extensionRange         = (L.upper ec) - (L.lower ec) + 1
           rootConstraint         = rc /= L.bottom
           rootLower              = let L.V x = L.lower rc in x
-          rootRange              = fromIntegral $ let (L.V x) = (L.upper rc) - (L.lower rc) + 1 in x -- fromIntegral means there's an Int bug lurking here
+          rootRange              = fromIntegral $ let (L.V x) = (L.upper rc) - (L.lower rc) + (L.V 1) in x -- fromIntegral means there's an Int bug lurking here
           numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
           emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
           inRange v x            = (L.V v) >= (L.lower x) &&  (L.V v) <= (L.upper x)
@@ -1389,6 +1389,7 @@ lDecConsInt2 mrc mec =
                                                      return v
                                                   else
                                                      throwError "Value not in root constraint"
+
              | extensionConstraint
                -- inRange ec
                   = error "Extension constraint and in range"
