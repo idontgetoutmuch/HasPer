@@ -647,12 +647,53 @@ lEncConsInt rootCon extCon extensible v
         then lEncNonExtConsInt rootCon v
         else lEncExtConsInt rootCon extCon v
 
-lEncNonExtConsInt rootCon v = lEncExtConsInt rootCon L.bottom v -- error "lEncNonExtConsInt"
+lEncNonExtConsInt rootCon v = lEncExtConsInt rootCon L.bottom v
 
-data IntegerConstraintType = Constrained | SemiConstrained | UnConstrained
+\end{code}
 
-lEncExtConsInt {-lEncConsInt1-} :: (MonadError [Char] m) => m L.MyLatConstraint -> m L.MyLatConstraint -> Integer -> m BP.BitPut
-lEncExtConsInt {-lEncConsInt1-} mrc mec v =
+\section{Dan: read this as an example of our paper for a formal executable specification of PER}
+
+For the purpose of encoding in PER, we can classify an INTEGER type as
+constrained, semi-constrained or unconstrained.
+
+\begin{code}
+
+data IntegerConstraintType = 
+   Constrained     | 
+   SemiConstrained | 
+   UnConstrained
+
+\end{code}
+
+First, the type signature tells us that we are using constraints which are \lq\lq lifted\rq\rq.
+The type constructor $m$ takes a type $a$ and constructs a new type $m a$, a \lq\lq lifting\rq\rq
+of the base type. This monad allows us to handle invalid serial application of constraints without
+cluttering up the specification with \lq\lq plumbing\rq\rq. The Haskell constraint to the left of the $\Rightarrow$ tells us that the
+type constructor is a monad with extra structure. This extra structure allows us to signal an
+error using {\tt throwError}, for example in the case of values which are not in range given by the constraints and then
+handle it using {\tt catchError}.
+
+We can now read off the specificiation:
+
+\begin{enumerate}
+
+\item
+Extract the values from the monad.
+
+\item
+If there is a root constraint and an extension constraint and the value
+is consistent with the root constraint then \ldots
+
+\item
+If there is a root constraint and an extension constraint and the value
+is consistent with the extension constraint then \ldots
+
+\end{enumerate}
+
+\begin{code}
+
+lEncExtConsInt :: (MonadError [Char] m) => m L.MyLatConstraint -> m L.MyLatConstraint -> Integer -> m BP.BitPut
+lEncExtConsInt mrc mec v =
    do rc <- mrc
       ec <- mec
       let extensionConstraint    = ec /= L.bottom       
@@ -708,23 +749,6 @@ lEncExtConsInt {-lEncConsInt1-} mrc mec v =
              | otherwise
                   = throwError "Value out of range"
       foobar
-
-lEncConsInt'' rc ec v = 
-   if emptyConstraint
-      then
-         throwError "Empty constraint"
-      else
-         if noExtensionConstraint && (inRange ec)
-            then
-               undefined
-            else
-               undefined
-   where
-      inRange :: L.MyLatConstraint -> Bool
-      inRange x = (L.V v) >= (L.lower x) &&  (L.V v) <= (L.upper x)
-      noExtensionConstraint = ec == L.bottom
-      emptyConstraint = noRootConstraint && noExtensionConstraint
-      noRootConstraint = rc == L.bottom
 
 \end{code}
 
