@@ -24,6 +24,8 @@ import Control.Monad.Error
 
 import qualified LatticeMod as L
 
+import Test.QuickCheck
+
 sc1 = UNION (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
 sc2 = UNION (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
 
@@ -108,7 +110,25 @@ myTAB1 t x =
         Left s  -> error ("First " ++ s)
         Right y -> B.unpack (BP.runBitPut y)
 
+instance Arbitrary L.InfInteger where
+   arbitrary =
+      frequency [
+         (1,return L.NegInf),
+         (2,liftM L.V arbitrary),
+         (1,return L.PosInf)
+         ]
 
+instance Arbitrary L.IntegerConstraint where
+   arbitrary =
+      oneof [
+         validIntegerConstraint
+         ]
+
+validIntegerConstraint =
+   do l <- frequency [(1,return L.NegInf), (2,liftM L.V (choose (-2^10,2^10)))]
+      u <- suchThat arbitrary (>= l)
+      return (L.IntegerConstraint {L.lower = l, L.upper = u})
+   
 \end{code}
 
 \end{document}
