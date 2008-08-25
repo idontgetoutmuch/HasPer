@@ -549,6 +549,10 @@ lToPer t@VISIBLESTRING x cl = lEncodeVisString cl x
 -- (such as an intersection of non-overlapping size constraints) or
 -- non-existent extensions.
 
+serialResEffCons takes a list of constraints (representing
+serially applied constraints) and generates the resulting
+--- effective constraint (if it exists).
+
 {- NOTE WE WANT THE TYPE TO BE MORE GENERAL e.g. replaced VisibleString with RS a => a -}
 
 serialResEffCons takes a list of constraints (representing
@@ -736,6 +740,11 @@ lExtendResC m n
 
 \end{code}
 
+resExceptAll has to deal with the various potential universal
+sets which are dependent on the nature of the excepted constraint.
+Note: The resulting constraint is non-extensible (see X.680
+G.4.3.8)
+
 \begin{code}
 
 lResExceptAll :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
@@ -760,6 +769,21 @@ lResConU :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
                       => Union a -> Bool -> m (L.ExtResStringConstraint a)
 lResConU (IC i) b  = lResConI i b
 lResConU (UC u i) b = lUnionResC (lResConI i b) (lResConU u False)
+
+\end{code}
+
+unionRes returns the union of two pairs of constraints. Note
+that the union of a size constraint (and no permitted alphabet constraint)
+and vice versa result in no constraint.
+sizeUnion and paUnion union size and permitted alphabet constraints respectively.
+
+unionresC implements the union operator on visiblestring constraints
+Needs to satisfy the rules regarding visibility (see Annex B.2.2.10 of X.691)
+and set operators and effective constraints (see G.4.3.8 of
+X.680) Note that a union of a size constraint and a permitted
+alphabet constraint is an unconstrained type.
+
+\begin{code}
 
 lUnionResC :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
                       L.Lattice (m (L.ExtResStringConstraint a)))
@@ -791,6 +815,8 @@ lUnionResC m n
 
 \end{code}
 
+resConI deals with the intersection of visiblestring constraints
+
 \begin{code}
 
 lResConI :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
@@ -798,6 +824,15 @@ lResConI :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
                       => IntCon a -> Bool -> m (L.ExtResStringConstraint a)
 lResConI (INTER i e) b = lInterResC (lResConA e b) (lResConI i False)
 lResConI (ATOM e) b = lResConA e b
+
+\end{code}
+
+interResC implements the intersection of visiblestring constraints
+Needs to satisfy the rules regarding visibility (see Annex B.2.2.10 of X.691)
+and set operators and effective constraints (see G.4.3.8 of
+X.680)
+
+\begin{code}
 
 lInterResC :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
                       L.Lattice (m (L.ExtResStringConstraint a)))
@@ -835,6 +870,8 @@ lInterResC m n
 
 \end{code}
 
+resConA deals with atomic (including except) constraints
+
 \begin{code}
 
 lResConA :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
@@ -843,6 +880,16 @@ lResConA :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
 lResConA (E e) b = conE e b
 lResConA (Exc e (EXCEPT ex)) b
                 = lExceptResC (conE e b) (conE ex False)
+
+\end{code}
+
+resExcept implements the set difference operator applied to
+visiblestring constraints
+Needs to satisfy the rules regarding visibility (see Annex B.2.2.10 of X.691)
+and set operators and effective constraints (see G.4.3.8 of
+X.680)
+
+\begin{code}
 
 lExceptResC :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
                       L.Lattice (m (L.ExtResStringConstraint a)))
@@ -880,6 +927,15 @@ lExceptResC m n
 
 \end{code}
 
+resConE deals with the various visiblestring constraints
+Note that a permitted alphabet constraint uses value range
+constraint(s) and that extensible permitted alphabet
+constraints are not per-visible.
+The first case (size-constraint) we can make use of the
+functions that create an effective Integer constraint. We
+cannot use evalC since it includes serial application of
+constraints.
+
 \begin{code}
 
 lResConE :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
@@ -892,6 +948,19 @@ lResConE (P (FR (EXTWITH _ _))) b = throwError "Invisible!"
 lResConE (P (FR (RE p)))  b       = lResEffCons (RE p)
 lResConE (C (Inc c)) b            = throwError "TO BE DONE!!!"
 lResConE (S (SV v))  b            = throwError "Invisible!"
+
+\end{code}
+
+paConE deals with the various visiblestring constraints
+Note that a permitted alphabet constraint uses value range
+constraint(s) and that extensible permitted alphabet
+constraints are not per-visible.
+The first case (size-constraint) we can make use of the
+functions that create an effective Integer constraint. We
+cannot use evalC since it includes serial application of
+constraints.
+
+\begin{code}
 
 lPaConE :: (MonadError [Char] m, L.RS a, RST m a, Eq a, L.Lattice a,
             L.Lattice (m (L.ExtResStringConstraint a)))
