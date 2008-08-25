@@ -128,7 +128,24 @@ validIntegerConstraint =
    do l <- frequency [(1,return L.NegInf), (2,liftM L.V (choose (-2^10,2^10)))]
       u <- suchThat arbitrary (>= l)
       return (L.IntegerConstraint {L.lower = l, L.upper = u})
+
+validConstraintAndInteger =
+   do c <- validIntegerConstraint
+      v <- suchThat arbitrary (liftM2 (&&) (>= (L.lower c)) (<= (L.upper c)))
+      return (ConstraintAndInteger c v)
+
+data ConstraintAndInteger = ConstraintAndInteger L.IntegerConstraint L.InfInteger
+   deriving (Eq,Show)
    
+instance Arbitrary ConstraintAndInteger where
+   arbitrary = validConstraintAndInteger
+
+prop_ValidConstraintAndInteger (ConstraintAndInteger c v) = 
+   v >= L.lower c && v <= L.upper c
+
+main =
+   do quickCheck prop_ValidConstraintAndInteger
+
 \end{code}
 
 \end{document}
