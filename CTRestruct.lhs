@@ -9,7 +9,7 @@
 
 ASN.1 --- Abstract Syntax Notation --- is a large and complex specification for communicating abstract data definitions
 together with several concrete encodings. It is widely used, for example, to describe digital certificates and to 
-third generation mobile telephony~\cite{3gpp.25.413}.
+third generation mobile telephony~\cite{3gpp.25.413} and~\cite{ACARS}.
 
 
 The encoding is for UNALIGNED PER
@@ -2045,6 +2045,6 @@ lDecConsInt2 mrc mec =
 
 \bibliographystyle{plainnat}
 
-\bibliography{3gpp}
+\bibliography{3gpp,ASN1}
 
 \end{document}
