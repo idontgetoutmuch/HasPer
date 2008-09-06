@@ -1,16 +1,65 @@
 \documentclass{article}
 %include polycode.fmt
 
+\usepackage{listings}
+
+\lstdefinelanguage{ASN1} {
+  keywords={CHOICE, SEQUENCE, BEGIN, END, IMPLICIT, EXPLICIT, INTEGER, DEFINITIONS},
+  sensitive=false,
+  morecomment=[s]{(--}{--)}
+  }
+
+\lstnewenvironment{asn1}[1][]
+  {\lstset{language=ASN1,captionpos=b,frame=single,basicstyle=\scriptsize,float,#1}}
+  {} 
+
 \newcommand{\bottom}{\perp}
 
 \begin{document}
 
+\title{A Formal and Executable Specification of the ASN.1 Packed Encoding Rules}
+
+\author{D. J. Russell \and D. J. Steinitz}
+
+\maketitle
+
 \section{Introduction}
 
-ASN.1 --- Abstract Syntax Notation --- is a large and complex specification for communicating abstract data definitions
-together with several concrete encodings. It is widely used, for example, to describe digital certificates and to 
-third generation mobile telephony~\cite{3gpp.25.413} and~\cite{ACARS}.
+ASN.1~\cite{PER} --- Abstract Syntax Notation --- is a large and complex specification for the abstract defininition of data
+for exchange between heterogeneous systems
+together with several concrete encodings~\cite{PER}. It is widely used, for example, to describe digital certificates, in
+third generation mobile telephony~\cite{3gpp.25.413} and in aviation~\cite{ACARS,ACARSInterop,FANS,ATN}.
 
+An example ASN.1 specification is shown in Figure~\ref{lst:ExampleASN1}.
+
+\begin{asn1}[caption={Example ASN.1},label=lst:ExampleASN1]
+FooBar {1 2 3 4 5 6} DEFINITIONS ::=
+  BEGIN
+    Type9 ::=
+      CHOICE {
+        element1 [0] IMPLICIT INTEGER,
+        element2 [1] EXPLICIT CHOICE {
+          subElement1 [3] IMPLICIT INTEGER,
+          subElement2 [4] IMPLICIT INTEGER,
+          subElement3 [5] IMPLICIT INTEGER
+        },
+        element4 [2] IMPLICIT INTEGER
+      }
+    Type12 ::= 
+      CHOICE {
+        c1 [0] IMPLICIT SEQUENCE {
+          one INTEGER,
+          two INTEGER
+        },
+        c2 [1] IMPLICIT SEQUENCE {
+          three INTEGER,
+          four INTEGER
+        }
+      }
+  END
+\end{asn1}
+
+\section{Housekeeping}
 
 The encoding is for UNALIGNED PER
 
