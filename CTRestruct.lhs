@@ -228,12 +228,12 @@ X.680 16.1
 Type ::= BuiltinType | ReferencedType | ConstrainedType
 
 \begin{code}
-data ASNType a {- :: * -> * -} where
+data ASNType a where
     BT    :: ASNBuiltin a -> ASNType a
     RT    :: ReferencedType -> ASNType a
     ConsT :: ASNType a -> ESS a -> ASNType a
 
-data ASNBuiltin a {- :: * -> * -} where
+data ASNBuiltin a where
    EXTADDGROUP     :: Sequence a -> ASNBuiltin a
    BOOLEAN         :: ASNBuiltin Bool
    INTEGER         :: ASNBuiltin Integer
@@ -381,7 +381,7 @@ types. Nil is the empty sequence, Cons adds components to a
 sequence and Extens signals an extension marker.
 
 \begin{code}
-data Sequence a {- :: * -> * -} where
+data Sequence a where
    Nil     :: Sequence Nil
    Extens  :: Sequence l    -> Sequence l
    Cons    :: ComponentType a -> Sequence l -> Sequence (a:*:l)
@@ -399,14 +399,14 @@ associates a name and possibly a tag with a type.
 
 \begin{code}
 
-data ComponentType a {- :: * -> * -} where
+data ComponentType a where
    CTMandatory :: NamedType a -> ComponentType a
    CTExtMand   :: NamedType a -> ComponentType (Maybe a)
    CTOptional  :: NamedType a -> ComponentType (Maybe a)
    CTDefault   :: NamedType a -> a -> ComponentType (Maybe a)
    CTCompOf    :: ASNType a   -> ComponentType a
 
-data NamedType a {- :: * -> * -} where
+data NamedType a where
    NamedType :: Name -> Maybe TagInfo -> ASNType a -> NamedType a
 
 \end{code}
@@ -439,13 +439,13 @@ list is not incremented.
 
 \begin{code}
 
-data Choice a {- :: * -> * -} where
+data Choice a where
     NoChoice     :: Choice Nil
     ChoiceExt    :: Choice l -> Choice l
     ChoiceEAG    :: Choice l -> Choice l
     ChoiceOption :: NamedType a -> Choice l -> Choice (a:*:l)
 
-data HL a l {- :: * -> * -> * -} where
+data HL a l where
     EmptyHL  :: HL Nil Z
     ValueC   :: a -> HL l Z -> HL (a:*:l) (S Z)
     NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n
@@ -488,11 +488,11 @@ with an integer.
 
 \begin{code}
 
-data EnumerationItem a {- :: * -> * -} where
+data EnumerationItem a where
     Identifier :: Name -> EnumerationItem Name
     NamedNumber :: Name -> Int -> EnumerationItem Name
 
-data Enumerate a {- :: * -> * -} where
+data Enumerate a where
     NoEnum      :: Enumerate Nil
     EnumOption  :: EnumerationItem a -> Enumerate l -> Enumerate ((Maybe a):*:l)
     EnumExt     :: Enumerate l -> Enumerate l
@@ -1073,18 +1073,7 @@ encodeBool t _    = Left [0]
 -- constraints.
 
 \begin{code}
-{-
-encodeInt :: [ESS Int] -> Int -> Either BitStream String
-encodeInt [] v
-        = Left (encodeUInt v)
-encodeInt c v
-    = let
-            lc = last c
-            ic = init c
-            parentRoot  = applyIntCons (Left (Just (minBound,maxBound))) ic
-      in
-            eitherTest parentRoot lc v
--}
+
 myEncodeUInt = bitPutify . encodeUInt . fromIntegral -- Another Int bug waiting to happen
 
 
@@ -1110,57 +1099,6 @@ lEitherTest pr lc v =
 
 See Section 12 of X.691 (Encoding the Integer type).
 \begin{code}
-{-
-encConsInt :: IntConstraint -> IntConstraint -> Bool -> Int -> Either BitStream String
-encConsInt rootCon extCon extensible v
-    = if (not extensible)
-        then encNonExtConsInt rootCon v
-        else encExtConsInt rootCon extCon v
-
-encNonExtConsInt :: IntConstraint -> Int -> Either BitStream String
-encNonExtConsInt (Right s) _      = Right s
-encNonExtConsInt (Left Nothing) _ = Right "Empty Constraint"
-encNonExtConsInt (Left (Just (l,u))) v
-    = if v >= l && v <= u
-            then if l == minBound
-                then Left (encodeUInt v)
-                else if u == maxBound
-                     then Left (encodeSCInt v l)
-                     else Left (encodeNNBIntBits (v-l,u-l))
-            else Right "Value not in range"
-
-encExtConsInt :: IntConstraint -> IntConstraint -> Int -> Either BitStream String
-encExtConsInt _ (Right s) _ = Right s
-encExtConsInt (Right s) _ _ = Right s
-encExtConsInt (Left Nothing) (Left Nothing) v
-    = Right "Empty constraint"
-encExtConsInt (Left (Just (l,u))) (Left Nothing) v
-    = if v >= l && v <= u
-            then if l == minBound
-                then Left (0:encodeUInt v)
-                else if u == maxBound
-                     then Left (0:encodeSCInt v l)
-                     else Left (0:encodeNNBIntBits (v-l,u-l))
-            else Right "Value not in range"
-encExtConsInt (Left Nothing) (Left (Just (l,u))) v
-    = if v >= l && v <= u
-            then Left (1:encodeUInt v)
-            else Right "Value not in range"
-encExtConsInt (Left (Just (l,u))) (Left (Just (el,eu))) v
-    = if l == u && v == l
-           then Left [0]
-           else if v >= l && v <= u
-                    then if l == minBound
-                            then Left (0:encodeUInt v)
-                            else if u == maxBound
-                                    then Left (0:encodeSCInt v l)
-                                    else Left (0:encodeNNBIntBits (v-l,u-l))
-                   else
-                        if v >= el && v <= eu
-                             then Left (1:encodeUInt v)
-                             else Right "Value out of range."
-
--}
 
 lEncConsInt :: (MonadError [Char] m) => m L.IntegerConstraint -> m L.IntegerConstraint -> Bool
                                         -> Integer -> m BP.BitPut
@@ -1489,15 +1427,7 @@ h n = (reverse . map fromInteger) (flip (curry (unfoldr g)) 7 n)
 -- are in the root of the parent type. The second element of the
 -- returned pair indicates if the constraint is extensible (True) or
 -- not (False).
-{-
-applyExt :: IntConstraint -> ESS Int -> (IntConstraint, Bool)
-applyExt rp (RE _)  = (Left Nothing, False)
-applyExt rp (EXT _) = (Left Nothing, True)
-applyExt rp (EXTWITH _ c)
-                    = let ec = calcEC c
-                      in
-                        (applyExtWithRt rp ec, True)
--}
+
 lApplyExt :: (L.Lattice (m L.IntegerConstraint), MonadError String m) =>
              m L.IntegerConstraint -> ESS Integer -> (m L.IntegerConstraint, Bool)
 lApplyExt rp (RE _)  = (L.bottom, False)
@@ -1510,10 +1440,7 @@ lApplyExt rp (EXTWITH _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
 -- non-extensible constraints (see 47.2 and 47.4 for definitions of
 -- SingleValue and ValueRange constraints) and thus calcEC is simply
 -- calcC. Thus G.4.3.8 can be ignored.
-{-
-calcEC :: Constr Int -> IntConstraint
-calcEC c = calcC c
--}
+
 lCalcEC :: (L.Lattice (m L.IntegerConstraint), MonadError String m) =>
            Constr Integer -> m L.IntegerConstraint
 lCalcEC c = lCalcC c
@@ -1522,20 +1449,13 @@ lCalcEC c = lCalcC c
 -- the serial application of the parent root and the extension of the
 -- final constraint. Only values in the paernt root may appear in the
 -- extension (see X.680 section G.4.2.3).
-{-
-applyExtWithRt :: IntConstraint -> IntConstraint -> IntConstraint
-applyExtWithRt a b = serialC a b
--}
 
 lApplyExtWithRt :: (Eq a, L.Lattice a, Show a, MonadError [Char] m) =>
                    m a -> m a -> m a
 lApplyExtWithRt a b = lSerialC a b
 
 -- need to define encInt
-{-
-encInt :: Maybe (Int,Int) -> Maybe (Int,Int) -> Bool -> Int -> BitStream
-encInt r e b v = []
--}
+
 -- Need first input to host incremented constraint (due to serial constraints)
 -- Need Either type to deal with legal and illegal constraints. An
 -- illegal constraint (typically a mismatch between a parent type and
@@ -1552,25 +1472,6 @@ lApplyIntCons :: (MonadError String m, L.Lattice (m L.IntegerConstraint)) =>
                  m L.IntegerConstraint -> [ESS Integer] -> m L.IntegerConstraint
 lApplyIntCons x [] = x
 lApplyIntCons x (c:cs) = lApplyIntCons (lEvalC c x) cs
-
-{-
-evalC :: ESS Int -> IntConstraint -> IntConstraint
-evalC (RE c) x
-    = let c2 = calcC c
-      in
-        serialC x c2
--- Next case is the same as above since we are dealing with
--- extensions separately
-evalC (EXT c) x
-    = let c2 = calcC c
-      in
-        serialC x c2
--- and again!
-evalC (EXTWITH c d) x
-    = let c2 = calcC c
-      in
-        serialC x c2
--}
 
 lEvalC :: (L.Lattice (m L.IntegerConstraint), MonadError String m) =>
           ESS Integer -> m L.IntegerConstraint -> m L.IntegerConstraint
@@ -1601,36 +1502,19 @@ lSerialC mx my =
              | otherwise =
                   throwError ("Constraint and parent type mismatch: " ++ show a ++ " does not match " ++ show b) -- Somehow we should prettyConstraint here
       foobar
-{-
-calcC :: Constr Int -> IntConstraint
-calcC (UNION u) = calcU u
-calcC (ALL e)   = exceptC (Left (Just (minBound,maxBound))) (calcEx e)
--}
+
 lCalcC :: (MonadError String m, L.Lattice (m L.IntegerConstraint)) =>
           Constr Integer -> m L.IntegerConstraint
 lCalcC (UNION u) = lCalcU u
 
 -- Need to define unionC which returns the union of two
 -- constraints
-{-
-calcU :: Union Int -> IntConstraint
-calcU (IC i )  = calcI i
-calcU (UC u i) = let x = calcU u
-                     y = calcI i
-                 in unionC x y
--}
+
 lCalcU :: (L.Lattice (m L.IntegerConstraint), MonadError String m) =>
           Union Integer -> m L.IntegerConstraint
 lCalcU (IC i) = lCalcI i
 lCalcU(UC u i) = (lCalcU u) `L.ljoin` (lCalcI i)
 
-{-
-calcI :: IntCon Int -> IntConstraint
-calcI (INTER i e) = let x = calcI i
-                        y = calcA e
-                    in interC x y
-calcI (ATOM a)    = calcA a
--}
 lCalcI :: (MonadError String m, L.Lattice (m L.IntegerConstraint)) =>
           IntCon Integer -> m L.IntegerConstraint
 lCalcI (INTER i e) = (lCalcI i) `L.meet` (lCalcA e)
@@ -1646,31 +1530,17 @@ lCalcA (E e) = lCalcE e
 -- inclusion.
 -- NOTE: Need to deal with illegal constraints resulting from
 -- processCT
-{-
-calcE :: Elem Int -> IntConstraint
-calcE (S (SV i))    = Left (Just (i,i))
-calcE (C (Inc t))   = processCT t []
-calcE (V (R (l,u))) = Left (Just (l,u))
--}
 
 lCalcE :: (MonadError String m, L.Lattice (m L.IntegerConstraint)) =>
           Elem Integer -> m L.IntegerConstraint
 lCalcE (S (SV i)) = return (L.IntegerConstraint (L.V i) (L.V i))
 lCalcE (C (Inc t)) = lProcessCT t []
 lCalcE (V (R (l,u))) = return (L.IntegerConstraint (L.V l) (L.V u))
-{-
-calcEx :: Excl Int -> IntConstraint
-calcEx (EXCEPT e) = calcE e
--}
+
 -- Need to define reference case which requires derefencing.
 -- This function is similar to the encode function in that it
 -- needs to produce the effective constraint for the included type.
-{-
-processCT :: ASNType Int -> [ESS Int] -> IntConstraint
-processCT (BT INTEGER) cl = applyIntCons (Left (Just (minBound,maxBound))) cl
-processCT (RT r) cl       = error "Need to do"
-processCT (ConsT t c) cl  = processCT t (c:cl)
--}
+
 lProcessCT :: (L.Lattice (m L.IntegerConstraint), MonadError String m) => ASNType Integer -> [ESS Integer] -> m L.IntegerConstraint
 lProcessCT (BT INTEGER) cl = lApplyIntCons L.top cl
 lProcessCT (ConsT t c) cl    = lProcessCT t (c:cl)
@@ -1691,14 +1561,6 @@ unconstrained type.
 The first case of encodeVisString is for an unconstrained value.
 
 \begin{code}
-{-
-encodeVisString :: [ESS VisibleString] -> VisibleString -> Either BitStream String
-encodeVisString [] vs = Left (encodeVis vs)
-encodeVisString cs vs
-    = let ec = serialResEffCons (Left ((vsNoConstraint,vsNoConstraint),False)) cs
-      in
-        encVS ec vs
--}
 
 lEncodeVisString :: (L.Lattice (m (L.ExtResStringConstraint VisibleString)),
                      L.Lattice (m (L.ResStringConstraint VisibleString)),
@@ -1881,12 +1743,6 @@ encS s  = (concat . map encC) s
 lEncodeVisSzF :: L.IntegerConstraint -> VisibleString -> VisibleString -> BitStream
 lEncodeVisSzF (L.IntegerConstraint l u) vsc@(VisibleString s) (VisibleString xs)
         =  manageExtremes (encSF s) (lEncodeVisF vsc . VisibleString) l u xs
-
-{-
-encodeVisF :: String -> VisibleString -> BitStream
-encodeVisF str (VisibleString s)
-    = encodeWithLength (encSF str) s
--}
 
 lEncodeVisF :: VisibleString -> VisibleString -> BitStream
 lEncodeVisF (VisibleString s) (VisibleString v) = encodeWithLength (encSF s) v
