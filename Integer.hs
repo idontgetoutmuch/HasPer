@@ -3,6 +3,7 @@ import Data.Word
 import Data.List
 import qualified Data.ByteString as B
 import Data.Binary.Strict.BitUtil (rightShift)
+import Data.Binary.Strict.BitPut
 import Test.LazySmallCheck
 
 type BitStream = [Int]
@@ -21,6 +22,30 @@ g (n,0) = Just (n `rem` 2,(n `quot` 2,7))
 g (n,p) = Just (n `rem` 2,(n `quot` 2,p-1))
 
 h b = map fromIntegral . reverse . flip (curry (unfoldr g)) b
+
+h' :: Integer -> Integer -> BitPut
+h' p 0 =
+   do putNBits (fromIntegral p) (0::Word8)
+h' 0 n =
+   do putNBits 1 (n `rem` 2)
+      h' 7 (n `quot` 2)
+h' p n =
+   do putNBits 1 (n `rem` 2)
+      h' (p-1) (n `quot` 2)
+
+l n = genericLength ((flip (curry (unfoldr g)) 7) (-n-1)) + 1
+
+to2sComplement' :: Integer -> BitPut
+to2sComplement' n
+   | n >= 0 = do h' 7 n
+                 putNBits 1 (0::Word8)
+   | otherwise = h' 8 (2^p + n)
+   where
+      p = l n
+
+to2sComplement'' :: Integer -> B.ByteString
+to2sComplement'' n =
+   B.map reverseBits (runBitPut (to2sComplement' n))
 
 fromNonNeg r x =
    sum (zipWith (*) (map fromIntegral ys) zs)
