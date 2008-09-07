@@ -1,7 +1,9 @@
 import Data.Bits
+import Data.Word
 import Data.List
 import qualified Data.ByteString as B
 import Data.Binary.Strict.BitUtil (rightShift)
+import Test.LazySmallCheck
 
 type BitStream = [Int]
 
@@ -45,3 +47,24 @@ encodeNNBIntBitsAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 
 encodeNNBIntBits :: (Integer, Integer) -> BitStream
 encodeNNBIntBits
     = reverse . (map fromInteger) . unfoldr encodeNNBIntBitsAux
+
+reverseBits :: Word8 -> Word8
+reverseBits = reverseBits3 . reverseBits2 . reverseBits1
+
+reverseBits1 :: Word8 -> Word8
+reverseBits1 x = shiftR x 4 .|. shiftL x 4
+
+reverseBits2 :: Word8 -> Word8
+reverseBits2 x = shiftR (x .&. 0xcc) 2 .|. shiftL (x .&. 0x33) 2
+
+reverseBits3 :: Word8 -> Word8
+reverseBits3 x = shiftR (x .&. 0xaa) 1 .|. shiftL (x .&. 0x55) 1
+
+instance Serial Word8 where
+   series d = drawnFrom (map fromIntegral [0..d])
+
+prop_RevRev :: Word8 -> Bool
+prop_RevRev x =
+   reverseBits (reverseBits x) == x
+
+main = smallCheck 255 prop_RevRev
