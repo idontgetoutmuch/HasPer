@@ -27,11 +27,11 @@ h' :: Integer -> Integer -> BitPut
 h' p 0 =
    do putNBits (fromIntegral p) (0::Word8)
 h' 0 n =
-   do putNBits 1 (n `rem` 2)
-      h' 7 (n `quot` 2)
+   do putNBits 1 (n `mod` 2)
+      h' 7 (n `div` 2)
 h' p n =
-   do putNBits 1 (n `rem` 2)
-      h' (p-1) (n `quot` 2)
+   do putNBits 1 (n `mod` 2)
+      h' (p-1) (n `div` 2)
 
 l n = genericLength ((flip (curry (unfoldr g)) 7) (-n-1)) + 1
 
@@ -45,7 +45,7 @@ to2sComplement' n
 
 to2sComplement'' :: Integer -> B.ByteString
 to2sComplement'' n =
-   B.map reverseBits (runBitPut (to2sComplement' n))
+   B.reverse (B.map reverseBits (runBitPut (to2sComplement' n)))
 
 fromNonNeg r x =
    sum (zipWith (*) (map fromIntegral ys) zs)
@@ -69,9 +69,20 @@ encodeNNBIntBitsAux (_,0) = Nothing
 encodeNNBIntBitsAux (0,w) = Just (0, (0, w `div` 2))
 encodeNNBIntBitsAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
 
+encodeNNBIntBitsAux' :: Integer -> Integer -> BitPut
+encodeNNBIntBitsAux' 0 w =
+   putNBits (fromIntegral w) (0::Integer)
+encodeNNBIntBitsAux' n w =
+   do putNBits 1 (n `mod` 2)
+      encodeNNBIntBitsAux' (n `div` 2) (w `div` 2)
+
 encodeNNBIntBits :: (Integer, Integer) -> BitStream
 encodeNNBIntBits
     = reverse . (map fromInteger) . unfoldr encodeNNBIntBitsAux
+
+encodeNNBIntBits' :: Integer -> Integer -> B.ByteString
+encodeNNBIntBits' n w =
+   B.reverse (B.map reverseBits (runBitPut (encodeNNBIntBitsAux' n w)))
 
 reverseBits :: Word8 -> Word8
 reverseBits = reverseBits3 . reverseBits2 . reverseBits1
@@ -92,4 +103,17 @@ prop_RevRev :: Word8 -> Bool
 prop_RevRev x =
    reverseBits (reverseBits x) == x
 
-main = smallCheck 255 prop_RevRev
+prop_From2sTo2s :: Integer -> Bool
+prop_From2sTo2s x =
+   from2sComplement (to2sComplement'' x) == x
+
+prop_FromNonNegToNonNeg :: (Integer,Integer) -> Bool
+prop_FromNonNegToNonNeg (n,w) =
+   n >= 0 && w >= bitWidth n ==> fromNonNeg (fromIntegral (bitWidth w)) (encodeNNBIntBits' n w) == n
+
+bitWidth n = genericLength (encodeNNBIntBits (n,n))
+
+main = 
+   do -- smallCheck 255 prop_RevRev
+      -- smallCheck 255 prop_From2sTo2s
+      smallCheck 255 prop_FromNonNegToNonNeg
