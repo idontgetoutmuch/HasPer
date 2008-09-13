@@ -1,24 +1,77 @@
-{-# OPTIONS_GHC -XFlexibleInstances -XGADTs  #-}
+{-# OPTIONS_GHC -XFlexibleInstances -XGADTs -XMultiParamTypeClasses -XFlexibleContexts  #-}
 
 module LatticeMod where
 
 import Data.List
 import Language.ASN1
+import Control.Monad.Error
+
+class IC a where
+    makeIC :: InfInteger -> InfInteger -> a
+    getLower :: a -> InfInteger
+    getUpper :: a -> InfInteger
+    within :: a -> a -> Bool
+    serialCombine :: a -> a -> a
+    exceptIC :: a -> a -> a
 
 class Lattice a where
    bottom, top :: a
    meet, ljoin  :: a -> a -> a
 
-data LatConstraint = Bottom | LatConstraint InfInteger InfInteger | Top
-   deriving (Show, Eq)
 
-{-
-data IntegerConstraint = IntegerConstraint InfInteger InfInteger
-   deriving (Show, Eq)
--}
+class Lattice a => BooleanAlgebra a where
+    complement :: a -> a
 
 data IntegerConstraint = IntegerConstraint {lower :: InfInteger, upper :: InfInteger}
    deriving (Show, Eq)
+
+-- ValidIntegerConstraint is used for the validity testing of a value against a constraint. Thus, unlike an
+-- effective constraint (which is used to produce encoding in a small number of bits) and is always a contiguous
+-- set of values, this type represents the true result of set combinations of constraints which may be non-contiguous.
+
+data ValidIntegerConstraint = Valid [IntegerConstraint]
+    deriving (Show, Eq)
+
+
+instance IC IntegerConstraint where
+    makeIC l u = IntegerConstraint l u
+    getLower (IntegerConstraint l u) = l
+    getUpper (IntegerConstraint l u) = u
+    within a b
+     =  let la = getLower a
+            lb = getLower b
+            ua = getUpper a
+            ub = getUpper b
+        in
+            b == top
+            || lb == NegInf && ub <= ua && ub >= la
+            || ub == PosInf && lb >= la && lb <= ua
+            || lb >= la && ub <= ua
+    serialCombine a@(IntegerConstraint l1 u1) b@(IntegerConstraint l2 u2)
+        | b == bottom = bottom
+        | b == top    = a
+        | l2 == NegInf && u2 <= u1
+                      = IntegerConstraint l1 u2
+        | u2 == PosInf && l2 >= l1
+                      = IntegerConstraint l2 u1
+        | otherwise = b
+    exceptIC = exceptIntCon
+
+
+instance IC ValidIntegerConstraint where
+    makeIC l u = Valid [makeIC l u]
+    getLower (Valid ls) = (getLower . head) ls
+    getUpper (Valid ls) = (getUpper . last) ls
+    within (Valid ls) (Valid []) = True
+    within (Valid ls) (Valid (f:r))
+        = or (map (flip within f) ls) && within (Valid ls) (Valid r)
+    serialCombine (Valid ls) (Valid xs)
+        = Valid (map (updateVIC ls) xs)
+          where
+            updateVIC (x:y) f
+                | within x f = serialCombine x f
+                | otherwise = updateVIC y f
+    exceptIC = exceptVIC
 
 
 instance Bounded InfInteger where
@@ -41,22 +94,10 @@ instance Num InfInteger where
    (V x) - (V y) = V (x - y)
    fromInteger v = V v
 
-instance Lattice LatConstraint where
-   bottom = Bottom
-   top = Top
-   Top `meet` y = top
-   Bottom `meet` y = y
-   (LatConstraint l1 u1) `meet` (LatConstraint l2 u2) = LatConstraint (min l1 l2) (max u1 u2)
-   (LatConstraint l1 u1) `ljoin` (LatConstraint l2 u2)
-      | u2 < l1   = bottom
-      | l2 > u1   = bottom
-      | otherwise = LatConstraint (max l1 l2) (min u1 u2)
-   Bottom `ljoin` x = bottom
-   x `ljoin` Bottom = bottom
-   Top `ljoin` Top  = Top
-   Top `ljoin` x@(LatConstraint l u) = x
-   x@(LatConstraint l u) `ljoin` Top = x
 
+-- Note that this instantiation generates effective
+-- constraint-based meet and join. For example,
+-- (1..3) `ljoin` (5..8) is (1..8).
 
 instance Lattice IntegerConstraint where
    bottom = IntegerConstraint PosInf NegInf
@@ -68,23 +109,88 @@ instance Lattice IntegerConstraint where
       | l2 > u1   = bottom
       | otherwise = IntegerConstraint (max l1 l2) (min u1 u2)
 
+instance Lattice ValidIntegerConstraint where
+   bottom = Valid [bottom]
+   top = Valid [top]
+   Valid ic1 `ljoin` Valid ic2
+        = Valid (listUnion ic1 ic2)
+   Valid a `meet` Valid b
+      = Valid (listInter a b)
+
+unionIC a@(IntegerConstraint l1 u1) b@(IntegerConstraint l2 u2)
+    | l2 > u1+1  = a:[b]
+    | l1 > u2+1  = b:[a]
+      | otherwise = [IntegerConstraint (min l1 l2) (max u1 u2)]
+
+listUnion [a] [b] = unionIC a b
+listUnion (f:r) (s:t)
+    | getUpper f < getLower s - 1
+        = f: listUnion r (s:t)
+    | getUpper s < getLower f
+        = s : listUnion (f:r) t
+    | otherwise
+        = let g = unionIC f s
+              h = listUnion g r
+          in
+            listUnion h t
+listUnion ls [] = ls
+listUnion [] ls = ls
+
+listInter (f:r) b
+      = let a = map (f `meet`) b
+            c = filter (/= bottom) a
+            x = listInter r  b
+        in
+         c++x
+listInter ls [] = []
+listInter [] ls = []
+
+
+ic1 = IntegerConstraint 1 3
+ic2 = IntegerConstraint 7 11
+ic3 = IntegerConstraint 4 8
+ic4 = IntegerConstraint 15 17
+ic5 = IntegerConstraint 14 21
+ic6 = IntegerConstraint 19 25
+
+
+
+
+instance BooleanAlgebra ValidIntegerConstraint where
+    complement a@(Valid x)
+        | a == bottom = top
+        | a == top = bottom
+        | otherwise = Valid (notVIC x)
+
+notVIC [c]
+    | getLower c == NegInf = [IntegerConstraint (getUpper c + 1) PosInf]
+    | getUpper c == PosInf = [IntegerConstraint NegInf (getLower c - 1)]
+    | otherwise = [IntegerConstraint NegInf (getLower c - 1), IntegerConstraint (getUpper c + 1) PosInf]
+notVIC (f:g:r)
+    | getLower f == NegInf = IntegerConstraint (getUpper f + 1) (getLower g - 1): notVIC' (g:r)
+      | otherwise = IntegerConstraint NegInf (getLower f - 1) : notVIC' (f:g:r)
+
+notVIC' [f]
+    | getUpper f == PosInf = []
+    | otherwise = [IntegerConstraint (getUpper f + 1) PosInf]
+notVIC' (f:g:r) = IntegerConstraint (getUpper f + 1) (getLower g - 1) : notVIC' (g:r)
 
 
 
 lowerHalf x = IntegerConstraint NegInf (V x)
 upperHalf x = IntegerConstraint (V x) PosInf
 
-getLower (IntegerConstraint l _) = l
-getUpper (IntegerConstraint _ u) = u
 
-exceptIC a@(IntegerConstraint l1 u1) (IntegerConstraint l2 u2)
-    = if l1 < l2 && u1 > u2
-        then a
-        else if l1 < l2
-            then IntegerConstraint l1 (l2-1)
-            else if u1 > u2
-                then IntegerConstraint (u2+1) u1
-                else bottom
+exceptIntCon a@(IntegerConstraint l1 u1) (IntegerConstraint l2 u2)
+    | l1 < l2 && u1 > u2 = a
+    | l1 < l2 = IntegerConstraint l1 (l2-1)
+    | u1 > u2 = IntegerConstraint (u2+1) u1
+    | otherwise = bottom
+
+
+-- except for a ValidIntegerConstraint can be defined by using the
+-- equivalence  x except y = x /\ (not y)
+exceptVIC a b = a `meet` (complement b)
 
 -- Can use \\ here since no repetition in permitted string
 exceptPAC :: RS a => a -> a -> a
@@ -103,28 +209,16 @@ instance Lattice a => Lattice (Either String a) where
    _         `ljoin` (Left s)  = Left s
    (Right x) `ljoin` (Right y) = Right (x `ljoin` y)
 
-latExcept Top Top = bottom
-latExcept Top Bottom = Top
-latExcept Bottom _ = Bottom
-latExcept Top y@(LatConstraint l2 u2)
-    | l2 == NegInf = LatConstraint (u2 + V 1) PosInf
-    | u2 == PosInf = LatConstraint NegInf (l2 - V 1)
-    | otherwise = top
-latExcept x@(LatConstraint l1 u1) y@(LatConstraint l2 u2)
-    | x `ljoin` y == bottom = x
-    | x `meet`  y == y      = bottom
-    | x `meet` y  == x && l2 > l1 && u1 > u2
-                            = x
-    | l1 < l2 && u1 > u2    = x
-    | l1 >=l2               = LatConstraint (u2 + (V 1)) u1
-    | otherwise             = LatConstraint l1 (l2 - (V 1))
+instance BooleanAlgebra a => BooleanAlgebra (Either String a) where
+    complement (Left s) = Left s
+    complement (Right x) = Right (complement x)
 
 
 instance Lattice VisibleString where
     bottom = VisibleString ""
     top = VisibleString [' '..'~']
-    (VisibleString s1) `meet` (VisibleString s2) = VisibleString (unionString s1 s2)
-    (VisibleString s1) `ljoin` (VisibleString s2) = VisibleString (interString s1 s2)
+    (VisibleString s1) `meet` (VisibleString s2) = VisibleString (interString s1 s2)
+    (VisibleString s1) `ljoin` (VisibleString s2) = VisibleString (unionString s1 s2)
 
 
 unionString [] s = s
@@ -150,27 +244,27 @@ instance RS VisibleString where
     putString s = VisibleString s
 
 
-data ResStringConstraint a = ResStringConstraint IntegerConstraint a
+data ResStringConstraint i a = ResStringConstraint i a
     deriving (Show,Eq)
-data ExtResStringConstraint a
-    = ExtResStringConstraint (ResStringConstraint a) (ResStringConstraint a) Bool
+data ExtResStringConstraint i a
+    = ExtResStringConstraint (ResStringConstraint i a) (ResStringConstraint i a) Bool
     deriving (Show,Eq)
-extensible :: (ExtResStringConstraint a) -> Bool
+extensible :: (ExtResStringConstraint i a) -> Bool
 extensible (ExtResStringConstraint _ _ b) = b
 
-getRC :: (ExtResStringConstraint a) -> ResStringConstraint a
+getRC :: (ExtResStringConstraint i a) -> ResStringConstraint i a
 getRC (ExtResStringConstraint r _ _) = r
 
-getEC :: (ExtResStringConstraint a) -> ResStringConstraint a
+getEC :: (ExtResStringConstraint i a) -> ResStringConstraint i a
 getEC (ExtResStringConstraint _ e _) = e
 
-getSC :: ResStringConstraint a -> IntegerConstraint
+getSC :: ResStringConstraint i a -> i
 getSC (ResStringConstraint i s) = i
 
-getPAC :: ResStringConstraint a -> a
+getPAC :: ResStringConstraint i a -> a
 getPAC (ResStringConstraint i s) = s
 
-instance (Lattice a, RS a, Eq a) => Lattice (ResStringConstraint a) where
+instance (Lattice a, Lattice i,RS a, Eq a, Eq i, IC i) => Lattice (ResStringConstraint i a) where
     bottom = ResStringConstraint bottom bottom
     top = ResStringConstraint top top
     (ResStringConstraint i1 s1) `ljoin` (ResStringConstraint i2 s2)
@@ -181,7 +275,7 @@ instance (Lattice a, RS a, Eq a) => Lattice (ResStringConstraint a) where
         = ResStringConstraint (i1 `meet` i2) (s1 `meet` s2)
 
 
-instance (Lattice a, RS a, Eq a) => Lattice (ExtResStringConstraint a) where
+instance (Lattice a, Lattice i, RS a, Eq i, Eq a, IC i) => Lattice (ExtResStringConstraint i a) where
     bottom = ExtResStringConstraint bottom bottom False
     top = ExtResStringConstraint top top False
     (ExtResStringConstraint r1 e1 False) `ljoin` (ExtResStringConstraint r2 e2 False)
@@ -215,13 +309,3 @@ exceptExtRSC (ExtResStringConstraint r1 e1 True) (ExtResStringConstraint r2 _ Fa
 exceptExtRSC (ExtResStringConstraint r1 e1 True) (ExtResStringConstraint r2 e2 True)
     = ExtResStringConstraint (exceptRSC r1 r2) (exceptRSC (exceptRSC e1 (r2 `ljoin` e2))
                                                           (exceptRSC r1 r2)) True
-
-
-testReal :: Either String LatConstraint
-testReal = (Right (LatConstraint (V 3) (V 7))) `ljoin` (Right (LatConstraint (V 5) (V 6)))
-
-
-exceptTest = latExcept Top (LatConstraint (V 5) (V 12))
-exceptTest2 = latExcept (LatConstraint (V 1) PosInf) (LatConstraint (V 5) (V 12))
-exceptTest3 = latExcept (LatConstraint (V 1) PosInf) (LatConstraint (V 5) PosInf)
-exceptTest4 = latExcept (LatConstraint (V 1) PosInf) (LatConstraint PosInf PosInf)
