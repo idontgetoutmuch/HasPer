@@ -594,6 +594,7 @@ effective constraint (if it exists).
 lSerialResEffCons :: (MonadError [Char] m,
                       Eq t1,
                       Eq t,
+                      Show t,
                       L.Lattice t1,
                       L.Lattice t,
                       L.Lattice (m t),
@@ -611,12 +612,13 @@ lSerialResEffCons m ls
                         foobar1 [c] = lSerialApplyLast esrc c
                         foobar1 (f:r) = lSerialResEffCons (lSerialApply esrc f) r
                     foobar1 ls
-        catchError foobar (\err -> throwError err)
+        foobar
 
 
 lSerialApply :: (MonadError [Char] m,
                  Eq a,
                  Eq i,
+                 Show i,
                  L.Lattice a,
                  L.Lattice i,
                  L.Lattice (m i),
@@ -633,6 +635,7 @@ lSerialApply ersc c = lEitherApply ersc (lResEffCons c 0)
 lEitherApply :: (MonadError [Char] m,
                  Eq i,
                  Eq a,
+                 Show i,
                  L.Lattice i,
                  L.Lattice a,
                  L.IC i,
@@ -682,6 +685,7 @@ lUpdatePA x y
 lSerialApplyLast :: (MonadError [Char] m,
                      Eq t1,
                      Eq t,
+                     Show t,
                      L.Lattice t1,
                      L.Lattice t,
                      L.Lattice (m t),
@@ -698,14 +702,15 @@ lLastApply :: (Eq t1,
                L.IC t,
                L.Lattice t,
                Eq t,
+               Show t,
                MonadError [Char] m) =>
                L.ExtResStringConstraint t t1 -> m (L.ExtResStringConstraint t t1)
                -> m (L.ExtResStringConstraint t t1)
-lLastApply x@(L.ExtResStringConstraint r1 _ _) m
+lLastApply (L.ExtResStringConstraint r1 _ _) m
     = do
          let foobar
                  = do
-                    (L.ExtResStringConstraint r2 e2 _) <- m
+                    x@(L.ExtResStringConstraint r2 e2 _) <- m
                     let foobar1
                          | not (L.extensible x) = lEitherApply x m
                          | lValidResCon r1 r2 && lValidResCon r1 e2
@@ -730,6 +735,7 @@ lResEffCons :: (MonadError [Char] m,
                 L.Lattice (m i),
                 L.Lattice (m (L.ExtResStringConstraint i t)),
                 Eq i,
+                Show i,
                 Eq t) =>
                 ESS t -> Int ->  m (L.ExtResStringConstraint i t)
 lResEffCons (RE c) n        = lResCon c False n
@@ -746,6 +752,7 @@ type is extensible.
 lResCon :: (MonadError [Char] m,
             Eq a,
             Eq i,
+            Show i,
             L.Lattice a,
             L.Lattice i,
             L.Lattice (m i),
@@ -833,6 +840,7 @@ lResConU :: (MonadError [Char] m,
              L.Lattice (m i),
              L.Lattice (m (L.ExtResStringConstraint i t)),
              Eq i,
+             Show i,
              Eq t) =>
              Union t -> Bool -> Int -> m (L.ExtResStringConstraint i t)
 lResConU (IC i) b  n  = lResConI i b n
@@ -896,6 +904,7 @@ resConI deals with the intersection of visiblestring constraints
 lResConI :: (MonadError [Char] m,
              Eq t,
              Eq i,
+             Show i,
              L.Lattice t,
              L.Lattice i,
              L.Lattice (m i),
@@ -963,6 +972,7 @@ resConA deals with atomic (including except) constraints
 lResConA :: (MonadError [Char] m,
              Eq t,
              Eq i,
+             Show i,
              L.Lattice t,
              L.Lattice i,
              L.Lattice (m i),
@@ -1044,6 +1054,7 @@ conE e b n
 lResConE :: (MonadError [Char] m,
              Eq a,
              Eq i,
+             Show i,
              L.Lattice a,
              L.Lattice i,
              L.Lattice (m i),
@@ -1055,7 +1066,7 @@ lResConE (SZ (SC v)) b            = lEffResSize v b
 lResConE (P (FR (EXT _))) b       = throwError "Invisible!"
 lResConE (P (FR (EXTWITH _ _))) b = throwError "Invisible!"
 lResConE (P (FR (RE p)))  b       = lResEffCons (RE p) 1
-lResConE (C (Inc c)) b            = throwError "TO BE DONE!!!"
+lResConE (C (Inc c)) b            = lProcessCST c []
 lResConE (S (SV v))  b            = throwError "Invisible!"
 
 \end{code}
@@ -1071,8 +1082,17 @@ constraints.
 
 \begin{code}
 
-lPaConE :: (MonadError [Char] m, L.Lattice a, L.Lattice a1, L.RS a) =>
-          Elem a -> Bool -> m (L.ExtResStringConstraint a1 a)
+lPaConE :: (MonadError [Char] m,
+            L.Lattice a,
+            L.Lattice a1,
+            L.RS a,
+            Eq a,
+            Eq a1,
+            Show a1,
+            L.Lattice (m a1),
+            L.Lattice (m (L.ExtResStringConstraint a1 a)),
+            L.IC a1) =>
+            Elem a -> Bool -> m (L.ExtResStringConstraint a1 a)
 lPaConE (V (R (l,u))) b
     = let ls = L.getString l
           us = L.getString u
@@ -1080,7 +1100,7 @@ lPaConE (V (R (l,u))) b
         in
             return (L.ExtResStringConstraint (L.ResStringConstraint L.top (L.putString rs))
                         (L.ResStringConstraint L.top L.top) b)
-lPaConE (C (Inc c)) b = throwError "TO DO!"
+lPaConE (C (Inc c)) b = lProcessCST c []
 lPaConE (S (SV v)) b
    = return (L.ExtResStringConstraint (L.ResStringConstraint L.top v)
                                       (L.ResStringConstraint L.top L.top) b)
@@ -1093,7 +1113,8 @@ lEffResSize :: (MonadError [Char] t,
                 L.Lattice t1,
                 L.RS a,
                 Eq a,
-                Eq t1) =>
+                Eq t1,
+                Show t1) =>
                 ESS L.InfInteger -> Bool -> t (L.ExtResStringConstraint t1 a)
 lEffResSize (RE c) b
     = do ec <- lCalcC c
@@ -1106,6 +1127,26 @@ lEffResSize (EXTWITH c d) b
          e <- lCalcC d
          return (L.ExtResStringConstraint (L.ResStringConstraint r L.top)
                                         (L.ResStringConstraint e L.top)  True)
+
+lProcessCST :: (MonadError [Char] m,
+                Eq a,
+                Eq i,
+                Show i,
+                L.Lattice a,
+                L.Lattice i,
+                L.Lattice (m i),
+                L.Lattice (m (L.ExtResStringConstraint i a)),
+                L.IC i,
+                L.RS a) => ASNType a -> [ESS a] -> m (L.ExtResStringConstraint i a)
+lProcessCST (BT _) cl = lRootStringCons L.top cl
+lProcessCST (ConsT t c) cl = lProcessCST t (c:cl)
+
+
+lRootStringCons t cs
+    = let m = lSerialResEffCons t cs
+      in do
+            (L.ExtResStringConstraint r e _) <- m
+            return (L.ExtResStringConstraint r L.top False)
 
 \end{code}
 
@@ -1153,10 +1194,10 @@ lEncodeInt cs v =
       ic         = init cs
       parentRoot :: (MonadError [Char] m, L.Lattice (m L.IntegerConstraint))
                     => m L.IntegerConstraint
-      parentRoot = lApplyIntCons L.top ic
+      parentRoot = lRootIntCons L.top ic
       validPR :: (MonadError [Char] m, L.BooleanAlgebra (m L.ValidIntegerConstraint))
                     => m L.ValidIntegerConstraint
-      validPR    = lApplyIntCons L.top ic
+      validPR    = lRootIntCons L.top ic
 
 
 
@@ -1537,7 +1578,8 @@ lApplyExt rp (EXTWITH _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
 -- SingleValue and ValueRange constraints) and thus calcEC is simply
 -- calcC. Thus G.4.3.8 can be ignored.
 
-lCalcEC :: (MonadError [Char] m, L.IC a, L.Lattice (m a)) =>
+lCalcEC :: (MonadError [Char] m, L.IC a, L.Lattice (m a),
+            L.Lattice a, Show a, Eq a) =>
            Constr L.InfInteger -> m a
 lCalcEC c = lCalcC c
 
@@ -1564,10 +1606,10 @@ lApplyExtWithRt a b = lSerialC a b
 -- form either part of an extensible constraint whose overall effect
 -- is legal.
 
-lApplyIntCons :: (L.Lattice (m a), L.IC a, MonadError [Char] m, Show a, L.Lattice a, Eq a) =>
+lRootIntCons :: (L.Lattice (m a), L.IC a, MonadError [Char] m, Show a, L.Lattice a, Eq a) =>
                  m a -> [ESS L.InfInteger] -> m a
-lApplyIntCons x [] = x
-lApplyIntCons x (c:cs) = lApplyIntCons (lEvalC c x) cs
+lRootIntCons x [] = x
+lRootIntCons x (c:cs) = lRootIntCons (lEvalC c x) cs
 
 lEvalC :: (L.Lattice (m a), L.IC a, MonadError [Char] m, Show a, L.Lattice a, Eq a) =>
           ESS L.InfInteger -> m a -> m a
@@ -1601,23 +1643,27 @@ lSerialC mx my =
                 = return (L.serialCombine a b)
       foobar
 
-lCalcC :: (MonadError [Char] m, L.IC a, L.Lattice (m a)) => Constr L.InfInteger -> m a
+lCalcC :: (MonadError [Char] m, L.IC a, L.Lattice (m a),
+           L.Lattice a, Eq a, Show a) => Constr L.InfInteger -> m a
 lCalcC (UNION u) = lCalcU u
 
 -- Need to define unionC which returns the union of two
 -- constraints
 
-lCalcU :: (L.Lattice (m a), L.IC a, MonadError [Char] m) => Union L.InfInteger -> m a
+lCalcU :: (L.Lattice (m a), L.IC a, MonadError [Char] m,
+           L.Lattice a, Eq a, Show a) => Union L.InfInteger -> m a
 lCalcU (IC i) = lCalcI i
 lCalcU(UC u i) = (lCalcU u) `L.ljoin` (lCalcI i)
 
 
-lCalcI :: (L.IC a, MonadError [Char] m, L.Lattice (m a)) =>
+lCalcI :: (L.IC a, MonadError [Char] m, L.Lattice (m a),
+           L.Lattice a, Show a, Eq a) =>
           IntCon L.InfInteger -> m a
 lCalcI (INTER i e) = (lCalcI i) `L.meet` (lCalcA e)
 lCalcI (ATOM a)    = lCalcA a
 
-lCalcA :: (L.IC a, MonadError [Char] m) => IE L.InfInteger -> m a
+lCalcA :: (L.IC a, MonadError [Char] m, L.Lattice (m a),
+           L.Lattice a, Show a, Eq a) => IE L.InfInteger -> m a
 lCalcA (E e) = lCalcE e
 
 -- Note that the resulting constraint is always a contiguous set.
@@ -1627,22 +1673,21 @@ lCalcA (E e) = lCalcE e
 -- NOTE: Need to deal with illegal constraints resulting from
 -- processCT
 
-lCalcE :: (MonadError [Char] m, L.IC a) => Elem L.InfInteger -> m a
+lCalcE :: (MonadError [Char] m, L.IC a, Show a, Eq a,
+           L.Lattice a, L.Lattice (m a)) => Elem L.InfInteger -> m a
 lCalcE (S (SV i)) = return (L.makeIC i i)
-lCalcE (C (Inc t)) = throwError "To do!" -- lProcessCT t []
+lCalcE (C (Inc t)) = lProcessCT t []
 lCalcE (V (R (l,u))) = return (L.makeIC l u)
 
 
--- Need to define reference case which requires derefencing.
--- This function is similar to the encode function in that it
--- needs to produce the effective constraint for the included type.
 
+-- Note that a parent type does not inherit the extension of an
+-- included type. Thus we use lRootIntCons on the included type.
 
--- TO DO
---lProcessCT :: (L.Lattice (m L.IntegerConstraint), MonadError String m) =>
---             ASNType L.InfInteger -> [ESS L.InfInteger] -> m L.IntegerConstraint
---lProcessCT (BT INTEGER) cl = lApplyIntCons L.top cl
---lProcessCT (ConsT t c) cl    = lProcessCT t (c:cl)
+lProcessCT :: (L.Lattice (m a), Show a, Eq a, L.Lattice a,
+               L.IC a, MonadError [Char] m) => ASNType L.InfInteger -> [ESS L.InfInteger] -> m a
+lProcessCT (BT INTEGER) cl = lRootIntCons L.top cl
+lProcessCT (ConsT t c) cl  = lProcessCT t (c:cl)
 
 
 
@@ -1953,7 +1998,7 @@ decodeInt2 cs =
    where
       lc         = last cs
       ic         = init cs
-      parentRoot = lApplyIntCons L.top ic
+      parentRoot = lRootIntCons L.top ic
 
 lEitherTest2 pr lc =
    lDecConsInt2 effRoot effExt
