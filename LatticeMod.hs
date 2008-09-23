@@ -2,9 +2,10 @@
 
 module LatticeMod where
 
+import Data.Char
 import Data.List
-import Language.ASN1
 import Control.Monad.Error
+import RestrictedCharacterStrings
 
 class IC a where
     makeIC :: InfInteger -> InfInteger -> a
@@ -13,6 +14,14 @@ class IC a where
     within :: a -> a -> Bool
     serialCombine :: a -> a -> a
     exceptIC :: a -> a -> a
+
+
+class RS a where
+    getString :: a -> String
+    makeString :: String -> a
+    exceptRS :: a -> a -> a
+    exceptRS = exceptPAC
+
 
 class Lattice a where
    bottom, top :: a
@@ -197,7 +206,7 @@ exceptPAC :: RS a => a -> a -> a
 exceptPAC a b
     = let s1 = getString a
           s2 = getString b
-      in putString (s1 \\ s2)
+      in makeString (s1 \\ s2)
 
 instance Lattice a => Lattice (Either String a) where
    bottom = Right bottom
@@ -216,10 +225,41 @@ instance BooleanAlgebra a => BooleanAlgebra (Either String a) where
 
 instance Lattice VisibleString where
     bottom = VisibleString ""
-    top = VisibleString [' '..'~']
+    top = VisibleString (" " ++ ['!'..'~'])
     (VisibleString s1) `meet` (VisibleString s2) = VisibleString (interString s1 s2)
     (VisibleString s1) `ljoin` (VisibleString s2) = VisibleString (unionString s1 s2)
 
+instance Lattice PrintableString where
+    bottom = PrintableString ""
+    top = PrintableString (" '()+,-./:=?" ++ ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9'])
+    (PrintableString s1) `meet` (PrintableString s2) = PrintableString (interString s1 s2)
+    (PrintableString s1) `ljoin` (PrintableString s2) = PrintableString (unionString s1 s2)
+
+
+instance Lattice NumericString where
+    bottom = NumericString ""
+    top = NumericString (" " ++ ['0'..'9'])
+    (NumericString s1) `meet` (NumericString s2) = NumericString (interString s1 s2)
+    (NumericString s1) `ljoin` (NumericString s2) = NumericString (unionString s1 s2)
+
+instance Lattice IA5String where
+    bottom = IA5String ""
+    top = IA5String (['\NUL'..'\US'] ++ ['!'..'~'])
+    (IA5String s1) `meet` (IA5String s2) = IA5String (interString s1 s2)
+    (IA5String s1) `ljoin` (IA5String s2) = IA5String (unionString s1 s2)
+
+instance Lattice UniversalString where
+    bottom = UniversalString ""
+    top = UniversalString ([minBound..maxBound])
+    (UniversalString s1) `meet` (UniversalString s2) = UniversalString (interString s1 s2)
+    (UniversalString s1) `ljoin` (UniversalString s2) = UniversalString (unionString s1 s2)
+
+
+instance Lattice BMPString where
+    bottom = BMPString ""
+    top = BMPString ([minBound..(chr (2^16-1))])
+    (BMPString s1) `meet` (BMPString s2) = BMPString (interString s1 s2)
+    (BMPString s1) `ljoin` (BMPString s2) = BMPString (unionString s1 s2)
 
 unionString [] s = s
 unionString (f:r) s = if elem f s
@@ -233,22 +273,37 @@ interString (f:r) s = if elem f s
 
 
 
-class RS a where
-    getString :: a -> String
-    putString :: String -> a
-    exceptRS :: a -> a -> a
-    exceptRS = exceptPAC
-
 instance RS VisibleString where
     getString (VisibleString s) = s
-    putString s = VisibleString s
+    makeString s = VisibleString s
 
+
+instance RS PrintableString where
+    getString (PrintableString s) = s
+    makeString s = PrintableString s
+
+instance RS NumericString where
+    getString (NumericString s) = s
+    makeString s = NumericString s
+
+instance RS IA5String where
+    getString (IA5String s) = s
+    makeString s = IA5String s
+
+instance RS UniversalString where
+    getString (UniversalString s) = s
+    makeString s = UniversalString s
+
+instance RS BMPString where
+    getString (BMPString s) = s
+    makeString s = BMPString s
 
 data ResStringConstraint i a = ResStringConstraint i a
     deriving (Show,Eq)
 data ExtResStringConstraint i a
     = ExtResStringConstraint (ResStringConstraint i a) (ResStringConstraint i a) Bool
     deriving (Show,Eq)
+
 extensible :: (ExtResStringConstraint i a) -> Bool
 extensible (ExtResStringConstraint _ _ b) = b
 
@@ -261,7 +316,7 @@ getEC (ExtResStringConstraint _ e _) = e
 getSC :: ResStringConstraint i a -> i
 getSC (ResStringConstraint i s) = i
 
-getPAC :: ResStringConstraint i a -> a
+getPAC :: RS a => ResStringConstraint i a -> a
 getPAC (ResStringConstraint i s) = s
 
 instance (Lattice a, Lattice i,RS a, Eq a, Eq i, IC i) => Lattice (ResStringConstraint i a) where

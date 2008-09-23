@@ -2,6 +2,7 @@
 
 module NewPretty where
 
+import RestrictedCharacterStrings
 import CTRestruct
 import Language.ASN1 (
    TagPlicity (..),

@@ -17,6 +17,7 @@ module TestCTR where
 import CTRestruct
 import Text.PrettyPrint
 import NewPretty
+import RestrictedCharacterStrings
 import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.Strict.BitPut as BP
