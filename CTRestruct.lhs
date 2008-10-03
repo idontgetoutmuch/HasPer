@@ -666,16 +666,16 @@ lEncodeBS nbs cl x = encodeBSSz nbs cl x
 encodeBSSz :: NamedBits -> [ESS BitString] -> BitString -> Either String BP.BitPut
 encodeBSSz nbs cl xs = lEncValidBS nbs (effBSCon cl) (validBSCon cl) xs
 
-effBSCon ::[ESS BitString] -> Either String (ExtBS IntegerConstraint)
-effBSCon cs = lSerialBSEffCons top cs
+effBSCon ::[ESS BitString] -> Either String (ExtBS (ConType IntegerConstraint))
+effBSCon cs = lSerialEffCons lBSConE top cs
 
 
-validBSCon :: [ESS BitString] -> Either String (ExtBS ValidIntegerConstraint)
-validBSCon cs = lSerialBSEffCons top cs
+validBSCon :: [ESS BitString] -> Either String (ExtBS (ConType ValidIntegerConstraint))
+validBSCon cs = lSerialEffCons lBSConE top cs
 
 
-lEncValidBS :: NamedBits -> Either String (ExtBS IntegerConstraint)
-               -> Either String (ExtBS ValidIntegerConstraint)
+lEncValidBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
+               -> Either String (ExtBS (ConType ValidIntegerConstraint))
                -> BitString -> Either String BP.BitPut
 lEncValidBS nbs m n v
     = do
@@ -685,16 +685,16 @@ lEncValidBS nbs m n v
             else lEncNonExtBS nbs m n v
 
 
-lEncNonExtBS :: NamedBits -> Either String (ExtBS IntegerConstraint)
-                -> Either String (ExtBS ValidIntegerConstraint)
+lEncNonExtBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
+                -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> BitString
                 -> Either String BP.BitPut
 lEncNonExtBS nbs m n (BitString vs)
     = do
         vsc <- m
         ok  <- n
-        let rc = getBSRC vsc
-            Valid okrc = getBSRC ok
+        let ConType rc = getBSRC vsc
+            ConType (Valid okrc) = getBSRC ok
             emptyConstraint = rc == bottom
             inSizeRange []      = False
             inSizeRange (x:rs)
@@ -711,18 +711,18 @@ lEncNonExtBS nbs m n (BitString vs)
         foobar
 
 
-lEncExtBS :: NamedBits -> Either String (ExtBS IntegerConstraint)
-                -> Either String (ExtBS ValidIntegerConstraint)
+lEncExtBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
+                -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> BitString
                 -> Either String BP.BitPut
 lEncExtBS nbs m n (BitString vs)
     = do
         vsc <- m
         ok  <- n
-        let rc = getBSRC vsc
-            Valid okrc = getBSRC ok
-            ec = getBSEC vsc
-            Valid okec = getBSEC ok
+        let ConType rc = getBSRC vsc
+            ConType (Valid okrc) = getBSRC ok
+            ConType ec = getBSEC vsc
+            ConType (Valid okec) = getBSEC ok
             emptyConstraint = rc == bottom && ec == bottom
             inSizeRange []      = False
             inSizeRange (x:rs)
@@ -847,11 +847,11 @@ lEncodeRCS cs vs
 
 effCon :: (Builtin a, RS a, Lattice a, Eq a)
           => [ESS a] -> Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
-effCon cs = lSerialResEffCons top cs
+effCon cs = lSerialEffCons lResConE top cs
 
 validCon :: (Builtin a, RS a, Lattice a, Eq a)
             => [ESS a] -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
-validCon cs = lSerialResEffCons top cs
+validCon cs = lSerialEffCons lResConE top cs
 
 -- The first case of encVS deals with non-per visible constraint.
 -- If the constraint is non-per visible then we treat the value as
