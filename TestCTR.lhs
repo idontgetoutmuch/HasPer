@@ -17,7 +17,7 @@ module TestCTR where
 import CTRestruct
 import Text.PrettyPrint
 import NewPretty
-import RestrictedCharacterStrings
+-- import RestrictedCharacterStrings
 import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.Strict.BitPut as BP
@@ -26,6 +26,9 @@ import Control.Monad.Error
 import qualified LatticeMod as L
 
 import Test.QuickCheck
+
+import ASNTYPE as A
+import ConstraintGeneration
 
 sc1 = UNION (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
 sc2 = UNION (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
@@ -111,38 +114,38 @@ myTAB1 t x =
         Left s  -> error ("First " ++ s)
         Right y -> B.unpack (BP.runBitPut y)
 
-instance Arbitrary L.InfInteger where
+instance Arbitrary A.InfInteger where
    arbitrary =
       frequency [
-         (1,return L.NegInf),
-         (2,liftM L.V arbitrary),
-         (1,return L.PosInf)
+         (1,return A.NegInf),
+         (2,liftM A.Val arbitrary),
+         (1,return A.PosInf)
          ]
 
-instance Arbitrary L.IntegerConstraint where
+instance Arbitrary A.IntegerConstraint where
    arbitrary =
       oneof [
          validIntegerConstraint
          ]
 
 validIntegerConstraint =
-   do l <- frequency [(1,return L.NegInf), (2,liftM L.V (choose (-2^10,2^10)))]
+   do l <- frequency [(1,return A.NegInf), (2,liftM A.Val (choose (-2^10,2^10)))]
       u <- suchThat arbitrary (>= l)
-      return (L.IntegerConstraint {L.lower = l, L.upper = u})
+      return (A.IntegerConstraint {A.lower = l, A.upper = u})
 
 validConstraintAndInteger =
    do c <- validIntegerConstraint
-      v <- suchThat arbitrary (liftM2 (&&) (>= (L.lower c)) (<= (L.upper c)))
+      v <- suchThat arbitrary (liftM2 (&&) (>= (A.lower c)) (<= (A.upper c)))
       return (ConstraintAndInteger c v)
 
-data ConstraintAndInteger = ConstraintAndInteger L.IntegerConstraint L.InfInteger
+data ConstraintAndInteger = ConstraintAndInteger A.IntegerConstraint A.InfInteger
    deriving (Eq,Show)
    
 instance Arbitrary ConstraintAndInteger where
    arbitrary = validConstraintAndInteger
 
 prop_ValidConstraintAndInteger (ConstraintAndInteger c v) = 
-   v >= L.lower c && v <= L.upper c
+   v >= A.lower c && v <= A.upper c
 
 main =
    do quickCheck prop_ValidConstraintAndInteger

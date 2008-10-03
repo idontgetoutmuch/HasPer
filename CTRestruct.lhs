@@ -70,6 +70,7 @@ The encoding is for UNALIGNED PER
 
 module CTRestruct where
 
+import ASNTYPE
 import qualified Data.Map as Map
 import Data.List hiding (groupBy)
 import Data.Bits
@@ -87,426 +88,17 @@ import Text.PrettyPrint
 import System
 import IO
 import Data.Int
-import Data.Bits
 import Data.Maybe
 import qualified Data.Foldable as F
 import Data.Monoid
 import qualified Data.Traversable as T
 import Control.Applicative
-import RestrictedCharacterStrings
-import qualified LatticeMod as L
-\end{code}
-
-We need to mimic the ASN.1 {\tt Type} as defined in X.680
-
-An ASN.1 module is a collection of (mainly type) assignments. A
-type assignment associates a type reference with a type where a type reference is simply an
-identifier.
-
-A {\tt Type} is:
-\begin{itemize}
-\item
-a {\tt BuiltinType} -- any of the standard ASN.1 types or a tagged type;
-\item
-a {\tt ReferencedType} -- a (qualified or unqualified) type
-reference or a parameterised type (defined in X.683); or
-\item
-a {\tt ConstrainedType} -- a type with a constraint.
-\end{itemize}
-
-
-A {\tt ReferencedType} is:
-\begin{itemize}
-\item
-a {\tt DefinedType} -- this is either a qualifed (using a module reference) type reference,
-a type reference, a parameterized type or a parameterized value
-set type.
-\item
-a {\tt UsefulType} -- a collection of predefined types such as
-\begin{verbatim}
-GeneralizedTime ::= [UNIVERSAL 24] IMPLICIT VisibleString
-\end{verbatim}
-\item
-a {\tt SelectionType} -- a type selected from a {\tt Choice} type.
-\item
-a {\tt TypeFromObject} -- a type from an information object (see X.681) or
-\item
-a {\tt ValueSetFromObjects} -- a value set from objects (see
-X.681).
-\end{itemize}
-
-A {\tt ConstrainedType} is either a
-\begin{itemize}
-\item
-a type associated with a {\tt Constraint} or
-\item
-a {\tt SETOF} or {\tt SEQUENCEOF} type with a constraint on the collection
-type. That is, the usual type constraint construct implies that
-the constraint is applied to the component type of a collection
-type, and not to the collection itself.
-\end{itemize}
-
-A {\tt Constraint} is either a {\tt SubtypeConstraint} or a {\tt
-GeneralConstraint} with or without an exception.
-
-A {\tt SubtypeConstraint} may be extensible as indicated by {\tt
-...} and is defined in X.680 using the type {\tt ElementSetSpecs}
-as
-\begin{verbatim}
-ElementSetSpecs ::=
-    RootElementSetSpec
-    | RootElementSetSpec "," "..."
-    | RootElementSetSpec "," "..." "," AdditionalElementSetSpec
-
-RootElementSetSpec ::= ElementSetSpec
-
-AdditionalElementSetSpec ::= ElementSetSpec
-
-ElementSetSpec ::= Unions
-    | ALL Exclusions
-
-Unions ::= Intersections
-    | UElems UnionMark Intersections
-
-UElems ::= Unions
-
-Intersections ::= IntersectionElements
-    | IElems IntersectionMark IntersectionElements
-
-IElems ::= Intersections
-
-IntersectionElements ::= Elements | Elems Exclusions
-
-Elems ::= Elements
-
-Exclusions ::= EXCEPT Elements
-
-UnionMark ::= "|" | UNION
-
-IntersectionMark ::= "^" | INTERSECTION
-\end{verbatim}
-In summary a {\tt SubtypeConstraint} is either a union of
-intersections of atomic constraints (such as single value, range and size) or everything except a subset of
-values of a type. A {\tt GeneralConstraint} is defined in X.682.
-
-Definition of Constraint Type
-
-\begin{code}
--- This current version of the constraint type has ignored exceptions (see X.680 45.6)
-
-data ESS a = RE (Constr a) | EXT (Constr a) | EXTWITH (Constr a) (Constr a)
-
-data Constr a = UNION (Union a) | ALL (Excl a)
-
-data Union a = IC (IntCon a) | UC (Union a) (IntCon a)
-
-data IntCon a = INTER (IntCon a) (IE a) | ATOM (IE a)
-
-data Excl a = EXCEPT (Elem a)
-
-data IE a = E (Elem a) | Exc (Elem a) (Excl a)
-
-data Elem a = S (SV a) | C (CT a) | V (VR a) | SZ (Sz a) | P (PA a)
-
-data SV a = SingleValue a => SV a
-
-data CT a = ContainedSubtype a => Inc (ASNType a)
-
-data VR a = ValueRange a => R (a,a)
-
-data Sz a = SizeConstraint a => SC (ESS L.InfInteger)
-
-data PA a = PermittedAlphabet a => FR (ESS a)
-
---IS to be completed for multiple type constraints
-data IS a = InnerType a => WC (ESS a) | WCS
-
--- Type constraint (constraining an open type) to be done (47.6)
--- Pattern constraint to be done.
-\end{code}
-
-X.680 16.1
-
-Type ::= BuiltinType | ReferencedType | ConstrainedType
-
-\begin{code}
-data ASNType a where
-    BT    :: ASNBuiltin a -> ASNType a
-    RT    :: ReferencedType -> ASNType a
-    ConsT :: ASNType a -> ESS a -> ASNType a
-
-data ASNBuiltin a where
-   EXTADDGROUP     :: Sequence a -> ASNBuiltin a
-   BOOLEAN         :: ASNBuiltin Bool
-   INTEGER         :: ASNBuiltin L.InfInteger
-   ENUMERATED      :: Enumerate a -> ASNBuiltin a
-   BITSTRING       :: NamedBits -> ASNBuiltin BitString
-   OCTETSTRING     :: ASNBuiltin OctetString
-   PRINTABLESTRING :: ASNBuiltin PrintableString
-   IA5STRING       :: ASNBuiltin IA5String
-   VISIBLESTRING   :: ASNBuiltin VisibleString
-   NUMERICSTRING   :: ASNBuiltin NumericString
-   UNIVERSALSTRING :: ASNBuiltin UniversalString
-   BMPSTRING       :: ASNBuiltin BMPString
-   SEQUENCE        :: Sequence a -> ASNBuiltin a
-   SEQUENCEOF      :: ASNBuiltin a -> ASNBuiltin [a]
-   SET             :: Sequence a -> ASNBuiltin a
-   SETOF           :: ASNBuiltin a -> ASNBuiltin [a]
-   CHOICE          :: Choice a -> ASNBuiltin (HL a (S Z))
-   TAGGED          :: TagInfo -> ASNBuiltin a -> ASNBuiltin a
-
-
-data ReferencedType = Ref TypeRef
-\end{code}
-
-
--- Type aliases
-\begin{code}
-
-type TagInfo    = (TagType, TagValue, TagPlicity)
-type TypeRef    = String
-type Name       = String
-
-\end{code}
-
-Type Classes which make explicit the (not necessarily PER-visible) subtypes associated with the ASN.1 types.
-
-See X.680 (07/2002) Section 47.1 Table 9
-
-\begin{code}
-
-class SingleValue a
-
-instance SingleValue BitString
-instance SingleValue L.InfInteger
-instance SingleValue VisibleString
-instance SingleValue PrintableString
-instance SingleValue NumericString
-instance SingleValue UniversalString
-instance SingleValue BMPString
-instance SingleValue IA5String
-
-class ContainedSubtype a
-
-instance ContainedSubtype BitString
-instance ContainedSubtype L.InfInteger
-instance ContainedSubtype VisibleString
-instance ContainedSubtype PrintableString
-instance ContainedSubtype NumericString
-instance ContainedSubtype UniversalString
-instance ContainedSubtype BMPString
-instance ContainedSubtype IA5String
-
-
-class ValueRange a
-
-instance ValueRange IA5String
-instance ValueRange PrintableString
-instance ValueRange NumericString
-instance ValueRange VisibleString
-instance ValueRange UniversalString
-instance ValueRange BMPString
-instance ValueRange L.InfInteger
-
-
-class PermittedAlphabet a
-
-instance PermittedAlphabet IA5String
-instance PermittedAlphabet PrintableString
-instance PermittedAlphabet NumericString
-instance PermittedAlphabet VisibleString
-instance PermittedAlphabet UniversalString
-instance PermittedAlphabet BMPString
-
-
-
-class SizeConstraint a
-
-instance SizeConstraint [a]
-instance SizeConstraint IA5String
-instance SizeConstraint PrintableString
-instance SizeConstraint NumericString
-instance SizeConstraint VisibleString
-instance SizeConstraint UniversalString
-instance SizeConstraint BMPString
-
-class InnerType a
-
-instance InnerType (Choice a)
-instance InnerType  (Sequence a)
-instance InnerType [a]
-\end{code}
-
-Type for heterogeneous lists. This is used in defining the Sequence, Set, Choice and Enumerated
-types.
-
-\begin{code}
-data Nil = Empty
-data a:*:l = a:*:l
-
-instance Show Nil where
-   show _ = "Empty"
-
-instance (Show a, Show l) => Show (a:*:l) where
-   show (x:*:xs) = show x ++ ":*:" ++ show xs
-\end{code}
-
-X.680 Section 24. Sequence Type
-
-A sequence is a (possibly heterogeneous) collection of component
-types. Nil is the empty sequence, Cons adds components to a
-sequence and Extens signals an extension marker.
-
-\begin{code}
-data Sequence a where
-   Nil     :: Sequence Nil
-   Extens  :: Sequence l    -> Sequence l
-   Cons    :: ComponentType a -> Sequence l -> Sequence (a:*:l)
-\end{code}
-
-A component type is either mandatory, optional, default or indicates
-that the components of another sequence are being used.
-The second constructor CTExtMand deals with an extension
-addition which is neither optional nor default. It returns a Maybe
-value since a mandatory extension value may not be present in a
-sequence value.
-
-Each constructor (except CTCompOf) takes a named type value which
-associates a name and possibly a tag with a type.
-
-\begin{code}
-
-data ComponentType a where
-   CTMandatory :: NamedType a -> ComponentType a
-   CTExtMand   :: NamedType a -> ComponentType (Maybe a)
-   CTOptional  :: NamedType a -> ComponentType (Maybe a)
-   CTDefault   :: NamedType a -> a -> ComponentType (Maybe a)
-   CTCompOf    :: ASNType a   -> ComponentType a
-
-data NamedType a where
-   NamedType :: Name -> Maybe TagInfo -> ASNType a -> NamedType a
-
-\end{code}
-
-X.680 Section 28. Choice type
-
-A choice is a collection of named types. The Choice type
-is similar to a Sequence except that each value
-is optional and only one value can exist at a time. Note
-that the Choice type has no PER-visible constraints.
-The constructors ChoiceExt and ChoiceEAG deal with
-extension markers and extension addition groups respectively.
-
-In order to enforce one and only one value for a choice the ASNBuiltin
-constructor CHOICE returns a value of the type
-ASNBuiltin (HL a (S Z)).
-
-HL is a type for heterogeneous lists (similar
-to Sequence) except that it takes a second input which indicates
-the number of actual values in the list. The empty list is
-represented by EmptyHL of the type HL Nil Z where Z is a type
-indicating no values. The constructor ValueC takes a value
-and a list with no values and adds the value to the list.
-Its retuurn type is HL (a:*:l) (S Z) indicating that the list now
-has one value (S for successor). Finally the constructor
-NoValueC takes no value (of the appropriate type -- hence the use
-of the phantom type Phantom a) and a list and returns the list
-with the non-value added. In this case the number of values in the
-list is not incremented.
-
-\begin{code}
-
-data Choice a where
-    NoChoice     :: Choice Nil
-    ChoiceExt    :: Choice l -> Choice l
-    ChoiceEAG    :: Choice l -> Choice l
-    ChoiceOption :: NamedType a -> Choice l -> Choice (a:*:l)
-
-data HL a l where
-    EmptyHL  :: HL Nil Z
-    ValueC   :: a -> HL l Z -> HL (a:*:l) (S Z)
-    NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n
-
-data Z
-
-data S n
-
-data Phantom a = NoValue
-
-instance Show (HL Nil n) where
-   show _ = "EmptyHL"
-
-instance (Show a, Show (HL l n)) => Show (HL (a:*:l) n) where
-   show (ValueC x _ ) = show x
-   show (NoValueC _ xs) = show xs
-
-instance Eq Nil where
-  _ == _ = True
-
-instance (Eq a, Eq b) => Eq (a:*:b) where
-   x:*:xs == y:*:ys =
-      x == y && xs == ys
-
-instance Eq (HL Nil (S Z)) where
-   _ == _ = True
-
-instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
-   ValueC   _ _ == NoValueC _ _ = False
-   NoValueC _ _ == ValueC _ _   = False
-   NoValueC _ xs == NoValueC _ ys = xs == ys
-   ValueC x _ == ValueC y _ = x == y
-
-\end{code}
-
-X.680 Section 19. Enumerated type
-
-An enumeration is a collection of identifiers (implicitly or explicitly) associated
-with an integer.
-
-\begin{code}
-
-data EnumerationItem a where
-    Identifier :: Name -> EnumerationItem Name
-    NamedNumber :: Name -> Int -> EnumerationItem Name
-
-data Enumerate a where
-    NoEnum      :: Enumerate Nil
-    EnumOption  :: EnumerationItem a -> Enumerate l -> Enumerate ((Maybe a):*:l)
-    EnumExt     :: Enumerate l -> Enumerate l
-
+import LatticeMod
+import ConstraintGeneration
 \end{code}
 
 
 
-
-\begin{code}
-
-type NamedBits = [NamedBit]
-
-data NamedBit = NB String Int
-
-\end{code}
-
-This is dross left over from previous thinking
-
-Need a mechanism for associating type references with types.
-
--- \begin{code}
-data HostType :: * where
-    MV :: ASNType a -> HostType
-
-refHost :: Map.Map TypeRef HostType
-refHost = Map.empty
-
-addRef1 = Map.insert "test1" (MV (BT INTEGER)) refHost
-addRef2 = Map.insert "test2" (MV (BT BOOLEAN)) addRef1
-
-getType :: TypeRef -> Map.Map TypeRef HostType -> HostType
-getType tr host =  host Map.! tr
-
-
-
--- \end{code}
 
 PER Top-Level encode function. There are three cases:
 i.   The input is a builtin type: toPer is called on this type.
@@ -543,565 +135,21 @@ generate effective root and effective extension here.
 \begin{code}
 
 lToPer :: ASNBuiltin a -> a -> [ESS a] -> Either String BP.BitPut
-lToPer t@INTEGER x cl         = lEncodeInt cl x
-lToPer t@VISIBLESTRING x cl   = lEncodeRCS cl x
-lToPer t@PRINTABLESTRING x cl = lEncodeRCS cl x
-lToPer t@NUMERICSTRING x cl   = lEncodeRCS cl x
-lToPer t@IA5STRING x cl       = lEncodeRCS cl x
-lToPer t@BOOLEAN x cl         = lEncodeBool cl x
+lToPer INTEGER x cl         = lEncodeInt cl x
+lToPer VISIBLESTRING x cl   = lEncodeRCS cl x
+lToPer PRINTABLESTRING x cl = lEncodeRCS cl x
+lToPer NUMERICSTRING x cl   = lEncodeRCS cl x
+lToPer IA5STRING x cl       = lEncodeRCS cl x
+lToPer BOOLEAN x cl         = lEncodeBool cl x
+lToPer (ENUMERATED e) x cl  = lEncodeEnum e x -- no PER-Visible constraints
+lToPer (BITSTRING nbs) x cl = lEncodeBS nbs cl x
 
 \end{code}
 
--- GENERATION OF EFFECTIVE STRING CONSTRAINT
 
--- resEffCons takes a restricted string constraint and returns either a pair
--- of effective constraints or a message indicating that the constraint is
--- not PER-visible. The pair includes the
--- effective size constraint and the effective permitted alphabet
--- constraint. The evaluation takes account of the effect of set
--- operators and extensibility. Note that extensible size and
--- permitted alphabet constraints may be combined using set operators
--- which is not the case for an Integer value range constraint.
--- The return type is a pair of ResStringContraint values - the first for
--- the root constraint and the second for the extension constraint -
--- paired with a boolean value that indicates whether an extension is
--- expected (hence a bit prefix in the encoding) or not.
--- ResStringConstraint is a parameterised type (to allow for the different restricted string types)
--- encompassing the (size,permittedAlphabet) constraint pair.
 
 
-serialResEffCons takes a list of constraints (representing
-serially applied constraints) and generates the resulting
---- effective constraint (if it exists).
-
-{- NOTE WE WANT THE TYPE TO BE MORE GENERAL e.g. replaced VisibleString with RS a => a -}
-
-serialResEffCons takes a list of constraints (representing
-serially applied constraints) and generates the resulting
-effective constraint (if it exists).
-
-\begin{code}
-
-lSerialResEffCons :: (Eq t1,
-                      Eq t,
-                      Show t,
-                      L.Lattice t1,
-                      L.Lattice t,
-                      L.IC t,
-                      L.RS t1) =>
-                      Either String (L.ExtResStringConstraint t t1) -> [ESS t1]
-                      -> Either String (L.ExtResStringConstraint t t1)
-lSerialResEffCons m ls
-    = do
-        let foobar
-                = do
-                    esrc <- m
-                    let foobar1 [] = m
-                        foobar1 [c] = lSerialApplyLast esrc c
-                        foobar1 (f:r) = lSerialResEffCons (lSerialApply esrc f) r
-                    foobar1 ls
-        foobar
-
-
-lSerialApply :: (Eq i,
-                 Eq a,
-                 Show i,
-                 L.Lattice a,
-                 L.Lattice i,
-                 L.IC i,
-                 L.RS a) =>
-                 L.ExtResStringConstraint i a -> ESS a -> Either String (L.ExtResStringConstraint i a)
-lSerialApply ersc c = lEitherApply ersc (lResEffCons c 0)
-
-\end{code}
-
-\begin{code}
-
-lEitherApply :: (Eq i,
-                 Eq a,
-                 Show i,
-                 L.Lattice i,
-                 L.Lattice a,
-                 L.IC i,
-                 L.RS a) =>
-                 L.ExtResStringConstraint i a -> Either String (L.ExtResStringConstraint i a)
-                 -> Either String (L.ExtResStringConstraint i a)
-lEitherApply (L.ExtResStringConstraint rc1 _ _) m
-    = do
-        let foobar
-                = do x <- m
-                     let rc2 = L.getRC x
-                         foobar1
-                            = if lValidResCon rc1 rc2
-                                 then return (L.ExtResStringConstraint (lUpdateResCon rc1 rc2) L.top False)
-                                 else throwError "Parent type and constraint mismatch"
-                     foobar1
-        foobar
-
---lValidResCon :: (L.Lattice a, L.RS a, Eq a) => L.ResStringConstraint a -> L.ResStringConstraint a -> Bool
-lValidResCon (L.ResStringConstraint s1 p1) (L.ResStringConstraint s2 p2)
-    = L.within s1 s2 && lValidPA p1 p2
-
-
-
-lValidPA :: (L.Lattice a, L.RS a, Eq a) => a -> a -> Bool
-lValidPA x y
-    = if x == L.top || y == L.top
-        then True
-        else and (map (flip elem (L.getString x)) (L.getString y))
-
-
-lUpdateResCon :: (L.IC t, L.Lattice t1, L.RS t1, Eq t1) =>
-                 L.ResStringConstraint t t1
-                 -> L.ResStringConstraint t t1
-                 -> L.ResStringConstraint t t1
-lUpdateResCon (L.ResStringConstraint s1 p1) (L.ResStringConstraint s2 p2)
-     = L.ResStringConstraint (L.serialCombine s1 s2) (lUpdatePA p1 p2)
-
-
-
-lUpdatePA :: (L.Lattice a, L.RS a, Eq a) => a -> a -> a
-lUpdatePA x y
-    = if x == L.bottom || y == L.bottom
-        then L.bottom
-        else y
-
-lSerialApplyLast :: (Eq t1,
-                     Eq t,
-                     Show t,
-                     L.Lattice t1,
-                     L.Lattice t,
-                     L.IC t,
-                     L.RS t1) =>
-                     L.ExtResStringConstraint t t1 -> ESS t1 -> Either String (L.ExtResStringConstraint t t1)
-lSerialApplyLast x c = lLastApply x (lResEffCons c 0)
-
-
-lLastApply :: (Eq t1,
-               L.RS t1,
-               L.Lattice t1,
-               L.IC t,
-               L.Lattice t,
-               Eq t,
-               Show t) =>
-               L.ExtResStringConstraint t t1 -> Either String (L.ExtResStringConstraint t t1)
-               -> Either String (L.ExtResStringConstraint t t1)
-lLastApply (L.ExtResStringConstraint r1 _ _) m
-    = do
-         let foobar
-                 = do
-                    x@(L.ExtResStringConstraint r2 e2 _) <- m
-                    let foobar1
-                         | not (L.extensible x) = lEitherApply x m
-                         | lValidResCon r1 r2 && lValidResCon r1 e2
-                            = return (L.ExtResStringConstraint (lUpdateResCon r1 r2)
-                                                    (lUpdateResCon r1 e2) True)
-                         | otherwise = throwError "Parent type and constraint mismatch"
-                    foobar1
-         catchError foobar (\err -> throwError err)
-
-\end{code}
-
-resEffCons generates the effective constraint of a restricted
-type constraint.
-
-\begin{code}
-
-lResEffCons :: (L.RS t,
-                L.IC i,
-                L.Lattice i,
-                L.Lattice t,
-                Eq i,
-                Show i,
-                Eq t) =>
-                ESS t -> Int ->  Either String (L.ExtResStringConstraint i t)
-lResEffCons (RE c) n        = lResCon c False n
-lResEffCons (EXT c) n       = lResCon c True n
-lResEffCons (EXTWITH c e) n = lExtendResC (lResCon c False n) (lResCon e False n)
-
-\end{code}
-
-resCon processes constraints. Its second input indicates if the
-type is extensible.
-
-\begin{code}
-
-lResCon :: (Eq a,
-            Eq i,
-            Show i,
-            L.Lattice a,
-            L.Lattice i,
-            L.IC i,
-            L.RS a) =>
-            Constr a -> Bool -> Int -> Either String (L.ExtResStringConstraint i a)
-lResCon (UNION u) b n        = lResConU u b n
-lResCon (ALL (EXCEPT e)) b n = lResExceptAll L.top (conE e b n)
-
-\end{code}
-
-extendresC implements the extension operator (...) on visiblestring
-constraints.
-Needs to satisfy the rules regarding visibility (see Annex B.2.2.10 of X.691)
-
-\begin{code}
-
-lExtendResC :: (Eq t,
-                Eq t1,
-                L.Lattice t,
-                L.Lattice t1,
-                L.IC t,
-                L.RS t1) =>
-                Either String (L.ExtResStringConstraint t t1)
-                -> Either String (L.ExtResStringConstraint t t1)
-                -> Either String (L.ExtResStringConstraint t t1)
-lExtendResC m n
-    = do
-        let foobar
-                = do
-                    x@(L.ExtResStringConstraint r1 e1 _) <- m
-                    y@(L.ExtResStringConstraint r2 e2 _) <- n
-                    let foobar1
-                            | not (L.extensible x) && not (L.extensible y)
-                                = return (L.ExtResStringConstraint r1 (L.exceptRSC r2 r1) True)
-                            | L.extensible x && not (L.extensible y)
-                                = return (L.ExtResStringConstraint r1 (L.exceptRSC (e1 `L.ljoin` r2) r1) True)
-                            | not (L.extensible x) && L.extensible y
-                                = return (L.ExtResStringConstraint r1 (L.exceptRSC (r2 `L.ljoin` e2) r1) True)
-                            | L.extensible x && L.extensible y
-                                = return (L.ExtResStringConstraint r1
-                                            (L.exceptRSC (e1 `L.ljoin` (r2 `L.ljoin` e2)) r1) True)
-                    foobar1
-        catchError foobar (\err -> throwError "Invisible")
-
-\end{code}
-
-resExceptAll has to deal with the various potential universal
-sets which are dependent on the nature of the excepted constraint.
-Note: The resulting constraint is non-extensible (see X.680
-G.4.3.8)
-
-\begin{code}
-
-lResExceptAll :: (L.IC i,
-                  Eq i,
-                  Eq a,
-                  L.RS a,
-                  L.Lattice i,
-                  L.Lattice a) =>
-                  L.ResStringConstraint i a -> Either String (L.ExtResStringConstraint i a)
-                  -> Either String (L.ExtResStringConstraint i a)
-lResExceptAll t m
-    = do
-         let foobar
-                = do
-                    ersc <- m
-                    let rc = L.getRC ersc
-                        emptyConstraint = rc == L.bottom
-                        foobar1
-                            | emptyConstraint = return (L.ExtResStringConstraint t L.top False)
-                            | otherwise = return (L.ExtResStringConstraint (L.exceptRSC L.top rc) L.top False)
-                    foobar1
-         catchError foobar (\err -> throwError "Invisible")
-
-
-lResConU :: (L.RS t,
-             L.IC i,
-             L.Lattice i,
-             L.Lattice t,
-             Eq i,
-             Show i,
-             Eq t) =>
-             Union t -> Bool -> Int -> Either String (L.ExtResStringConstraint i t)
-lResConU (IC i) b  n  = lResConI i b n
-lResConU (UC u i) b n = lUnionResC (lResConI i b n) (lResConU u False n)
-
-\end{code}
-
-unionRes returns the union of two pairs of constraints. Note
-that the union of a size constraint (and no permitted alphabet constraint)
-and vice versa result in no constraint.
-sizeUnion and paUnion union size and permitted alphabet constraints respectively.
-
-unionresC implements the union operator on visiblestring constraints
-Needs to satisfy the rules regarding visibility (see Annex B.2.2.10 of X.691)
-and set operators and effective constraints (see G.4.3.8 of
-X.680) Note that a union of a size constraint and a permitted
-alphabet constraint is an unconstrained type.
-
-\begin{code}
-
-lUnionResC :: (L.IC i,
-               Eq i,
-               Eq a,
-               L.RS a,
-               L.Lattice i,
-               L.Lattice a) =>
-               Either String (L.ExtResStringConstraint i a)
-               -> Either String (L.ExtResStringConstraint i a)
-               -> Either String (L.ExtResStringConstraint i a)
-lUnionResC m n
-    = do
-        let foobar
-             = do
-                c1 <- m
-                c2 <- n
-                let r1 = L.getRC c1
-                    e1 = L.getEC c1
-                    r2 = L.getRC c2
-                    e2 = L.getEC c2
-                    foobar1
-                        | not (L.extensible c1) && not (L.extensible c2)
-                             = return (L.ExtResStringConstraint (r1 `L.ljoin` r2) L.top False)
-                        | not (L.extensible c1)
-                             = return (L.ExtResStringConstraint (r1 `L.ljoin` r2) e2 True)
-                        | L.extensible c1 && not (L.extensible c2)
-                             = return (L.ExtResStringConstraint (r1 `L.ljoin` r2) e1 True)
-                        | otherwise
-                             = return (L.ExtResStringConstraint (r1 `L.ljoin` r2)
-                                       (L.exceptRSC ((r1 `L.ljoin` e1) `L.ljoin` (r2 `L.ljoin` e2))
-                                                  (r1 `L.ljoin` r2)) True)
-                foobar1
-        catchError foobar (\err -> throwError "Invisible")
-
-\end{code}
-
-resConI deals with the intersection of visiblestring constraints
-
-\begin{code}
-
-lResConI :: (Eq t,
-             Eq i,
-             Show i,
-             L.Lattice t,
-             L.Lattice i,
-             L.IC i,
-             L.RS t) =>
-             IntCon t -> Bool -> Int -> Either String (L.ExtResStringConstraint i t)
-lResConI (INTER i e) b n = lInterResC (lResConA e b n) (lResConI i False n)
-lResConI (ATOM e) b n    = lResConA e b n
-
-\end{code}
-
-interResC implements the intersection of visiblestring constraints
-Needs to satisfy the rules regarding visibility (see Annex B.2.2.10 of X.691)
-and set operators and effective constraints (see G.4.3.8 of
-X.680)
-
-\begin{code}
-
-lInterResC :: (Eq i,
-               Eq a,
-               L.Lattice i,
-               L.Lattice a,
-               L.IC i,
-               L.RS a) =>
-               Either String (L.ExtResStringConstraint i a)
-               -> Either String (L.ExtResStringConstraint i a)
-               -> Either String (L.ExtResStringConstraint i a)
-lInterResC m n
-    = do
-         let foobar1 x
-                 = do catchError (do c2 <- n
-                                     foobar2 x c2)
-                                 (\err -> m)
-             foobar2 c1 c2
-                 = do
-                    let r1 = L.getRC c1
-                        e1 = L.getEC c1
-                        r2 = L.getRC c2
-                        e2 = L.getEC c2
-                        foobar3
-                            | not (L.extensible c1) && not (L.extensible c2)
-                                 = return (L.ExtResStringConstraint (r1 `L.meet` r2) L.top False)
-                            | not (L.extensible c1)
-                                 = return (L.ExtResStringConstraint (r1 `L.meet` r2) (r1 `L.meet` e2) True)
-                            | L.extensible c1 && not (L.extensible c2)
-                                 = return (L.ExtResStringConstraint (r1 `L.meet` r2) (r2 `L.meet` e1)  True)
-                            | otherwise
-                                 = return (L.ExtResStringConstraint (r1 `L.meet` r2) (L.exceptRSC ((r1 `L.ljoin` e1)
-                                        `L.meet` (r2 `L.ljoin` e2)) (r1 `L.meet` r2)) True)
-                    foobar3
-             foobar
-                = catchError (do c1 <- m
-                                 foobar1 c1)
-                             (\err -> n)
-         foobar
-
-\end{code}
-
-resConA deals with atomic (including except) constraints
-
-\begin{code}
-
-lResConA :: (Eq t,
-             Eq i,
-             Show i,
-             L.Lattice t,
-             L.Lattice i,
-             L.IC i,
-             L.RS t) =>
-             IE t -> Bool -> Int -> Either String (L.ExtResStringConstraint i t)
-lResConA (E e) b n = conE e b n
-lResConA (Exc e (EXCEPT ex)) b n
-                = lExceptResC (conE e b n) (conE ex False n)
-
-\end{code}
-
-resExcept implements the set difference operator applied to
-visiblestring constraints
-Needs to satisfy the rules regarding visibility (see Annex B.2.2.10 of X.691)
-and set operators and effective constraints (see G.4.3.8 of
-X.680)
-
-\begin{code}
-
-lExceptResC :: (L.IC i,
-                Eq i,
-                Eq a,
-                L.RS a,
-                L.Lattice i,
-                L.Lattice a) =>
-                Either String (L.ExtResStringConstraint i a)
-                -> Either String (L.ExtResStringConstraint i a)
-                -> Either String (L.ExtResStringConstraint i a)
-lExceptResC m n
-    = do
-         let foobar1 x
-                 = catchError (do c2 <- n
-                                  foobar2 x c2)
-                              (\err -> m)
-             foobar2 c1 c2
-                 = do
-                    let r1 = L.getRC c1
-                        e1 = L.getEC c1
-                        r2 = L.getRC c2
-                        e2 = L.getEC c2
-                        foobar3
-                            | not (L.extensible c1)
-                                = return (L.ExtResStringConstraint (L.exceptRSC r1 r2) L.top False)
-                            | L.extensible c1 && not (L.extensible c2)
-                                 = return (L.ExtResStringConstraint (L.exceptRSC r1 r2)
-                                            (L.exceptRSC (L.exceptRSC r1 e2) (L.exceptRSC r1 r2)) True)
-                            | otherwise
-                                 = return (L.ExtResStringConstraint (L.exceptRSC r1 r2)
-                                            (L.exceptRSC (L.exceptRSC r1 (r2 `L.ljoin` e2))
-                                                       (L.exceptRSC r1 r2)) True)
-                    foobar3
-             foobar
-                = catchError (do
-                               c1 <- m
-                               foobar1 c1)
-                             (\err -> throwError "Invisible")
-         foobar
-
-\end{code}
-
-resConE deals with the various visiblestring constraints
-Note that a permitted alphabet constraint uses value range
-constraint(s) and that extensible permitted alphabet
-constraints are not per-visible.
-The first case (size-constraint) we can make use of the
-functions that create an effective Integer constraint. We
-cannot use evalC since it includes serial application of
-constraints.
-
-\begin{code}
-
-conE e b n
-    | n == 0 = lResConE e b
-    | otherwise = lPaConE e b
-
-lResConE :: (Eq a,
-             Eq i,
-             Show i,
-             L.Lattice a,
-             L.Lattice i,
-             L.IC i,
-             L.RS a) =>
-             Elem a -> Bool -> Either String (L.ExtResStringConstraint i a)
-lResConE (SZ (SC v)) b            = lEffResSize v b
-lResConE (P (FR (EXT _))) b       = throwError "Invisible!"
-lResConE (P (FR (EXTWITH _ _))) b = throwError "Invisible!"
-lResConE (P (FR (RE p)))  b       = lResEffCons (RE p) 1
-lResConE (C (Inc c)) b            = lProcessCST c []
-lResConE (S (SV v))  b            = throwError "Invisible!"
-
-\end{code}
-
-paConE deals with the various visiblestring constraints
-Note that a permitted alphabet constraint uses value range
-constraint(s) and that extensible permitted alphabet
-constraints are not per-visible.
-The first case (size-constraint) we can make use of the
-functions that create an effective Integer constraint. We
-cannot use evalC since it includes serial application of
-constraints.
-
-\begin{code}
-
-lPaConE :: (L.Lattice a,
-            L.Lattice a1,
-            L.RS a,
-            Eq a,
-            Eq a1,
-            Show a1,
-            L.IC a1) =>
-            Elem a -> Bool -> Either String (L.ExtResStringConstraint a1 a)
-lPaConE (V (R (l,u))) b
-    = let ls = L.getString l
-          us = L.getString u
-          rs = [head ls..head us]
-        in
-            return (L.ExtResStringConstraint (L.ResStringConstraint L.top (L.makeString rs))
-                        (L.ResStringConstraint L.top L.top) b)
-lPaConE (C (Inc c)) b = lProcessCST c []
-lPaConE (S (SV v)) b
-   = return (L.ExtResStringConstraint (L.ResStringConstraint L.top v)
-                                      (L.ResStringConstraint L.top L.top) b)
-
-
-lEffResSize :: (L.IC t,
-                L.Lattice a,
-                L.Lattice t,
-                L.RS a,
-                Eq a,
-                Eq t,
-                Show t) =>
-                ESS L.InfInteger -> Bool -> Either String (L.ExtResStringConstraint t a)
-lEffResSize (RE c) b
-    = do ec <- lCalcC c
-         return (L.ExtResStringConstraint (L.ResStringConstraint ec L.top) L.top b)
-lEffResSize (EXT c) b
-    = do ec <- lCalcC c
-         return (L.ExtResStringConstraint (L.ResStringConstraint ec L.top) L.top True)
-lEffResSize (EXTWITH c d) b
-    = do r <- lCalcC c
-         e <- lCalcC d
-         return (L.ExtResStringConstraint (L.ResStringConstraint r L.top)
-                                        (L.ResStringConstraint e L.top)  True)
-
-lProcessCST :: (Eq a,
-                Eq i,
-                Show i,
-                L.Lattice a,
-                L.Lattice i,
-                L.IC i,
-                L.RS a) => ASNType a -> [ESS a] -> Either String (L.ExtResStringConstraint i a)
-lProcessCST (BT _) cl = lRootStringCons L.top cl
-lProcessCST (ConsT t c) cl = lProcessCST t (c:cl)
-
-
-lRootStringCons t cs
-    = let m = lSerialResEffCons t cs
-      in do
-            (L.ExtResStringConstraint r e _) <- m
-            return (L.ExtResStringConstraint r L.top False)
-
-\end{code}
-
-END OF EFFECTIVE RSC GENERATION
-
-\section{ENCODING THE BOOLEAN TYPE (11)}
+\section{ENCODING THE BOOLEAN TYPE}
 
 \begin{code}
 
@@ -1111,7 +159,7 @@ lEncodeBool t _    = return (bitPutify [0])
 
 \end{code}
 
-12 ENCODING THE INTEGER TYPE
+\section{ENCODING THE INTEGER TYPE}
 
 -- If the type is unconstrained (has an empty constraint list) then enccodeUInt
 -- is called.
@@ -1129,25 +177,25 @@ lEncodeBool t _    = return (bitPutify [0])
 
 \begin{code}
 
-myEncodeUInt (L.V x)
+myEncodeUInt (Val x)
     = (bitPutify . encodeUInt . fromIntegral) x
 
-lEncodeInt :: [ESS L.InfInteger] -> L.InfInteger -> Either String BP.BitPut
+lEncodeInt :: [ESS InfInteger] -> InfInteger -> Either String BP.BitPut
 lEncodeInt [] v = return (myEncodeUInt v)
 lEncodeInt cs v =
    lEitherTest parentRoot validPR lc v
    where
       lc         = last cs
       ic         = init cs
-      parentRoot :: Either String L.IntegerConstraint
-      parentRoot = lRootIntCons L.top ic
-      validPR :: Either String L.ValidIntegerConstraint
-      validPR    = lRootIntCons L.top ic
+      parentRoot :: Either String IntegerConstraint
+      parentRoot = lRootIntCons top ic
+      validPR :: Either String ValidIntegerConstraint
+      validPR    = lRootIntCons top ic
 
 
 
-lEitherTest :: Either String L.IntegerConstraint -> Either String L.ValidIntegerConstraint
-               -> ESS L.InfInteger -> L.InfInteger -> Either String BP.BitPut
+lEitherTest :: Either String IntegerConstraint -> Either String ValidIntegerConstraint
+               -> ESS InfInteger -> InfInteger -> Either String BP.BitPut
 lEitherTest pr vpr lc v =
    lEncConsInt realRoot realExt effRoot effExt b v
    where
@@ -1161,13 +209,13 @@ lEitherTest pr vpr lc v =
 See Section 12 of X.691 (Encoding the Integer type).
 \begin{code}
 
-lEncConsInt :: (Eq t, L.Lattice t) =>
-               Either String L.ValidIntegerConstraint
-               -> Either String L.ValidIntegerConstraint
-               -> Either String L.IntegerConstraint
+lEncConsInt :: (Eq t, Lattice t) =>
+               Either String ValidIntegerConstraint
+               -> Either String ValidIntegerConstraint
+               -> Either String IntegerConstraint
                -> Either String t
                -> Bool
-               -> L.InfInteger
+               -> InfInteger
                -> Either String BP.BitPut
 lEncConsInt rootCon extCon effRootCon effExtCon extensible v
     = if (not extensible)
@@ -1218,33 +266,33 @@ is consistent with the extension constraint then \ldots
 
 \begin{code}
 
-lEncExtConsInt :: (Eq t, L.Lattice t) =>
-                  Either String L.ValidIntegerConstraint
-                  -> Either String L.ValidIntegerConstraint
-                  -> Either String L.IntegerConstraint
+lEncExtConsInt :: (Eq t, Lattice t) =>
+                  Either String ValidIntegerConstraint
+                  -> Either String ValidIntegerConstraint
+                  -> Either String IntegerConstraint
                   -> Either String t
-                  -> L.InfInteger
+                  -> InfInteger
                   -> Either String BP.BitPut
-lEncExtConsInt realRC realEC effRC effEC n@(L.V v) =
+lEncExtConsInt realRC realEC effRC effEC n@(Val v) =
    do
-      L.Valid rrc <- realRC
-      L.Valid rec <- realEC
+      Valid rrc <- realRC
+      Valid rec <- realEC
       erc <- effRC
       eec <- effEC
-      let isNonEmptyEC           = eec /= L.bottom
-          isNonEmptyRC           = erc /= L.bottom
+      let isNonEmptyEC           = eec /= bottom
+          isNonEmptyRC           = erc /= bottom
           emptyConstraint        = (not isNonEmptyRC) && (not isNonEmptyEC)
           inRange []             = False
-          inRange (x:rs)         = n >= (L.lower x) && n <= (L.upper x) || inRange rs
-          unconstrained x        = (L.lower x) == minBound
-          semiconstrained x      = (L.upper x) == maxBound
+          inRange (x:rs)         = n >= (lower x) && n <= (upper x) || inRange rs
+          unconstrained x        = (lower x) == minBound
+          semiconstrained x      = (upper x) == maxBound
           constrained x          = not (unconstrained x) && not (semiconstrained x)
           constraintType x
              | unconstrained x   = UnConstrained
              | semiconstrained x = SemiConstrained
              | otherwise         = Constrained
-          L.V rootLower              = L.lower erc
-          L.V rootUpper              = L.upper erc
+          Val rootLower              = lower erc
+          Val rootUpper              = upper erc
           foobar
              | emptyConstraint
                   = throwError "Empty constraint"
@@ -1264,26 +312,26 @@ lEncExtConsInt realRC realEC effRC effEC n@(L.V v) =
                   = throwError "Value out of range"
       foobar
 
-lEncNonExtConsInt :: Either String L.ValidIntegerConstraint
-                     -> Either String L.IntegerConstraint
-                     -> L.InfInteger
+lEncNonExtConsInt :: Either String ValidIntegerConstraint
+                     -> Either String IntegerConstraint
+                     -> InfInteger
                      -> Either String BP.BitPut
-lEncNonExtConsInt realRC effRC n@(L.V v) =
-   do L.Valid rrc <- realRC
+lEncNonExtConsInt realRC effRC n@(Val v) =
+   do Valid rrc <- realRC
       erc <- effRC
-      let isNonEmptyRC           = erc /= L.bottom
+      let isNonEmptyRC           = erc /= bottom
           emptyConstraint        = not isNonEmptyRC
           inRange []             = False
-          inRange (x:rs)         = n >= (L.lower x) && n <= (L.upper x) || inRange rs
-          unconstrained x        = (L.lower x) == minBound
-          semiconstrained x      = (L.upper x) == maxBound
+          inRange (x:rs)         = n >= (lower x) && n <= (upper x) || inRange rs
+          unconstrained x        = (lower x) == minBound
+          semiconstrained x      = (upper x) == maxBound
           constrained x          = not (unconstrained x) && not (semiconstrained x)
           constraintType x
              | unconstrained x   = UnConstrained
              | semiconstrained x = SemiConstrained
              | otherwise         = Constrained
-          L.V rootLower          = L.lower erc
-          L.V rootUpper          = L.upper erc
+          Val rootLower          = lower erc
+          Val rootUpper          = upper erc
           foobar
              | emptyConstraint
                   = throwError "Empty constraint"
@@ -1497,140 +545,278 @@ h n = (reverse . map fromInteger) (flip (curry (unfoldr g)) 7 n)
 
 \end{code}
 
+
+
+\section{ENCODING THE ENUMERATED TYPE}
+
+There are three cases to deal with:
+
+\begin{enumerate}
+
+\item
+There is no extension marker. The enumerations are indexed
+based on their (explicit or implicit) values. Thus each
+enumeration without an explcit value, is given a value that is not
+already explcitly assigned (assignNumber) on a first come/first
+serve basis. The indexes are then assigned in ascending
+order where the first index is 0 (assignIndex). The total number of
+enumerations is required since the encoding is of a constrained
+integer i.e. in the minimum number of bits. (13.2 and 10.5.6)
+encodeEnumAux simply encodes the existing enumeration.
+
+\item
+
+There is an extension marker but the value is in the
+enumeration root. 0 prefixes the encoding of the value
+which is completed as in (i). assignIndex returns a
+Boolean which indicates the presence or absence of an extension
+marker. (13.3 and 10.5.6)
+
+\item
+The value is in the extension. 1 prefixes the encoding,
+the enumerations in the extension are indexed in order of
+appearance and are encoded as a normally small non-negative whole
+number. (13.3 and 10.6) The function encodeEnumExtAux manages this
+encoding.
+
+\end{enumerate}
+
 \begin{code}
--- X.680 G.4.2.3 states that extension additions are discarded if
--- a further constraint is subsequently serially applied.
--- Thus applyExt only requires the last constraint in the list
--- (the last in the serial application) and the root of the parent
--- type since values in extension additions can only be values that
--- are in the root of the parent type. The second element of the
--- returned pair indicates if the constraint is extensible (True) or
--- not (False).
 
-lApplyExt :: (L.IC a, Eq a, L.Lattice a, Show a) =>
-             Either String a -> ESS L.InfInteger -> (Either String a, Bool)
-lApplyExt rp (RE _)  = (L.bottom, False)
-lApplyExt rp (EXT _) = (L.bottom, False)
-lApplyExt rp (EXTWITH _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
+lEncodeEnum :: Enumerate a -> a -> Either String BP.BitPut
+lEncodeEnum e x
+    = let (b,inds) = assignIndex e
+          no = genericLength inds
+      in
+        encodeEnumAux b no inds e x
 
--- Need to define calcEC (follow rules outlined in X.680 G.4.3.8)
--- and appExtWithRt
--- For Integer constraints, set operators are only applied to
--- non-extensible constraints (see 47.2 and 47.4 for definitions of
--- SingleValue and ValueRange constraints) and thus calcEC is simply
--- calcC. Thus G.4.3.8 can be ignored.
+encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> a
+                 -> Either String BP.BitPut
+encodeEnumAux b no (f:r) (EnumOption _ es) (Just n :*:rest)
+    = if not b
+        then return (bitPutify (encodeNNBIntBits (f, no-1)))
+        else return (bitPutify (0: encodeNNBIntBits (f, no-1)))
+encodeEnumAux b no (f:r) (EnumOption _ es) (Nothing :*: rest)
+    = encodeEnumAux b no r es rest
+encodeEnumAux b no inds (EnumExt ex) x
+    = let el = noEnums ex
+      in encodeEnumExtAux 0 el ex x
+encodeEnumAux _ _ _ _ _ = throwError "No enumerated value!"
 
-lCalcEC :: (L.IC a,L.Lattice a, Show a, Eq a) =>
-           Constr L.InfInteger -> Either String a
-lCalcEC c = lCalcC c
+encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> a
+                    -> Either String BP.BitPut
+encodeEnumExtAux i l (EnumOption _ es) (Just n :*:rest)
+    = return (bitPutify (1:encodeNSNNInt i 0))
+encodeEnumExtAux i l (EnumOption _ es) (Nothing :*:rest)
+    = encodeEnumExtAux (i+1) l es rest
+encodeEnumExtAux i l _ _ = throwError "No enumerated extension value!"
 
--- applyExtWithRt is simply serialC (defined below) since it is
--- the serial application of the parent root and the extension of the
--- final constraint. Only values in the paernt root may appear in the
--- extension (see X.680 section G.4.2.3).
+assignIndex :: Enumerate a -> (Bool, [Integer])
+assignIndex en
+    = let (b,ns) = assignNumber en False []
+          sls = sort ns
+      in
+        (b, positions ns sls)
 
-lApplyExtWithRt :: (Eq a, L.Lattice a, L.IC a, Show a) =>
-                   Either String a -> Either String a -> Either String a
-lApplyExtWithRt a b = lSerialC a b
+assignNumber :: Enumerate a -> Bool -> [Integer] -> (Bool, [Integer])
+assignNumber en b ls
+    = let nn = getNamedNumbers en
+      in
+        assignN ([0..] \\ nn) en b ls
 
--- need to define encInt
-
--- Need first input to host incremented constraint (due to serial constraints)
--- Need Either type to deal with legal and illegal constraints. An
--- illegal constraint (typically a mismatch between a parent type and
--- a constraint), will result in a string indicating the problem.
--- Need Maybe type to deal with empty constraint e.g. mutually exclusive intersection
--- As soon as one encounters an illegal constraint this is always
--- returned, and an empty constraint is only superceded by an illegal constraint.
--- Although an empty constraint could be viewed like an illegal
--- constraint (since it does not allow any legal values), this could
--- form either part of an extensible constraint whose overall effect
--- is legal.
-
-lRootIntCons :: (L.IC a, Show a, L.Lattice a, Eq a) =>
-                 Either String a -> [ESS L.InfInteger] -> Either String a
-lRootIntCons x [] = x
-lRootIntCons x (c:cs) = lRootIntCons (lEvalC c x) cs
-
-lEvalC ::  (L.IC a, Show a, L.Lattice a, Eq a) =>
-          ESS L.InfInteger -> Either String a -> Either String a
-lEvalC (RE c) x       = lSerialC x (lCalcC c)
-lEvalC (EXT c) x      = lSerialC x (lCalcC c)
-lEvalC (EXTWITH c d) x = lSerialC x (lCalcC c)
-
--- See X.680 section G.4.2.3 for details on the serial application
--- of constraints. The second input is the new constraint whose
--- values must be bounded by the values in the first input. Thus
--- minBound in the second input matches the lower bound in the first
--- input and similarly for maxBound. Note that serialC takes two
--- Maybe type inputs since the illegal first input has already been
--- dealt with by applyIntCons. The second input cannot be illegal
--- since this is simply the (possible) set combination of atomic
--- constraints and involves no serial application of constraints.
-
-lSerialC :: (Show a, L.Lattice a, L.IC a, Eq a) =>
-            Either String a -> Either String a -> Either String a
-lSerialC mx my =
-   do a <- mx
-      b <- my
-      let la = L.getLower a
-          ua = L.getUpper a
-          lb = L.getLower b
-          ub = L.getUpper b
-          foobar
-             | not (L.within a b)
-                = throwError ("Constraint and parent type mismatch: " ++ show b ++ " is not within " ++ show a) -- Somehow we should prettyConstraint here
-             | otherwise
-                = return (L.serialCombine a b)
-      foobar
-
-lCalcC :: (L.IC a, L.Lattice a, Eq a, Show a) => Constr L.InfInteger -> Either String a
-lCalcC (UNION u) = lCalcU u
-
--- Need to define unionC which returns the union of two
--- constraints
-
-lCalcU :: (L.IC a, L.Lattice a, Eq a, Show a) => Union L.InfInteger -> Either String a
-lCalcU (IC i) = lCalcI i
-lCalcU(UC u i) = (lCalcU u) `L.ljoin` (lCalcI i)
+assignN :: [Integer] -> Enumerate a -> Bool -> [Integer] -> (Bool, [Integer])
+assignN (f:xs) NoEnum b ls = (b,reverse ls)
+assignN (f:xs) (EnumOption (NamedNumber _ i) r)b ls = assignN (f:xs) r b (i:ls)
+assignN (f:xs) (EnumOption _ r) b ls = assignN xs r b (f:ls)
+assignN (f:xs) (EnumExt r) b ls = (True, reverse ls)
 
 
-lCalcI :: (L.IC a, L.Lattice a, Show a, Eq a) =>
-          IntCon L.InfInteger -> Either String a
-lCalcI (INTER i e) = (lCalcI i) `L.meet` (lCalcA e)
-lCalcI (ATOM a)    = lCalcA a
+getNamedNumbers :: Enumerate a -> [Integer]
+getNamedNumbers NoEnum = []
+getNamedNumbers (EnumOption (NamedNumber _ i) r) = i:getNamedNumbers r
+getNamedNumbers (EnumOption _ r) = getNamedNumbers r
+getNamedNumbers (EnumExt r)  = []
 
-lCalcA :: (L.IC a, L.Lattice a, Show a, Eq a) => IE L.InfInteger -> Either String a
-lCalcA (E e) = lCalcE e
+noEnums :: Enumerate a -> Integer
+noEnums NoEnum = 0
+noEnums (EnumOption _ r) = 1 + noEnums r
+noEnums (EnumExt r)  = 0
 
--- Note that the resulting constraint is always a contiguous set.
+positions [] sls = []
+positions (f:r) sls
+    = findN f sls : positions r sls
 
--- Need processCT to process the constraint implications of type
--- inclusion.
--- NOTE: Need to deal with illegal constraints resulting from
--- processCT
-
-lCalcE :: (L.IC a, Show a, Eq a, L.Lattice a) => Elem L.InfInteger -> Either String a
-lCalcE (S (SV i)) = return (L.makeIC i i)
-lCalcE (C (Inc t)) = lProcessCT t []
-lCalcE (V (R (l,u))) = return (L.makeIC l u)
-
-
-
--- Note that a parent type does not inherit the extension of an
--- included type. Thus we use lRootIntCons on the included type.
-
-lProcessCT :: (Show a, Eq a, L.Lattice a, L.IC a)
-               => ASNType L.InfInteger -> [ESS L.InfInteger] -> Either String a
-lProcessCT (BT INTEGER) cl = lRootIntCons L.top cl
-lProcessCT (ConsT t c) cl  = lProcessCT t (c:cl)
-
-
-
+findN i (f:r)
+    = if i == f then 0
+        else 1 + findN i r
+findN i []
+    = error "Impossible case!"
 
 \end{code}
 
-27 ENCODING THE RESTRICTED CHARACTER STRING TYPES
+\section{ENCODING THE BITSTRING TYPE}
+
+\begin{code}
+
+lEncodeBS :: NamedBits -> [ESS BitString] -> BitString -> Either String BP.BitPut
+lEncodeBS nbs [] x = encodeBSNoSz nbs x
+lEncodeBS nbs cl x = encodeBSSz nbs cl x
+
+
+encodeBSSz :: NamedBits -> [ESS BitString] -> BitString -> Either String BP.BitPut
+encodeBSSz nbs cl xs = lEncValidBS nbs (effBSCon cl) (validBSCon cl) xs
+
+effBSCon ::[ESS BitString] -> Either String (ExtBS IntegerConstraint)
+effBSCon cs = lSerialBSEffCons top cs
+
+
+validBSCon :: [ESS BitString] -> Either String (ExtBS ValidIntegerConstraint)
+validBSCon cs = lSerialBSEffCons top cs
+
+
+lEncValidBS :: NamedBits -> Either String (ExtBS IntegerConstraint)
+               -> Either String (ExtBS ValidIntegerConstraint)
+               -> BitString -> Either String BP.BitPut
+lEncValidBS nbs m n v
+    = do
+        vsc <- m
+        if extensibleBS vsc
+            then lEncExtBS nbs m n v
+            else lEncNonExtBS nbs m n v
+
+
+lEncNonExtBS :: NamedBits -> Either String (ExtBS IntegerConstraint)
+                -> Either String (ExtBS ValidIntegerConstraint)
+                -> BitString
+                -> Either String BP.BitPut
+lEncNonExtBS nbs m n (BitString vs)
+    = do
+        vsc <- m
+        ok  <- n
+        let rc = getBSRC vsc
+            Valid okrc = getBSRC ok
+            emptyConstraint = rc == bottom
+            inSizeRange []      = False
+            inSizeRange (x:rs)
+                = let l = genericLength vs
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            foobar
+                | emptyConstraint
+                    = throwError "Empty constraint"
+                | null nbs && inSizeRange okrc || (not . null) nbs
+                    = do bs <- bsCode nbs rc vs
+                         return (bitPutify bs)
+                | otherwise
+                    = throwError "Value out of range"
+        foobar
+
+
+lEncExtBS :: NamedBits -> Either String (ExtBS IntegerConstraint)
+                -> Either String (ExtBS ValidIntegerConstraint)
+                -> BitString
+                -> Either String BP.BitPut
+lEncExtBS nbs m n (BitString vs)
+    = do
+        vsc <- m
+        ok  <- n
+        let rc = getBSRC vsc
+            Valid okrc = getBSRC ok
+            ec = getBSEC vsc
+            Valid okec = getBSEC ok
+            emptyConstraint = rc == bottom && ec == bottom
+            inSizeRange []      = False
+            inSizeRange (x:rs)
+                = let l = genericLength vs
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            foobar
+                | emptyConstraint
+                    = throwError "Empty constraint"
+                | inSizeRange okrc
+                    = do
+                        bs <- bsCode nbs rc vs
+                        return $ do
+                                  BP.putNBits 1 (0::Int)
+                                  bitPutify bs
+                | inSizeRange okec
+                    = do
+                        bs <- bsCode nbs rc vs
+                        return $ do
+                                  BP.putNBits 1 (1::Int)
+                                  bitPutify bs
+                | otherwise
+                    = throwError "Value out of range"
+        foobar
+
+
+--bsCode :: NamedBits ->
+bsCode nbs rc xs
+      =  let l  = lower rc
+             u  = upper rc
+             exs = if (not.null) nbs then editBS l u xs
+                     else return xs
+         in
+             if u == 0
+             then return []
+             else if u == l && u <= 65536
+                       then exs
+                       else if u <= 65536
+                            then let Val ub = u
+                                     Val lb = l
+                                 in do
+                                     ls <- exs
+                                     ln <- return (genericLength ls)
+                                     return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ ls)
+                            else do
+                                    ls <- exs
+                                    return (encodeBitsWithLength ls)
+
+
+editBS :: InfInteger -> InfInteger -> BitStream -> Either String BitStream
+editBS l u xs
+    = let lxs = genericLength xs
+      in if lxs < l
+        then add0s (l-lxs) xs
+        else
+            if lxs > u
+             then rem0s (lxs-u) xs
+             else return xs
+
+add0s :: InfInteger -> BitStream -> Either String BitStream
+add0s (Val n) xs = return (xs ++ take (fromInteger n) [0,0..])
+
+rem0s :: InfInteger -> BitStream -> Either String BitStream
+rem0s (Val (n+1)) xs
+    = if last xs == 0
+           then rem0s (Val n) (init xs)
+           else throwError "Last value is not 0"
+rem0s (Val 0) xs = return xs
+
+\end{code}
+
+
+\begin{code}
+encodeBSNoSz :: NamedBits -> BitString -> Either String BP.BitPut
+encodeBSNoSz nbs (BitString [])
+    = return (bitPutify [0,0,0,0,0,0,0,0])
+encodeBSNoSz nbs (BitString bs)
+    = let rbs = reverse bs
+          rem0 = if (not.null) nbs then strip0s rbs
+            else rbs
+          ln = genericLength rem0
+       in
+        return (bitPutify (encodeBitsWithLength (reverse rem0)))
+
+
+
+strip0s (a:r)
+    = if a == 0
+        then strip0s r
+        else (a:r)
+strip0s [] = []
+
+\end{code}
+
+\section{ENCODING THE RESTRICTED CHARACTER STRING TYPES}
 
 If the type is extensible then a single bit shall be added to the
 encoding. This is set to 0 if the value is withing the range of
@@ -1645,27 +831,27 @@ Note that a check on the validity of the string value is made
 before any encoding.
 \begin{code}
 
-lEncodeRCS :: (Eq a, L.RS a, L.Lattice a)
+lEncodeRCS :: (Builtin a, Eq a, RS a, Lattice a)
               => [ESS a] -> a -> Either String BP.BitPut
 lEncodeRCS [] vs
-        | rcsMatch vs L.top
+        | rcsMatch vs top
             = return (bitPutify (encodeResString vs))
         | otherwise
             = throwError "Invalid value!"
 lEncodeRCS cs vs
-        | rcsMatch vs L.top
+        | rcsMatch vs top
             = lEncValidRCS (effCon cs) (validCon cs) vs
         | otherwise
             = throwError "Invalid value!"
 
 
-effCon :: (L.RS a, L.Lattice a, Eq a)
-          => [ESS a] -> Either String (L.ExtResStringConstraint L.IntegerConstraint a)
-effCon cs = lSerialResEffCons L.top cs
+effCon :: (Builtin a, RS a, Lattice a, Eq a)
+          => [ESS a] -> Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
+effCon cs = lSerialResEffCons top cs
 
-validCon :: (L.RS a, L.Lattice a, Eq a)
-            => [ESS a] -> Either String (L.ExtResStringConstraint L.ValidIntegerConstraint a)
-validCon cs = lSerialResEffCons L.top cs
+validCon :: (Builtin a, RS a, Lattice a, Eq a)
+            => [ESS a] -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
+validCon cs = lSerialResEffCons top cs
 
 -- The first case of encVS deals with non-per visible constraint.
 -- If the constraint is non-per visible then we treat the value as
@@ -1673,21 +859,21 @@ validCon cs = lSerialResEffCons L.top cs
 -- NEED TO DEAL WITH CASE WHEN ROOT AND EXTENSION ARE DIFFERENT
 -- CONSTRAINTS
 
-rcsMatch :: L.RS a => a -> a -> Bool
-rcsMatch x y = stringMatch (L.getString x) (L.getString y)
+rcsMatch :: RS a => a -> a -> Bool
+rcsMatch x y = stringMatch (getString x) (getString y)
 
 stringMatch [] s = True
 stringMatch (f:r) s = elem f s && stringMatch r s
 
 
-lEncValidRCS :: (L.RS a, Eq a, L.Lattice a) =>
-                 Either String (L.ExtResStringConstraint L.IntegerConstraint a)
-                 -> Either String (L.ExtResStringConstraint L.ValidIntegerConstraint a)
+lEncValidRCS :: (RS a, Eq a, Lattice a) =>
+                 Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
+                 -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
                  -> a -> Either String BP.BitPut
 lEncValidRCS m n v
     = do
         vsc <- m
-        if L.extensible vsc
+        if extensible vsc
             then lEncExtRCS m n v
             else lEncNonExtRCS m n v
 
@@ -1700,29 +886,29 @@ No constraint is represented by the lattice attribute top which is
 the default value when generating an effective constraint.
 -}
 
-lEncNonExtRCS :: (L.RS a, Eq a, L.Lattice a) =>
-                Either String (L.ExtResStringConstraint L.IntegerConstraint a)
-                -> Either String (L.ExtResStringConstraint L.ValidIntegerConstraint a)
+lEncNonExtRCS :: (RS a, Eq a, Lattice a) =>
+                Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
+                -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
                 -> a
                 -> Either String BP.BitPut
 lEncNonExtRCS m n vs
     = do
         vsc <- m
         ok  <- n
-        let rc = L.getRC vsc
-            okrc = L.getRC ok
-            sc = L.getSC rc
-            L.Valid oksc = L.getSC okrc
-            pac = L.getPAC rc
-            emptyConstraint = rc == L.bottom
-            noSC  = sc == L.top
-            noPAC = pac == L.top
+        let rc = getRC vsc
+            okrc = getRC ok
+            sc = getSC rc
+            Valid oksc = getSC okrc
+            pac = getPAC rc
+            emptyConstraint = rc == bottom
+            noSC  = sc == top
+            noPAC = pac == top
             inSizeRange []      = False
             inSizeRange (x:rs)
                 = let l = genericLength v
-                  in l >= (L.lower x) && l <= (L.upper x) || inSizeRange rs
-            v = L.getString vs
-            inPA x  = stringMatch v (L.getString x)
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            v = getString vs
+            inPA x  = stringMatch v (getString x)
             foobar
                 | emptyConstraint
                     = throwError "Empty constraint"
@@ -1737,44 +923,44 @@ lEncNonExtRCS m n vs
         foobar
 
 
-lEncExtRCS :: (L.RS a, Eq a, L.Lattice a) =>
-              Either String (L.ExtResStringConstraint L.IntegerConstraint a)
-              -> Either String (L.ExtResStringConstraint L.ValidIntegerConstraint a)
+lEncExtRCS :: (RS a, Eq a, Lattice a) =>
+              Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
+              -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
               -> a
               -> Either String BP.BitPut
 lEncExtRCS m n vs
     = do
         vsc <- m
         ok <- n
-        let rc = L.getRC vsc
-            ec = L.getEC vsc
-            okrc = L.getRC ok
-            okec = L.getEC ok
-            rsc = L.getSC rc
-            L.Valid okrsc = L.getSC okrc
-            rpac = L.getPAC rc
-            esc = L.getSC ec
-            L.Valid okesc = L.getSC okec
-            epac = L.getPAC ec
-            concStrs :: L.RS a => L.ResStringConstraint i a ->
-                                  L.ResStringConstraint i a -> a
+        let rc = getRC vsc
+            ec = getEC vsc
+            okrc = getRC ok
+            okec = getEC ok
+            rsc = getSC rc
+            Valid okrsc = getSC okrc
+            rpac = getPAC rc
+            esc = getSC ec
+            Valid okesc = getSC okec
+            epac = getPAC ec
+            concStrs :: RS a => ResStringConstraint a i ->
+                                  ResStringConstraint a i -> a
             concStrs rc ec
-                  = let r = (L.getString . L.getPAC) rc
-                        e = (L.getString . L.getPAC) ec
-                    in L.makeString (r++e)
+                  = let r = (getString . getPAC) rc
+                        e = (getString . getPAC) ec
+                    in makeString (r++e)
             expac = concStrs rc ec
-            emptyConstraint = vsc == L.bottom
-            noRC  = rc == L.top
-            noEC  = ec == L.top
-            noRSC  = rsc == L.top
-            noRPAC = rpac == L.top
-            noESC  = esc == L.top
-            noEPAC = epac == L.top
+            emptyConstraint = vsc == bottom
+            noRC  = rc == top
+            noEC  = ec == top
+            noRSC  = rsc == top
+            noRPAC = rpac == top
+            noESC  = esc == top
+            noEPAC = epac == top
             inSizeRange []      = False
             inSizeRange (x:rs)
-                = let l = genericLength (L.getString vs)
-                  in l >= (L.lower x) && l <= (L.upper x) || inSizeRange rs
-            inPA x  = stringMatch (L.getString vs) (L.getString x)
+                = let l = genericLength (getString vs)
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            inPA x  = stringMatch (getString vs) (getString x)
             foobar
                 | emptyConstraint
                     = throwError "Empty constraint"
@@ -1798,13 +984,13 @@ lEncExtRCS m n vs
             foobarEC
                 | noESC && inPA epac
                     = return $ do BP.putNBits 1 (1::Int)
-                                  bitPutify (lEncodeRCSF L.top vs)
+                                  bitPutify (lEncodeRCSF top vs)
                 | noEPAC && inSizeRange okesc
                     = return $ do BP.putNBits 1 (1::Int)
                                   bitPutify (encodeResString vs)
                 | inPA epac && inSizeRange okesc
                     = return $ do BP.putNBits 1 (1::Int)
-                                  bitPutify (lEncodeRCSF L.top vs)
+                                  bitPutify (lEncodeRCSF top vs)
                 | otherwise
                     = throwError "Value out of range"
             foobarBoth
@@ -1828,35 +1014,35 @@ lEncExtRCS m n vs
                   (noRSC && noESC && ((noRPAC && not noEPAC && inPA epac) ||
                   (not noRPAC && not noEPAC && not (inPA epac) && inPA expac)))
                      =  return $ do BP.putNBits 1 (1::Int)
-                                    bitPutify (lEncodeRCSF L.top vs)
+                                    bitPutify (lEncodeRCSF top vs)
                 | otherwise
                      = throwError "Value out of range"
         foobar
 
-lEncodeRCSSz :: (L.RS a, L.Lattice a) => L.IntegerConstraint -> a -> BitStream
-lEncodeRCSSz (L.IntegerConstraint l u) v
+lEncodeRCSSz :: (RS a, Lattice a) => IntegerConstraint -> a -> BitStream
+lEncodeRCSSz (IntegerConstraint l u) v
     = let t = getTop v
-          gl = genericLength (L.getString t)
+          gl = genericLength (getString t)
        in
-        manageRCS (encSF (L.getString t)) L.makeString encodeResString L.getString l u v
+        manageRCS (encSF (getString t)) makeString encodeResString getString l u v
 
 
-manageRCS :: (L.RS a, L.Lattice a) => (String -> BitStream) -> (String -> a) ->
-                       (a -> BitStream) -> (a -> String) -> L.InfInteger
-                        -> L.InfInteger -> a -> BitStream
+manageRCS :: (RS a, Lattice a) => (String -> BitStream) -> (String -> a) ->
+                       (a -> BitStream) -> (a -> String) -> InfInteger
+                        -> InfInteger -> a -> BitStream
 manageRCS e f g h l u v
     = manageExtremes e (g . f) l u (h v)
 
 
-encodeResString :: (L.RS a, L.Lattice a) => a -> BitStream
+encodeResString :: (RS a, Lattice a) => a -> BitStream
 encodeResString vs
     = let t = getTop vs
-          l = genericLength (L.getString t)
+          l = genericLength (getString t)
       in
-         encodeWithLength (encSF (L.getString t))  (L.getString vs)
+         encodeWithLength (encSF (getString t))  (getString vs)
 
-getTop :: (L.RS a, L.Lattice a) => a -> a
-getTop m = L.top
+getTop :: (RS a, Lattice a) => a -> a
+getTop m = top
 
 encC :: Integer -> Char -> BitStream
 encC i c = encodeNNBIntBits ((fromIntegral.ord) c, i)
@@ -1871,13 +1057,13 @@ encS i s  = (concat . map (encC i)) s
 
 \begin{code}
 
-lEncodeRCSSzF :: (L.RS a) => L.IntegerConstraint -> a -> a -> BitStream
-lEncodeRCSSzF (L.IntegerConstraint l u) rcs1 rcs2
-        =  manageExtremes (encSF (L.getString rcs1))
-                          (lEncodeRCSF rcs1 . L.makeString) l u (L.getString rcs2)
+lEncodeRCSSzF :: (RS a) => IntegerConstraint -> a -> a -> BitStream
+lEncodeRCSSzF (IntegerConstraint l u) rcs1 rcs2
+        =  manageExtremes (encSF (getString rcs1))
+                          (lEncodeRCSF rcs1 . makeString) l u (getString rcs2)
 
-lEncodeRCSF :: (L.RS a) => a -> a -> BitStream
-lEncodeRCSF rcs1 rcs2 = encodeWithLength (encSF (L.getString rcs1)) (L.getString rcs2)
+lEncodeRCSF :: (RS a) => a -> a -> BitStream
+lEncodeRCSF rcs1 rcs2 = encodeWithLength (encSF (getString rcs1)) (getString rcs2)
 
 
 encSF p str
@@ -1901,8 +1087,8 @@ minExp n e p
 -- The first two cases are described in X.691 27.5.6 and 25.5.7
 -- and the last case by 10.9 Note 3.
 
-manageExtremes :: ([a] -> BitStream) -> ([a] -> BitStream) -> L.InfInteger
-                        -> L.InfInteger -> [a] -> BitStream
+manageExtremes :: ([a] -> BitStream) -> ([a] -> BitStream) -> InfInteger
+                        -> InfInteger -> [a] -> BitStream
 manageExtremes fn1 fn2 l u x
     = let range = u - l + 1
         in
@@ -1911,8 +1097,8 @@ manageExtremes fn1 fn2 l u x
                else if u >= 65536
                     then fn2 x
                     else
-                        let L.V r = range
-                            L.V v = l
+                        let Val r = range
+                            Val v = l
                         in encodeNNBIntBits ((genericLength x - v), r-1) ++ fn1 x
 
 \end{code}
@@ -1957,7 +1143,7 @@ fromPer2 :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
             => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
 fromPer2 t@INTEGER cl = decodeInt2 cl
 
-decodeInt [] = decodeUInt >>= \(L.V x) -> return (L.V (fromIntegral x))
+decodeInt [] = decodeUInt >>= \(Val x) -> return (Val (fromIntegral x))
 
 decodeInt2 [] = error "you haven't done unconstrained decoding!"
 decodeInt2 cs =
@@ -1965,7 +1151,7 @@ decodeInt2 cs =
    where
       lc         = last cs
       ic         = init cs
-      parentRoot = lRootIntCons L.top ic
+      parentRoot = lRootIntCons top ic
 
 lEitherTest2 pr lc =
    lDecConsInt2 effRoot effExt
@@ -1976,7 +1162,7 @@ lEitherTest2 pr lc =
 bitPutify :: BitStream -> BP.BitPut
 bitPutify = mapM_ (BP.putNBits 1)
 
-decodeUInt :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet L.InfInteger
+decodeUInt :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet InfInteger
 decodeUInt =
    do o <- octets
       return (from2sComplement o)
@@ -2033,20 +1219,20 @@ from2sComplement a = x
 
 \begin{code}
 
--- lDecConsInt2 :: (MonadError [Char] m) => m L.IntegerConstraint -> m L.IntegerConstraint -> m (BG.BitGet Integer)
+-- lDecConsInt2 :: (MonadError [Char] m) => m IntegerConstraint -> m IntegerConstraint -> m (BG.BitGet Integer)
 lDecConsInt2 mrc mec =
    do rc <- mrc
       ec <- mec
-      let extensionConstraint    = ec /= L.bottom
-          extensionRange         = (L.upper ec) - (L.lower ec) + 1
-          rootConstraint         = rc /= L.bottom
-          rootLower              = let L.V x = L.lower rc in x
-          rootRange              = fromIntegral $ let (L.V x) = (L.upper rc) - (L.lower rc) + (L.V 1) in x -- fromIntegral means there's an Int bug lurking here
+      let extensionConstraint    = ec /= bottom
+          extensionRange         = (upper ec) - (lower ec) + 1
+          rootConstraint         = rc /= bottom
+          rootLower              = let Val x = lower rc in x
+          rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- fromIntegral means there's an Int bug lurking here
           numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
           emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
-          inRange v x            = (L.V v) >= (L.lower x) &&  (L.V v) <= (L.upper x)
-          unconstrained x        = (L.lower x) == minBound
-          semiconstrained x      = (L.upper x) == maxBound
+          inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
+          unconstrained x        = (lower x) == minBound
+          semiconstrained x      = (upper x) == maxBound
           constrained x          = not (unconstrained x) && not (semiconstrained x)
           constraintType x
              | unconstrained x   = UnConstrained
@@ -2061,7 +1247,7 @@ lDecConsInt2 mrc mec =
              | rootConstraint
                   = return $ if rootRange <= 1
                                 then
-                                   return (L.V rootLower)
+                                   return (Val rootLower)
                                 else
                                    do isExtension <- lift $ BG.getBit
                                       if isExtension
@@ -2072,7 +1258,7 @@ lDecConsInt2 mrc mec =
                                                let v = rootLower + (fromNonNeg numOfRootBits j)
                                                if v `inRange` rc
                                                   then
-                                                     return (L.V v)
+                                                     return (Val v)
                                                   else
                                                      throwError "Value not in root constraint"
 
