@@ -80,6 +80,8 @@ instance IC ValidIntegerConstraint where
     exceptIC = exceptVIC
 
 
+exceptCTIC (ConType a) (ConType b) = ConType (exceptIC a b)
+
 -- Note that this instantiation generates effective
 -- constraint-based meet and join. For example,
 -- (1..3) `ljoin` (5..8) is (1..8).
@@ -94,7 +96,13 @@ instance Lattice IntegerConstraint where
       | l2 > u1   = bottom
       | otherwise = IntegerConstraint (max l1 l2) (min u1 u2)
 
-instance (IC i, Lattice i) => Lattice (ExtBS i) where
+instance Lattice i => Lattice (ConType i) where
+    bottom = ConType bottom
+    top = ConType top
+    (ConType a) `ljoin` (ConType b) = ConType (a `ljoin` b)
+    (ConType a) `meet` (ConType b) = ConType (a `meet` b)
+
+instance (IC i, Lattice i) => Lattice (ExtBS (ConType i)) where
    bottom = ExtBS bottom bottom False
    top = ExtBS top top False
    (ExtBS r1 e1 False) `ljoin` (ExtBS r2 e2 False)
@@ -105,7 +113,7 @@ instance (IC i, Lattice i) => Lattice (ExtBS i) where
         = ExtBS (r1 `ljoin` r2) e1 True
    (ExtBS r1 e1 True) `ljoin` (ExtBS r2 e2 True)
         = ExtBS (r1 `ljoin` r2)
-            (exceptIC ((r1 `ljoin` e1) `ljoin` (r2 `ljoin` e2)) (r1 `ljoin` r2))  True
+            (exceptCTIC ((r1 `ljoin` e1) `ljoin` (r2 `ljoin` e2)) (r1 `ljoin` r2))  True
    (ExtBS r1 e1 False) `meet` (ExtBS r2 e2 False)
         = ExtBS (r1 `meet` r2) bottom False
    (ExtBS r1 e1 False) `meet` (ExtBS r2 e2 True)
@@ -114,7 +122,7 @@ instance (IC i, Lattice i) => Lattice (ExtBS i) where
         = ExtBS (r1 `meet` r2) (r2 `meet` e1) True
    (ExtBS r1 e1 True) `meet` (ExtBS r2 e2 True)
         = ExtBS (r1 `meet` r2)
-            (exceptIC ((r1 `ljoin` e1) `meet` (r2 `ljoin` e2)) (r1 `meet` r2))  True
+            (exceptCTIC ((r1 `ljoin` e1) `meet` (r2 `ljoin` e2)) (r1 `meet` r2))  True
 
 instance Lattice ValidIntegerConstraint where
    bottom = Valid [bottom]
@@ -338,6 +346,9 @@ instance  IC i => Constraint ConType i where
     makeSC i     = ConType i
 
 
+
+
+
 lValidResCon :: (IC i, Lattice a, RS a, Eq a) =>
     ResStringConstraint a i -> ResStringConstraint a i -> Bool
 lValidResCon (ResStringConstraint p1 s1) (ResStringConstraint p2 s2)
@@ -393,7 +404,7 @@ instance (Lattice a, Lattice i,RS a, Eq a, Eq i, IC i) => Lattice (ResStringCons
         = ResStringConstraint (s1 `meet` s2) (i1 `meet` i2)
 
 
-instance (RS a, IC i, Eq i, Eq a, Lattice i, Lattice a)
+instance (RS a, IC i, Lattice (ResStringConstraint a i))
     => Lattice (ExtResStringConstraint (ResStringConstraint a i)) where
     bottom = ExtResStringConstraint bottom bottom False
     top = ExtResStringConstraint top top False
