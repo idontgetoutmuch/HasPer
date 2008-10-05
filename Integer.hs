@@ -1,19 +1,22 @@
 import Data.Bits
 import Data.Word
 import Data.List
-import qualified Data.ByteString as B
-import Data.Binary.Strict.BitUtil (rightShift)
-import Data.Binary.Strict.BitPut
-import Test.LazySmallCheck
+-- import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
+import Data.Binary.BitPut
+import Test.LazySmallCheck hiding (lift)
+import Control.Monad.State
 
 type BitStream = [Int]
 
+{-
 to2sComplement :: Integer -> BitStream
 to2sComplement n
    | n >= 0 = 0:(h 7 n)
    | otherwise = h 8 (2^p + n)
    where
       p = length (h 7 (-n-1)) + 1
+-}
 
 g :: (Integer, Integer) -> Maybe (Integer, (Integer, Integer))
 g (0,0) = Nothing
@@ -43,23 +46,40 @@ to2sComplement' n
    where
       p = l n
 
-to2sComplement'' :: Integer -> B.ByteString
+to2sComplement'' :: Integer -> BL.ByteString
 to2sComplement'' n =
-   B.reverse (B.map reverseBits (runBitPut (to2sComplement' n)))
+   BL.reverse (BL.map reverseBits (runBitPut (to2sComplement' n)))
+
+bottomNBits :: Int -> Word8
+bottomNBits 0 = 0
+bottomNBits 1 = 0x01
+bottomNBits 2 = 0x03
+bottomNBits 3 = 0x07
+bottomNBits 4 = 0x0f
+bottomNBits 5 = 0x1f
+bottomNBits 6 = 0x3f
+bottomNBits 7 = 0x7f
+bottomNBits 8 = 0xff
+bottomNBits x = error ("bottomNBits undefined for " ++ show x)
+
+rightShift :: Int -> BL.ByteString -> BL.ByteString
+rightShift 0 = id
+rightShift n = snd . BL.mapAccumL f 0 where
+  f acc b = (b .&. (bottomNBits n), (b `shiftR` n) .|. (acc `shiftL` (8 - n)))
 
 fromNonNeg r x =
    sum (zipWith (*) (map fromIntegral ys) zs)
    where
       s = (-r) `mod` bSize
       bSize = bitSize (head ys)
-      ys = reverse (B.unpack (rightShift s x))
+      ys = reverse (BL.unpack (rightShift s x))
       zs = map ((2^bSize)^) [0..genericLength ys]
 
 from2sComplement a = x
    where
-      l = fromIntegral (B.length a)
+      l = fromIntegral (BL.length a)
       b = l*8 - 1
-      (z:zs) = B.unpack a
+      (z:zs) = BL.unpack a
       t = (fromIntegral (shiftR (0x80 .&. z) 7)) * 2^b
       powersOf256 = 1:(map (256*) powersOf256)
       r = zipWith (*) powersOf256 (map fromIntegral (reverse ((0x7f .&. z):zs)))
@@ -69,20 +89,22 @@ encodeNNBIntBitsAux (_,0) = Nothing
 encodeNNBIntBitsAux (0,w) = Just (0, (0, w `div` 2))
 encodeNNBIntBitsAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
 
-encodeNNBIntBitsAux' :: Integer -> Integer -> BitPut
-encodeNNBIntBitsAux' 0 w =
-   putNBits (fromIntegral w) (0::Integer)
-encodeNNBIntBitsAux' n w =
-   do putNBits 1 (n `mod` 2)
-      encodeNNBIntBitsAux' (n `div` 2) (w `div` 2)
+encodeNNBIntBits' :: Integer -> Integer -> BitPut
+encodeNNBIntBits' n w = 
+   let (r, _) = runState (f n w) () in r
+      where
+         f _ 0 = return (return ())
+         f 0 w =
+            do r <- f 0 (w `div` 2)
+               return (do {r; putNBits 1 (0::Word8)})
+         f n w =
+            do r <- f (n `div` 2) (w `div` 2)
+               return (do {r; putNBits 1 (n `mod` 2)})
+
 
 encodeNNBIntBits :: (Integer, Integer) -> BitStream
 encodeNNBIntBits
     = reverse . (map fromInteger) . unfoldr encodeNNBIntBitsAux
-
-encodeNNBIntBits' :: Integer -> Integer -> B.ByteString
-encodeNNBIntBits' n w =
-   B.reverse (B.map reverseBits (runBitPut (encodeNNBIntBitsAux' n w)))
 
 reverseBits :: Word8 -> Word8
 reverseBits = reverseBits3 . reverseBits2 . reverseBits1
@@ -109,11 +131,23 @@ prop_From2sTo2s x =
 
 prop_FromNonNegToNonNeg :: (Integer,Integer) -> Bool
 prop_FromNonNegToNonNeg (n,w) =
-   n >= 0 && w >= bitWidth n ==> fromNonNeg (fromIntegral (bitWidth w)) (encodeNNBIntBits' n w) == n
+   n >= 0 && w >= n ==> fromNonNeg (fromIntegral (bitWidth w)) (runBitPut (encodeNNBIntBits' n w)) == n
 
 bitWidth n = genericLength (encodeNNBIntBits (n,n))
 
+bitPutify :: BitStream -> BitPut
+bitPutify = mapM_ (putNBits 1)
+
+prop_NNBIntBits :: (Integer,Integer) -> Bool
+prop_NNBIntBits (n,w) =
+   n >=0 && w >= n ==> runBitPut (bitPutify (encodeNNBIntBits (n,w))) == runBitPut (encodeNNBIntBits' n w)
+
 main = 
-   do -- smallCheck 255 prop_RevRev
-      -- smallCheck 255 prop_From2sTo2s
-      smallCheck 255 prop_FromNonNegToNonNeg
+   do putStrLn "Checking reverse of reverse..."
+      smallCheck 15 prop_RevRev
+      putStrLn "Checking from 2s complement of to 2s complement..."
+      smallCheck 15 prop_From2sTo2s
+      putStrLn "Checking unfolded non-negative binary integer = monadic non-negative binary integer..."
+      smallCheck 15 prop_NNBIntBits
+      putStrLn "Checking from non-negative binary integer of to non-negative binary integer..."
+      smallCheck 15 prop_FromNonNegToNonNeg
