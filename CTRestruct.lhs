@@ -143,6 +143,7 @@ lToPer IA5STRING x cl       = lEncodeRCS cl x
 lToPer BOOLEAN x cl         = lEncodeBool cl x
 lToPer (ENUMERATED e) x cl  = lEncodeEnum e x -- no PER-Visible constraints
 lToPer (BITSTRING nbs) x cl = lEncodeBS nbs cl x
+lToPer (OCTETSTRING) x cl   = lEncodeOS cl x
 
 \end{code}
 
@@ -815,6 +816,114 @@ strip0s (a:r)
 strip0s [] = []
 
 \end{code}
+
+\section{ENCODING THE OCTETSTRING TYPE}
+
+\begin{code}
+
+lEncodeOS :: [ESS OctetString] -> OctetString -> Either String BP.BitPut
+lEncodeOS [] (OctetString x) = encodeOSNoSz x
+lEncodeOS cl (OctetString x) = encodeOSSz cl x -- encodeSz t encodeOSNoL encodeOctS x
+
+\end{code}
+
+encodeOctS encodes an unconstrained SEQUENCEOF value.
+
+\begin{code}
+
+encodeOSNoSz :: [Octet] -> Either String BP.BitPut
+encodeOSNoSz xs
+    = let foo x = encodeNNBIntBits ((fromIntegral x),255) x
+      in
+        return (bitPutify (encodeWithLength (concat . map foo) xs))
+
+\end{code}
+
+encodeOSSz :: [ESS OctetString] -> OctetString -> Either String BP.BitPut
+encodeOSSz cl xs = lEncValidOS nbs (effOSCon cl) (validOSCon cl) xs
+
+effOSCon ::[ESS OctetString] -> Either String (ExtOS (ConType IntegerConstraint))
+effOSCon cs = lSerialEffCons lOSConE top cs
+
+
+validOSCon :: [ESS OctetString] -> Either String (ExtBS (ConType ValidIntegerConstraint))
+validOSCon cs = lSerialEffCons lOSConE top cs
+
+
+lEncValidOS :: Either String (ExtOS (ConType IntegerConstraint))
+               -> Either String (ExtOS (ConType ValidIntegerConstraint))
+               -> OctetString -> Either String BP.BitPut
+lEncValidOS m n v
+    = do
+        vsc <- m
+        if extensibleOS vsc
+            then lEncExtOS m n v
+            else lEncNonExtOS m n v
+
+
+lEncNonExtOS :: Either String (ExtOS (ConType IntegerConstraint))
+                -> Either String (ExtOS (ConType ValidIntegerConstraint))
+                -> BitString
+                -> Either String BP.BitPut
+lEncNonExtOS m n (OctetString vs)
+    = do
+        vsc <- m
+        ok  <- n
+        let ConType rc = getOSRC vsc
+            ConType (Valid okrc) = getOSRC ok
+            emptyConstraint = rc == bottom
+            inSizeRange []      = False
+            inSizeRange (x:rs)
+                = let l = genericLength vs
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            foobar
+                | emptyConstraint
+                    = throwError "Empty constraint"
+                | null nbs && inSizeRange okrc || (not . null) nbs
+                    = do bs <- osCode rc vs
+                         return (bitPutify bs)
+                | otherwise
+                    = throwError "Value out of range"
+        foobar
+
+
+lEncExtOS :: Either String (ExtOS (ConType IntegerConstraint))
+                -> Either String (ExtOS (ConType ValidIntegerConstraint))
+                -> BitString
+                -> Either String BP.BitPut
+lEncExtOS m n (OctetString vs)
+    = do
+        vsc <- m
+        ok  <- n
+        let ConType rc = getOSRC vsc
+            ConType (Valid okrc) = getOSRC ok
+            ConType ec = getOSEC vsc
+            ConType (Valid okec) = getOSEC ok
+            emptyConstraint = rc == bottom && ec == bottom
+            inSizeRange []      = False
+            inSizeRange (x:rs)
+                = let l = genericLength vs
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            foobar
+                | emptyConstraint
+                    = throwError "Empty constraint"
+                | inSizeRange okrc
+                    = do
+                        bs <- osCode nbs rc vs
+                        return $ do
+                                  BP.putNBits 1 (0::Int)
+                                  bitPutify bs
+                | inSizeRange okec
+                    = do
+                        bs <- osCode nbs rc vs
+                        return $ do
+                                  BP.putNBits 1 (1::Int)
+                                  bitPutify bs
+                | otherwise
+                    = throwError "Value out of range"
+        foobar
+
+
 
 \section{ENCODING THE RESTRICTED CHARACTER STRING TYPES}
 
