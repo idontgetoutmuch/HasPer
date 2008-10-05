@@ -1,7 +1,151 @@
 \begin{code}
+{-# OPTIONS_GHC -XTypeOperators -XGADTs -XEmptyDataDecls
+                -XFlexibleInstances -XFlexibleContexts
+#-}
 module ConstraintGeneration where
 
+import ASNTYPE
 import LatticeMod
+import Control.Monad.Error
+\end{code}
+
+
+
+Generation of Integer constraints.
+
+
+-- X.680 G.4.2.3 states that extension additions are discarded if
+-- a further constraint is subsequently serially applied.
+-- Thus applyExt only requires the last constraint in the list
+-- (the last in the serial application) and the root of the parent
+-- type since values in extension additions can only be values that
+-- are in the root of the parent type. The second element of the
+-- returned pair indicates if the constraint is extensible (True) or
+-- not (False).
+
+\begin{code}
+
+lApplyExt :: (IC a, Eq a, Lattice a, Show a) =>
+             Either String a -> ESS InfInteger -> (Either String a, Bool)
+lApplyExt rp (RE _)  = (bottom, False)
+lApplyExt rp (EXT _) = (bottom, False)
+lApplyExt rp (EXTWITH _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
+
+-- Need to define calcEC (follow rules outlined in X.680 G.4.3.8)
+-- and appExtWithRt
+-- For Integer constraints, set operators are only applied to
+-- non-extensible constraints (see 47.2 and 47.4 for definitions of
+-- SingleValue and ValueRange constraints) and thus calcEC is simply
+-- calcC. Thus G.4.3.8 can be ignored.
+
+lCalcEC :: (IC a,Lattice a, Show a, Eq a) =>
+           Constr InfInteger -> Either String a
+lCalcEC c = lCalcC c
+
+-- applyExtWithRt is simply serialC (defined below) since it is
+-- the serial application of the parent root and the extension of the
+-- final constraint. Only values in the paernt root may appear in the
+-- extension (see X.680 section G.4.2.3).
+
+lApplyExtWithRt :: (Eq a, Lattice a, IC a, Show a) =>
+                   Either String a -> Either String a -> Either String a
+lApplyExtWithRt a b = lSerialC a b
+
+-- need to define encInt
+
+-- Need first input to host incremented constraint (due to serial constraints)
+-- Need Either type to deal with legal and illegal constraints. An
+-- illegal constraint (typically a mismatch between a parent type and
+-- a constraint), will result in a string indicating the problem.
+-- Need Maybe type to deal with empty constraint e.g. mutually exclusive intersection
+-- As soon as one encounters an illegal constraint this is always
+-- returned, and an empty constraint is only superceded by an illegal constraint.
+-- Although an empty constraint could be viewed like an illegal
+-- constraint (since it does not allow any legal values), this could
+-- form either part of an extensible constraint whose overall effect
+-- is lega
+
+lRootIntCons :: (IC a, Lattice a, Eq a, Show a) =>
+                 Either String a -> [ESS InfInteger] -> Either String a
+lRootIntCons x [] = x
+lRootIntCons x (c:cs) = lRootIntCons (lEvalC c x) cs
+
+lEvalC ::  (IC a, Lattice a, Eq a, Show a) =>
+          ESS InfInteger -> Either String a -> Either String a
+lEvalC (RE c) x       = lSerialC x (lCalcC c)
+lEvalC (EXT c) x      = lSerialC x (lCalcC c)
+lEvalC (EXTWITH c d) x = lSerialC x (lCalcC c)
+
+-- See X.680 section G.4.2.3 for details on the serial application
+-- of constraints. The second input is the new constraint whose
+-- values must be bounded by the values in the first input. Thus
+-- minBound in the second input matches the lower bound in the first
+-- input and similarly for maxBound. Note that serialC takes two
+-- Maybe type inputs since the illegal first input has already been
+-- dealt with by applyIntCons. The second input cannot be illegal
+-- since this is simply the (possible) set combination of atomic
+-- constraints and involves no serial application of constraints.
+
+lSerialC :: (Show a, Lattice a, IC a, Eq a) =>
+            Either String a -> Either String a -> Either String a
+lSerialC mx my =
+   do a <- mx
+      b <- my
+      let la = getLower a
+          ua = getUpper a
+          lb = getLower b
+          ub = getUpper b
+          foobar
+             | not (within a b)
+                = throwError ("Constraint and parent type mismatch: " ++ show b ++ " is not within " ++ show a) -- Somehow we should prettyConstraint here
+             | otherwise
+                = return (serialCombine a b)
+      foobar
+
+lCalcC :: (IC a, Lattice a, Eq a, Show a) => Constr InfInteger -> Either String a
+lCalcC (UNION u) = lCalcU u
+
+-- Need to define unionC which returns the union of two
+-- constraints
+
+lCalcU :: (IC a, Lattice a, Eq a, Show a) => Union InfInteger -> Either String a
+lCalcU (IC i) = lCalcI i
+lCalcU(UC u i) = (lCalcU u) `ljoin` (lCalcI i)
+
+
+lCalcI :: (IC a, Lattice a, Eq a, Show a) =>
+          IntCon InfInteger -> Either String a
+lCalcI (INTER i e) = (lCalcI i) `meet` (lCalcA e)
+lCalcI (ATOM a)    = lCalcA a
+
+lCalcA :: (IC a, Lattice a, Eq a, Show a) => IE InfInteger -> Either String a
+lCalcA (E e) = lCalcE e
+
+-- Note that the resulting constraint is always a contiguous set.
+
+-- Need processCT to process the constraint implications of type
+-- inclusion.
+-- NOTE: Need to deal with illegal constraints resulting from
+-- processCT
+
+lCalcE :: (IC a, Lattice a, Eq a, Show a) => Elem InfInteger -> Either String a
+lCalcE (S (SV i)) = return (makeIC i i)
+lCalcE (C (Inc t)) = lProcessCT t []
+lCalcE (V (R (l,u))) = return (makeIC l u)
+
+
+
+-- Note that a parent type does not inherit the extension of an
+-- included type. Thus we use lRootIntCons on the included type.
+
+lProcessCT :: (IC a, Lattice a, Eq a, Show a) =>
+              ASNType InfInteger -> [ESS InfInteger] -> Either String a
+lProcessCT (BT INTEGER) cl = lRootIntCons top cl
+lProcessCT (ConsT t c) cl  = lProcessCT t (c:cl)
+
+\end{code}
+
+
 \end{code}
 GENERATION OF EFFECTIVE STRING CONSTRAINT
 
@@ -21,338 +165,197 @@ GENERATION OF EFFECTIVE STRING CONSTRAINT
  encompassing the (size,permittedAlphabet) constraint pair.
 
 
-serialResEffCons takes a list of constraints (representing
+serialEffCons takes a list of constraints (representing
 serially applied constraints) and generates the resulting
 effective constraint (if it exists).
 
 {- NOTE WE WANT THE TYPE TO BE MORE GENERAL e.g. replaced VisibleString with RS a => a -}
 
-serialResEffCons takes a list of constraints (representing
+serialEffCons takes a list of constraints (representing
 serially applied constraints) and generates the resulting
 effective constraint (if it exists).
 
 \begin{code}
 
-lSerialResEffCons :: (Eq t1,
-                      Eq t,
-                      Show t,
-                      Lattice t1,
-                      Lattice t,
-                      IC t,
-                      RS t1) =>
-                      Either String (ExtResStringConstraint t t1) -> [ESS t1]
-                      -> Either String (ExtResStringConstraint t t1)
-lSerialResEffCons m ls
+lSerialEffCons :: (MonadError [Char] t,
+                      ExtConstraint a1,
+                      Eq (b i),
+                      Constraint b i,
+                      Lattice (b i),
+                      ExtConstraint a) =>
+                     (Elem t1 -> Bool -> t (a (b i))) -> t (a1 (b i)) -> [ESS t1] -> t (a1 (b i))
+lSerialEffCons fn m ls
     = do
         let foobar
                 = do
                     esrc <- m
                     let foobar1 [] = m
-                        foobar1 [c] = lSerialApplyLast esrc c
-                        foobar1 (f:r) = lSerialResEffCons (lSerialApply esrc f) r
+                        foobar1 [c] = lSerialApplyLast fn esrc c
+                        foobar1 (f:r) = lSerialEffCons fn (lSerialApply fn esrc f) r
                     foobar1 ls
         foobar
 
-lSerialBSEffCons :: ( Eq t,
-                      Show t,
-                      Lattice t,
-                      IC t) =>
-                      Either String (ExtBS t) -> [ESS BitString]
-                      -> Either String (ExtBS t)
-lSerialBSEffCons m ls
-    = do
-        let foobar
-                = do
-                    esrc <- m
-                    let foobar1 [] = m
-                        foobar1 [c] = lSerialApplyLastBS esrc c
-                        foobar1 (f:r) = lSerialBSEffCons (lSerialApplyBS esrc f) r
-                    foobar1 ls
-        foobar
 
-lSerialApply :: (Eq a,
-                 Eq t,
-                 Show t,
-                 Lattice t,
-                 Lattice a,
-                 IC t,
-                 RS a) =>
-                 ExtResStringConstraint t a -> ESS a
-                 -> Either String (ExtResStringConstraint t a)
-lSerialApply ersc c = lEitherApply ersc (lResEffCons c 0)
-
-lSerialApplyBS ::(Eq t,
-                 Show t,
-                 Lattice t,
-                 IC) =>
-                 ExtBS t -> ESS BitString -> Either String (ExtBS t)
-lSerialApplyBS ersc c = lEitherApplyBS ersc (lBSEffCons c)
+lSerialApply :: (MonadError [Char] m,
+                 ExtConstraint a1,
+                 Lattice (b i),
+                 Constraint b i,
+                 Eq (b i),
+                 ExtConstraint a2,
+                 ExtConstraint a) =>
+                (Elem t -> Bool -> m (a1 (b i))) -> a (b i) -> ESS t -> m (a2 (b i))
+lSerialApply fn ersc c = lEitherApply ersc (lEffCons fn c)
 
 \end{code}
 
 \begin{code}
 
-lEitherApply :: (Eq i,
-                 Eq a,
-                 Show i,
-                 Lattice i,
-                 Lattice a,
-                 IC i,
-                 RS a) =>
-                 ExtResStringConstraint i a -> Either String (ExtResStringConstraint i a)
-                 -> Either String (ExtResStringConstraint i a)
-lEitherApply (ExtResStringConstraint rc1 _ _) m
+lEitherApply :: (MonadError [Char] m,
+                 ExtConstraint a,
+                 ExtConstraint a1,
+                 Constraint b i,
+                 Lattice (b i),
+                 ExtConstraint a2) =>
+                a (b i) -> m (a1 (b i)) -> m (a2 (b i))
+lEitherApply esrc m
     = do
         let foobar
                 = do x <- m
                      let rc2 = getRC x
+                         rc1 = getRC esrc
                          foobar1
-                            = if lValidResCon rc1 rc2
-                                 then return (ExtResStringConstraint (lUpdateResCon rc1 rc2) top False)
-                                 else throwError "Parent type and constraint mismatch"
-                     foobar1
-        foobar
-
-lEitherApplyBS :: (Eq i,
-                   Show i,
-                   Lattice i,
-                   IC i) =>
-                   ExtBS i -> Either String i -> Either String (ExtBS i)
-lEitherApplyBS  (ExtBS rc1 _ _) m
-    = do
-        let foobar
-                = do x <- m
-                     let rc2 = getBSRC x
-                         foobar1
-                            = if within rc1 rc2
-                                 then return (ExtBS (serialCombine rc1 rc2) top False)
+                            = if isValid rc1 rc2
+                                 then return (makeEC (updateV rc1 rc2) top False)
                                  else throwError "Parent type and constraint mismatch"
                      foobar1
         foobar
 
 
---lValidResCon :: (Lattice a, RS a, Eq a) => ResStringConstraint a -> ResStringConstraint a -> Bool
-lValidResCon (ResStringConstraint s1 p1) (ResStringConstraint s2 p2)
-    = within s1 s2 && lValidPA p1 p2
+lSerialApplyLast :: (MonadError [Char] t1,
+                     ExtConstraint a1,
+                     Lattice (b i),
+                     Constraint b i,
+                     Eq (b i),
+                     ExtConstraint a,
+                     ExtConstraint a2) =>
+                    (Elem t -> Bool -> t1 (a1 (b i))) -> a (b i) -> ESS t -> t1 (a2 (b i))
+lSerialApplyLast fn x c = lLastApply x (lEffCons fn c)
 
 
-
-lValidPA :: (Lattice a, RS a, Eq a) => a -> a -> Bool
-lValidPA x y
-    = if x == top || y == top
-        then True
-        else and (map (flip elem (getString x)) (getString y))
-
-
-lUpdateResCon :: (IC t, Lattice t1, RS t1, Eq t1) =>
-                 ResStringConstraint t t1
-                 -> ResStringConstraint t t1
-                 -> ResStringConstraint t t1
-lUpdateResCon (ResStringConstraint s1 p1) (ResStringConstraint s2 p2)
-     = ResStringConstraint (serialCombine s1 s2) (lUpdatePA p1 p2)
-
-
-
-lUpdatePA :: (Lattice a, RS a, Eq a) => a -> a -> a
-lUpdatePA x y
-    = if x == bottom || y == bottom
-        then bottom
-        else y
-
-lSerialApplyLast :: (Eq t1,
-                     Eq t,
-                     Show t,
-                     Lattice t1,
-                     Lattice t,
-                     IC t,
-                     RS t1) =>
-                     ExtResStringConstraint t t1 -> ESS t1 -> Either String (ExtResStringConstraint t t1)
-lSerialApplyLast x c = lLastApply x (lResEffCons c 0)
-
-lSerialApplyLastBS ::(Eq t,
-                     Show t,
-                     Lattice t,
-                     IC t) =>
-                     ExtBS t -> ESS BitString -> Either String (ExtBS t)
-lSerialApplyLastBS x c = lLastApplyBS x (lBSEffCons c)
-
-
-lLastApply :: (Eq t1,
-               RS t1,
-               Lattice t1,
-               IC t,
-               Lattice t,
-               Eq t,
-               Show t) =>
-               ExtResStringConstraint t t1 -> Either String (ExtResStringConstraint t t1)
-               -> Either String (ExtResStringConstraint t t1)
-lLastApply (ExtResStringConstraint r1 _ _) m
+lLastApply :: (MonadError [Char] t,
+               ExtConstraint a1,
+               ExtConstraint a2,
+               Lattice (b i),
+               Constraint b i,
+               ExtConstraint a) =>
+              a (b i) -> t (a1 (b i)) -> t (a2 (b i))
+lLastApply esrc m
     = do
-         let foobar
+         let  r1 = getRC esrc
+              foobar
                  = do
-                    x@(ExtResStringConstraint r2 e2 _) <- m
-                    let foobar1
-                         | not (extensible x) = lEitherApply x m
-                         | lValidResCon r1 r2 && lValidResCon r1 e2
-                            = return (ExtResStringConstraint (lUpdateResCon r1 r2)
-                                                    (lUpdateResCon r1 e2) True)
+                    x <- m
+                    let
+                       r2 = getRC x
+                       e2 = getEC x
+                       foobar1
+                         | not (isExtensible x) = lEitherApply x m
+                         | isValid r1 r2 && isValid r1 e2
+                            = return (makeEC (updateV r1 r2)
+                                                    (updateV r1 e2) True)
                          | otherwise = throwError "Parent type and constraint mismatch"
                     foobar1
          foobar
-
-lLastApplyBS ::(IC t,
-               Lattice t,
-               Eq t,
-               Show t) =>
-               ExtBS t -> Either String (ExtBS t)
-               -> Either String (ExtBSt)
-lLastApplyBS (ExtBS r1 _ _) m
-    = do
-         let foobar
-                 = do
-                    x@(ExtBS r2 e2 _) <- m
-                    let foobar1
-                         | not (extensible x) = lEitherApplyBS x m
-                         | within r1 r2 && within r1 e2
-                            = return (ExtBS (serialCombine r1 r2)
-                                                    (serialCombine r1 e2) True)
-                         | otherwise = throwError "Parent type and constraint mismatch"
-                    foobar1
-         foobar
-
-
 
 \end{code}
 
-resEffCons generates the effective constraint of a restricted
+EffCons generates the effective constraint of a restricted
 type constraint.
 
 \begin{code}
 
-lResEffCons :: (RS t,
-                IC i,
-                Lattice i,
-                Lattice t,
-                Eq i,
-                Show i,
-                Eq t) =>
-                ESS t -> Int ->  Either String (ExtResStringConstraint i t)
-lResEffCons (RE c) n        = lResCon c False n
-lResEffCons (EXT c) n       = lResCon c True n
-lResEffCons (EXTWITH c e) n = lExtendResC (lResCon c False n) (lResCon e False n)
+lEffCons :: (Eq (b i),
+                Constraint b i,
+                Lattice (b i),
+                ExtConstraint a,
+                MonadError [Char] t1) =>
+               (Elem t -> Bool -> t1 (a (b i))) -> ESS t -> t1 (a (b i))
+lEffCons fn (RE c)         = lCon fn c False
+lEffCons fn (EXT c)        = lCon fn c True
+lEffCons fn (EXTWITH c e)  = lExtendC (lCon fn c False) (lCon fn e False)
 
-lBSEffCons :: (IC i,
-               Lattice i,
-               Eq i,
-               Show i) =>
-                ESS BitString -> Int ->  Either String (ExtBS i)
-lBSEffCons (RE c) n        = lBSCon c False n
-lBSEffCons (EXT c) n       = lBSCon c True n
-lBSEffCons (EXTWITH c e) n = lExtendBSC (lBSCon c False n) (lResCon e False n)
 \end{code}
 
-resCon processes constraints. Its second input indicates if the
+Con processes constraints. Its second input indicates if the
 type is extensible.
 
 \begin{code}
 
-lResCon :: (Eq a,
-            Eq i,
-            Show i,
-            Lattice a,
-            Lattice i,
-            IC i,
-            RS a) =>
-            Constr a -> Bool -> Int -> Either String (ExtResStringConstraint i a)
-lResCon (UNION u) b n        = lResConU u b n
-lResCon (ALL (EXCEPT e)) b n = lResExceptAll top (conE e b n)
+lCon :: (MonadError [Char] t1,
+            ExtConstraint a,
+            Lattice (b i),
+            Constraint b i,
+            Eq (b i)) =>
+           (Elem t -> Bool -> t1 (a (b i))) -> Constr t -> Bool -> t1 (a (b i))
+lCon fn (UNION u) b         = lConU fn u b
+lCon fn (ALL (EXCEPT e)) b  = lExceptAll top (fn e b)
 
-lBSCon :: (Eq i,
-           Show i,
-           Lattice i,
-           IC i) =>
-            Constr BitString -> Bool -> Int -> Either String (ExtBS i)
-lBSCon (UNION u) b n        = lBSConU u b n
-lBSCon (ALL (EXCEPT e)) b n = lBSExceptAll top (bsConE e b n)
 \end{code}
 
-extendresC implements the extension operator (...) on visiblestring
+extendC implements the extension operator (...) on visiblestring
 constraints.
 Needs to satisfy the rules regarding visibility (see Annex B.2.2.10 of X.691)
 
 \begin{code}
 
-lExtendResC :: (Eq t,
-                Eq t1,
-                Lattice t,
-                Lattice t1,
-                IC t,
-                RS t1) =>
-                Either String (ExtResStringConstraint t t1)
-                -> Either String (ExtResStringConstraint t t1)
-                -> Either String (ExtResStringConstraint t t1)
-lExtendResC m n
+lExtendC :: (MonadError [Char] m,
+                Lattice (b i),
+                ExtConstraint a2,
+                Constraint b i,
+                ExtConstraint a1,
+                ExtConstraint a) =>
+               m (a1 (b i)) -> m (a (b i)) -> m (a2 (b i))
+lExtendC m n
     = do
         let foobar
                 = do
-                    x@(ExtResStringConstraint r1 e1 _) <- m
-                    y@(ExtResStringConstraint r2 e2 _) <- n
-                    let foobar1
-                            | not (extensible x) && not (extensible y)
-                                = return (ExtResStringConstraint r1 (exceptRSC r2 r1) True)
-                            | extensible x && not (extensible y)
-                                = return (ExtResStringConstraint r1 (exceptRSC (e1 `ljoin` r2) r1) True)
-                            | not (extensible x) && extensible y
-                                = return (ExtResStringConstraint r1 (exceptRSC (r2 `ljoin` e2) r1) True)
-                            | extensible x && extensible y
-                                = return (ExtResStringConstraint r1
-                                            (exceptRSC (e1 `ljoin` (r2 `ljoin` e2)) r1) True)
+                    x <- m
+                    y <- n
+                    let
+                        r1 = getRC x
+                        e1 = getEC x
+                        r2 = getRC y
+                        e2 = getEC y
+                        foobar1
+                            | not (isExtensible x) && not (isExtensible y)
+                                = return (makeEC r1 (except r2 r1) True)
+                            | isExtensible x && not (isExtensible y)
+                                = return (makeEC r1 (except (e1 `ljoin` r2) r1) True)
+                            | not (isExtensible x) && isExtensible y
+                                = return (makeEC r1 (except (r2 `ljoin` e2) r1) True)
+                            | isExtensible x && isExtensible y
+                                = return (makeEC r1
+                                            (except (e1 `ljoin` (r2 `ljoin` e2)) r1) True)
                     foobar1
         catchError foobar (\err -> throwError "Invisible")
 
-
-lExtendBS :: (Eq t,
-                Lattice t,
-                IC t) =>
-                Either String (ExtBS t)
-                -> Either String (ExtBS t)
-                -> Either String (ExtBS t)
-lExtendBS m n
-    = do
-        let foobar
-                = do
-                    x@(ExtBS r1 e1 _) <- m
-                    y@(ExtBS r2 e2 _) <- n
-                    let foobar1
-                            | not (extensible x) && not (extensible y)
-                                = return (ExtBS r1 (exceptBS r2 r1) True)
-                            | extensible x && not (extensible y)
-                                = return (ExtBS r1 (exceptBS (e1 `ljoin` r2) r1) True)
-                            | not (extensible x) && extensible y
-                                = return (ExtBS r1 (exceptBS (r2 `ljoin` e2) r1) True)
-                            | extensible x && extensible y
-                                = return (ExtBS r1
-                                            (exceptBS (e1 `ljoin` (r2 `ljoin` e2)) r1) True)
-                    foobar1
-        catchError foobar (\err -> throwError "Invisible")
 \end{code}
 
-resExceptAll has to deal with the various potential universal
+ExceptAll has to deal with the various potential universal
 sets which are dependent on the nature of the excepted constraint.
 Note: The resulting constraint is non-extensible (see X.680
 G.4.3.8)
 
 \begin{code}
 
-lResExceptAll :: (IC i,
-                  Eq i,
-                  Eq a,
-                  RS a,
-                  Lattice i,
-                  Lattice a) =>
-                  ResStringConstraint i a -> Either String (ExtResStringConstraint i a)
-                  -> Either String (ExtResStringConstraint i a)
-lResExceptAll t m
+lExceptAll :: (MonadError [Char] m,
+                  Constraint b i,
+                  ExtConstraint a1,
+                  Eq (b i),
+                  Lattice (b i),
+                  ExtConstraint a) =>
+                 b i -> m (a (b i)) -> m (a1 (b i))
+lExceptAll t m
     = do
          let foobar
                 = do
@@ -360,53 +363,23 @@ lResExceptAll t m
                     let rc = getRC ersc
                         emptyConstraint = rc == bottom
                         foobar1
-                            | emptyConstraint = return (ExtResStringConstraint t top False)
-                            | otherwise = return (ExtResStringConstraint (exceptRSC top rc) top False)
-                    foobar1
-         catchError foobar (\err -> throwError "Invisible")
-
-lBSExceptAll :: (IC i,
-                  Eq i,
-                  Lattice i) =>
-                  i -> Either String (ExtBS i)
-                  -> Either String (ExtBS i)
-lBSExceptAll t m
-    = do
-         let foobar
-                = do
-                    ersc <- m
-                    let rc = getBSRC ersc
-                        emptyConstraint = rc == bottom
-                        foobar1
-                            | emptyConstraint = return (ExtBS t top False)
-                            | otherwise = return (ExtBS (exceptBS top rc) top False)
+                            | emptyConstraint = return (makeEC t top False)
+                            | otherwise = return (makeEC (except top rc) top False)
                     foobar1
          catchError foobar (\err -> throwError "Invisible")
 
 
-lResConU :: (RS t,
-             IC i,
-             Lattice i,
-             Lattice t,
-             Eq i,
-             Show i,
-             Eq t) =>
-             Union t -> Bool -> Int -> Either String (ExtResStringConstraint i t)
-lResConU (IC i) b  n  = lResConI i b n
-lResConU (UC u i) b n = lUnionResC (lResConI i b n) (lResConU u False n)
-
-
-lBSConU :: (IC i,
-            Lattice i,
-            Eq i,
-            Show i) =>
-            Union BitString -> Bool -> Int -> Either String (ExtBS i)
-lBSConU (IC i) b  n  = lBSConI i b n
-lBSConU (UC u i) b n = lUnionBS (lBSConI i b n) (lBSConU u False n)
+lConU :: (Constraint b i,
+             Lattice (b i),
+             ExtConstraint a,
+             MonadError [Char] t1) =>
+            (Elem t -> Bool -> t1 (a (b i))) -> Union t -> Bool -> t1 (a (b i))
+lConU fn (IC i) b   = lConI fn i b
+lConU fn (UC u i) b = lUnionC (lConI fn i b) (lConU fn u False)
 
 \end{code}
 
-unionRes returns the union of two pairs of constraints. Note
+union returns the union of two pairs of constraints. Note
 that the union of a size constraint (and no permitted alphabet constraint)
 and vice versa result in no constraint.
 sizeUnion and paUnion union size and permitted alphabet constraints respectively.
@@ -419,16 +392,14 @@ alphabet constraint is an unconstrained type.
 
 \begin{code}
 
-lUnionResC :: (IC i,
-               Eq i,
-               Eq a,
-               RS a,
-               Lattice i,
-               Lattice a) =>
-               Either String (ExtResStringConstraint i a)
-               -> Either String (ExtResStringConstraint i a)
-               -> Either String (ExtResStringConstraint i a)
-lUnionResC m n
+lUnionC :: (MonadError [Char] m,
+               Constraint b i,
+               ExtConstraint a2,
+               Lattice (b i),
+               ExtConstraint a1,
+               ExtConstraint a) =>
+              m (a1 (b i)) -> m (a (b i)) -> m (a2 (b i))
+lUnionC m n
     = do
         let foobar
              = do
@@ -439,95 +410,48 @@ lUnionResC m n
                     r2 = getRC c2
                     e2 = getEC c2
                     foobar1
-                        | not (extensible c1) && not (extensible c2)
-                             = return (ExtResStringConstraint (r1 `ljoin` r2) top False)
-                        | not (extensible c1)
-                             = return (ExtResStringConstraint (r1 `ljoin` r2) e2 True)
-                        | extensible c1 && not (extensible c2)
-                             = return (ExtResStringConstraint (r1 `ljoin` r2) e1 True)
+                        | not (isExtensible c1) && not (isExtensible c2)
+                             = return (makeEC (r1 `ljoin` r2) top False)
+                        | not (isExtensible c1)
+                             = return (makeEC (r1 `ljoin` r2) e2 True)
+                        | isExtensible c1 && not (isExtensible c2)
+                             = return (makeEC (r1 `ljoin` r2) e1 True)
                         | otherwise
-                             = return (ExtResStringConstraint (r1 `ljoin` r2)
-                                       (exceptRSC ((r1 `ljoin` e1) `ljoin` (r2 `ljoin` e2))
+                             = return (makeEC (r1 `ljoin` r2)
+                                       (except ((r1 `ljoin` e1) `ljoin` (r2 `ljoin` e2))
                                                   (r1 `ljoin` r2)) True)
                 foobar1
         catchError foobar (\err -> throwError "Invisible")
-
-lUnionBS :: (IC i,
-             Eq i,
-             Lattice i) =>
-             Either String (ExtBS i)
-             -> Either String (ExtBS i)
-             -> Either String (ExtBS i)
-lUnionBS m n
-    = do
-        let foobar
-             = do
-                c1 <- m
-                c2 <- n
-                let r1 = getBSRC c1
-                    e1 = getBSEC c1
-                    r2 = getBSRC c2
-                    e2 = getBSEC c2
-                    foobar1
-                        | not (extensible c1) && not (extensible c2)
-                             = return (ExtBS (r1 `ljoin` r2) top False)
-                        | not (extensible c1)
-                             = return (ExtBS (r1 `ljoin` r2) e2 True)
-                        | extensible c1 && not (extensible c2)
-                             = return (ExtBS (r1 `ljoin` r2) e1 True)
-                        | otherwise
-                             = return (ExtBS (r1 `ljoin` r2)
-                                       (exceptBS ((r1 `ljoin` e1) `ljoin` (r2 `ljoin` e2))
-                                                  (r1 `ljoin` r2)) True)
-                foobar1
-        catchError foobar (\err -> throwError "Invisible")
-
-
 
 \end{code}
 
-resConI deals with the intersection of visiblestring constraints
+ConI deals with the intersection of visiblestring constraints
 
 \begin{code}
 
-lResConI :: (Eq t,
-             Eq i,
-             Show i,
-             Lattice t,
-             Lattice i,
-             IC i,
-             RS t) =>
-             IntCon t -> Bool -> Int -> Either String (ExtResStringConstraint i t)
-lResConI (INTER i e) b n = lInterResC (lResConA e b n) (lResConI i False n)
-lResConI (ATOM e) b n    = lResConA e b n
+lConI :: (MonadError [Char] t1,
+             ExtConstraint a,
+             Lattice (b i),
+             Constraint b i) =>
+            (Elem t -> Bool -> t1 (a (b i))) -> IntCon t -> Bool -> t1 (a (b i))
+lConI fn (INTER i e) b = lInterC (lConA fn e b) (lConI fn i False)
+lConI fn (ATOM e) b    = lConA fn e b
 
-
-lBSConI :: (Eq i,
-            Show i,
-            Lattice i,
-            IC i) =>
-            IntCon BitString -> Bool -> Int -> Either String (ExtBS i t)
-lBSConI (INTER i e) b n = lInterBSC (lBSConA e b n) (lBSConI i False n)
-lBSConI (ATOM e) b n    = lBSConA e b n
 \end{code}
 
-interResC implements the intersection of visiblestring constraints
+interC implements the intersection of visiblestring constraints
 Needs to satisfy the rules regarding visibility (see Annex B.2.2.10 of X.691)
 and set operators and effective constraints (see G.4.3.8 of
 X.680)
 
 \begin{code}
 
-lInterResC :: (Eq i,
-               Eq a,
-               Lattice i,
-               Lattice a,
-               IC i,
-               RS a) =>
-               Either String (ExtResStringConstraint i a)
-               -> Either String (ExtResStringConstraint i a)
-               -> Either String (ExtResStringConstraint i a)
-lInterResC m n
+lInterC :: (Lattice (b i),
+               Constraint b i,
+               MonadError e t,
+               ExtConstraint a) =>
+              t (a (b i)) -> t (a (b i)) -> t (a (b i))
+lInterC m n
     = do
          let foobar1 x
                  = do catchError (do c2 <- n
@@ -540,50 +464,14 @@ lInterResC m n
                         r2 = getRC c2
                         e2 = getEC c2
                         foobar3
-                            | not (extensible c1) && not (extensible c2)
-                                 = return (ExtResStringConstraint (r1 `meet` r2) top False)
-                            | not (extensible c1)
-                                 = return (ExtResStringConstraint (r1 `meet` r2) (r1 `meet` e2) True)
-                            | extensible c1 && not (extensible c2)
-                                 = return (ExtResStringConstraint (r1 `meet` r2) (r2 `meet` e1)  True)
+                            | not (isExtensible c1) && not (isExtensible c2)
+                                 = return (makeEC (r1 `meet` r2) top False)
+                            | not (isExtensible c1)
+                                 = return (makeEC (r1 `meet` r2) (r1 `meet` e2) True)
+                            | isExtensible c1 && not (isExtensible c2)
+                                 = return (makeEC (r1 `meet` r2) (r2 `meet` e1)  True)
                             | otherwise
-                                 = return (ExtResStringConstraint (r1 `meet` r2) (exceptRSC ((r1 `ljoin` e1)
-                                        `meet` (r2 `ljoin` e2)) (r1 `meet` r2)) True)
-                    foobar3
-             foobar
-                = catchError (do c1 <- m
-                                 foobar1 c1)
-                             (\err -> n)
-         foobar
-
-
-lInterBS :: (Eq i,
-              Lattice i,
-              IC i) =>
-              Either String (ExtBS i)
-              -> Either String (ExtBS i)
-              -> Either String (ExtBS i)
-lInterBS m n
-    = do
-         let foobar1 x
-                 = do catchError (do c2 <- n
-                                     foobar2 x c2)
-                                 (\err -> m)
-             foobar2 c1 c2
-                 = do
-                    let r1 = getBSRC c1
-                        e1 = getBSEC c1
-                        r2 = getBSRC c2
-                        e2 = getBSEC c2
-                        foobar3
-                            | not (extensible c1) && not (extensible c2)
-                                 = return (ExtBS (r1 `meet` r2) top False)
-                            | not (extensible c1)
-                                 = return (ExtBS (r1 `meet` r2) (r1 `meet` e2) True)
-                            | extensible c1 && not (extensible c2)
-                                 = return (ExtBS (r1 `meet` r2) (r2 `meet` e1)  True)
-                            | otherwise
-                                 = return (ExtBS (r1 `meet` r2) (exceptBS ((r1 `ljoin` e1)
+                                 = return (makeEC (r1 `meet` r2) (except ((r1 `ljoin` e1)
                                         `meet` (r2 `ljoin` e2)) (r1 `meet` r2)) True)
                     foobar3
              foobar
@@ -594,34 +482,22 @@ lInterBS m n
 
 \end{code}
 
-resConA deals with atomic (including except) constraints
+ConA deals with atomic (including except) constraints
 
 \begin{code}
 
-lResConA :: (Eq t,
-             Eq i,
-             Show i,
-             Lattice t,
-             Lattice i,
-             IC i,
-             RS t) =>
-             IE t -> Bool -> Int -> Either String (ExtResStringConstraint i t)
-lResConA (E e) b n = conE e b n
-lResConA (Exc e (EXCEPT ex)) b n
-                = lExceptResC (conE e b n) (conE ex False n)
+lConA :: (ExtConstraint a,
+             MonadError [Char] m,
+             Lattice (b i),
+             Constraint b i) =>
+            (Elem t -> Bool -> m (a (b i))) -> IE t -> Bool -> m (a (b i))
+lConA fn (E e) b  = fn e b
+lConA fn (Exc e (EXCEPT ex)) b
+                = lExceptC (fn e b) (fn ex False)
 
-
-lBSConA :: (Eq i,
-            Show i,
-            Lattice i,
-            IC i) =>
-            IE BitString -> Bool -> Int -> Either String (ExtBS i)
-lBSConA (E e) b n = conE e b n
-lBSConA (Exc e (EXCEPT ex)) b n
-                = lExceptBS (lBSConE e b) (lBSConE ex False)
 \end{code}
 
-resExcept implements the set difference operator applied to
+Except implements the set difference operator applied to
 visiblestring constraints
 Needs to satisfy the rules regarding visibility (see Annex B.2.2.10 of X.691)
 and set operators and effective constraints (see G.4.3.8 of
@@ -629,16 +505,13 @@ X.680)
 
 \begin{code}
 
-lExceptResC :: (IC i,
-                Eq i,
-                Eq a,
-                RS a,
-                Lattice i,
-                Lattice a) =>
-                Either String (ExtResStringConstraint i a)
-                -> Either String (ExtResStringConstraint i a)
-                -> Either String (ExtResStringConstraint i a)
-lExceptResC m n
+lExceptC :: (Constraint b i,
+                ExtConstraint a,
+                Lattice (b i),
+                MonadError [Char] m,
+                ExtConstraint a1) =>
+               m (a1 (b i)) -> m (a (b i)) -> m (a1 (b i))
+lExceptC m n
     = do
          let foobar1 x
                  = catchError (do c2 <- n
@@ -651,52 +524,15 @@ lExceptResC m n
                         r2 = getRC c2
                         e2 = getEC c2
                         foobar3
-                            | not (extensible c1)
-                                = return (ExtResStringConstraint (exceptRSC r1 r2) top False)
-                            | extensible c1 && not (extensible c2)
-                                 = return (ExtResStringConstraint (exceptRSC r1 r2)
-                                            (exceptRSC (exceptRSC r1 e2) (exceptRSC r1 r2)) True)
+                            | not (isExtensible c1)
+                                = return (makeEC (except r1 r2) top False)
+                            | isExtensible c1 && not (isExtensible c2)
+                                 = return (makeEC (except r1 r2)
+                                            (except (except r1 e2) (except r1 r2)) True)
                             | otherwise
-                                 = return (ExtResStringConstraint (exceptRSC r1 r2)
-                                            (exceptRSC (exceptRSC r1 (r2 `ljoin` e2))
-                                                       (exceptRSC r1 r2)) True)
-                    foobar3
-             foobar
-                = catchError (do
-                               c1 <- m
-                               foobar1 c1)
-                             (\err -> throwError "Invisible")
-         foobar
-
-
-lExceptBS :: (IC i,
-              Eq i,
-              Lattice i) =>
-              Either String (ExtBS i)
-                -> Either String (ExtBS i)
-                -> Either String (ExtBS i)
-lExceptResC m n
-    = do
-         let foobar1 x
-                 = catchError (do c2 <- n
-                                  foobar2 x c2)
-                              (\err -> m)
-             foobar2 c1 c2
-                 = do
-                    let r1 = getRC c1
-                        e1 = getEC c1
-                        r2 = getRC c2
-                        e2 = getEC c2
-                        foobar3
-                            | not (extensible c1)
-                                = return (ExtBS (exceptBS r1 r2) top False)
-                            | extensible c1 && not (extensible c2)
-                                 = return (ExtBS (exceptBS r1 r2)
-                                            (exceptBS (exceptBS r1 e2) (exceptBS r1 r2)) True)
-                            | otherwise
-                                 = return (ExtBS (exceptBS r1 r2)
-                                            (exceptBS (exceptBS r1 (r2 `ljoin` e2))
-                                                       (exceptBS r1 r2)) True)
+                                 = return (makeEC (except r1 r2)
+                                            (except (except r1 (r2 `ljoin` e2))
+                                                       (except r1 r2)) True)
                     foobar3
              foobar
                 = catchError (do
@@ -707,7 +543,7 @@ lExceptResC m n
 
 \end{code}
 
-resConE deals with the various visiblestring constraints
+ConE deals with the various visiblestring constraints
 Note that a permitted alphabet constraint uses value range
 constraint(s) and that extensible permitted alphabet
 constraints are not per-visible.
@@ -718,23 +554,20 @@ constraints.
 
 \begin{code}
 
-conE e b n
-    | n == 0 = lResConE e b
-    | otherwise = lPaConE e b
-
-lResConE :: (Eq a,
-             Eq i,
-             Show i,
-             Lattice a,
-             Lattice i,
-             IC i,
-             RS a) =>
-             Elem a -> Bool -> Either String (ExtResStringConstraint i a)
-lResConE (SZ (SC v)) b            = lEffResSize v b
+lResConE :: (RS a,
+                IC i,
+                Lattice i,
+                Lattice a,
+                Eq i,
+                Show i,
+                Eq a,
+                Builtin a) =>
+                Elem a -> Bool ->  Either String (ExtResStringConstraint (ResStringConstraint a i))
+lResConE (SZ (SC v)) b            = lEffSize v b
 lResConE (P (FR (EXT _))) b       = throwError "Invisible!"
 lResConE (P (FR (EXTWITH _ _))) b = throwError "Invisible!"
-lResConE (P (FR (RE p)))  b       = lResEffCons (RE p) 1
-lResConE (C (Inc c)) b            = lProcessCST c []
+lResConE (P (FR (RE p)))  b       = lEffCons lPaConE (RE p)
+lResConE (C (Inc c)) b            = lProcessCST lResConE c []
 lResConE (S (SV v))  b            = throwError "Invisible!"
 
 
@@ -742,10 +575,11 @@ lBSConE :: (Eq i,
             Show i,
             Lattice i,
             IC i) =>
-            Elem BitString -> Bool -> Either String (ExtBS i)
-lBSConE (SZ (SC v)) b  = lEffBSSize v b
+            Elem BitString -> Bool -> Either String (ExtBS (ConType i))
+lBSConE (SZ (SC v)) b  = lEffSize v b
 lBSConE (C (Inc c)) b  = throwError "Invisible!"
 lBSConE (S (SV v))  b  = throwError "Invisible!"
+
 \end{code}
 
 paConE deals with the various visiblestring constraints
@@ -760,78 +594,69 @@ constraints.
 \begin{code}
 
 lPaConE :: (Lattice a,
-            Lattice a1,
+            Lattice i,
             RS a,
             Eq a,
-            Eq a1,
-            Show a1,
-            IC a1) =>
-            Elem a -> Bool -> Either String (ExtResStringConstraint a1 a)
+            Eq i,
+            Show i,
+            IC i,
+            Builtin a) =>
+            Elem a -> Bool -> Either String (ExtResStringConstraint (ResStringConstraint a i))
 lPaConE (V (R (l,u))) b
     = let ls = getString l
           us = getString u
           rs = [head ls..head us]
         in
-            return (ExtResStringConstraint (ResStringConstraint top (makeString rs))
+            return (ExtResStringConstraint (ResStringConstraint (makeString rs) top)
                         (ResStringConstraint top top) b)
-lPaConE (C (Inc c)) b = lProcessCST c []
+lPaConE (C (Inc c)) b = lProcessCST lPaConE c []
 lPaConE (S (SV v)) b
-   = return (ExtResStringConstraint (ResStringConstraint top v)
+   = return (ExtResStringConstraint (ResStringConstraint v top)
                                       (ResStringConstraint top top) b)
 
 
-lEffResSize :: (IC t,
-                Lattice a,
-                Lattice t,
-                RS a,
-                Eq a,
-                Eq t,
-                Show t) =>
-                ESS InfInteger -> Bool -> Either String (ExtResStringConstraint t a)
-lEffResSize (RE c) b
+lEffSize :: (IC a1,
+                Lattice a1,
+                Eq a1,
+                Show a1,
+                Constraint b a1,
+                Lattice (b a1),
+                ExtConstraint a) =>
+               ESS InfInteger -> Bool -> Either String (a (b a1))
+lEffSize (RE c) b
     = do ec <- lCalcC c
-         return (ExtResStringConstraint (ResStringConstraint ec top) top b)
-lEffResSize (EXT c) b
+         return (makeEC (makeSC ec) top b)
+lEffSize (EXT c) b
     = do ec <- lCalcC c
-         return (ExtResStringConstraint (ResStringConstraint ec top) top True)
-lEffResSize (EXTWITH c d) b
+         return (makeEC (makeSC ec) top True)
+lEffSize (EXTWITH c d) b
     = do r <- lCalcC c
          e <- lCalcC d
-         return (ExtResStringConstraint (ResStringConstraint r top)
-                                        (ResStringConstraint e top)  True)
+         return (makeEC (makeSC r) (makeSC e) True)
 
 
-lEffBSSize :: (IC t,
-               Lattice t,
-               Eq t,
-               Show t) =>
-               ESS InfInteger -> Bool -> Either String (ExtBS t)
-lEffBSSize (RE c) b
-    = do ec <- lCalcC c
-         return (ExtBS ec top b)
-lEffBSSize (EXT c) b
-    = do ec <- lCalcC c
-         return (ExtBS ec top True)
-lEffBSSize (EXTWITH c d) b
-    = do r <- lCalcC c
-         e <- lCalcC d
-         return (ExtBS r e True)
-
-lProcessCST :: (Eq a,
-                Eq i,
-                Show i,
-                Lattice a,
-                Lattice i,
-                IC i,
-                RS a) => ASNType a -> [ESS a] -> Either String (ExtResStringConstraint i a)
-lProcessCST (BT _) cl = lRootStringCons top cl
-lProcessCST (ConsT t c) cl = lProcessCST t (c:cl)
+lProcessCST :: (Lattice (t1 (a1 (b i))),
+                MonadError [Char] t1,
+                ExtConstraint a1,
+                Eq (b i),
+                Constraint b i,
+                Lattice (b i)) =>
+               (Elem t -> Bool -> t1 (a1 (b i))) -> ASNType t -> [ESS t] -> t1 (a1 (b i))
+lProcessCST fn (BT _) cl = lRootStringCons fn top cl
+lProcessCST fn (ConsT t c) cl = lProcessCST fn t (c:cl)
 
 
-lRootStringCons t cs
-    = let m = lSerialResEffCons t cs
+lRootStringCons :: (ExtConstraint a,
+                    Lattice (b i),
+                    Constraint b i,
+                    Eq (b i),
+                    MonadError [Char] t1) =>
+                   (Elem t -> Bool -> t1 (a (b i))) -> t1 (a (b i)) -> [ESS t] -> t1 (a (b i))
+lRootStringCons fn t cs
+    = let m = lSerialEffCons fn t cs
       in do
-            (ExtResStringConstraint r e _) <- m
-            return (ExtResStringConstraint r top False)
+            c <- m
+            r <- return (getRC c)
+            return (makeEC r top False)
 
 \end{code}
