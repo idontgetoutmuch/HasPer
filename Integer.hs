@@ -1,11 +1,13 @@
+module Language.ASN1.PER.Integer (
+   encodeNNBIntBits
+   ) where
+
 import Data.Bits
 import Data.Word
 import Data.List
--- import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.Binary.BitPut
-import Test.LazySmallCheck hiding (lift)
-import Control.Monad.State
+import Test.LazySmallCheck
 
 type BitStream = [Int]
 
@@ -89,22 +91,14 @@ encodeNNBIntBitsAux (_,0) = Nothing
 encodeNNBIntBitsAux (0,w) = Just (0, (0, w `div` 2))
 encodeNNBIntBitsAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
 
-encodeNNBIntBits' :: Integer -> Integer -> BitPut
-encodeNNBIntBits' n w = 
-   let (r, _) = runState (f n w) () in r
-      where
-         f _ 0 = return (return ())
-         f 0 w =
-            do r <- f 0 (w `div` 2)
-               return (do {r; putNBits 1 (0::Word8)})
-         f n w =
-            do r <- f (n `div` 2) (w `div` 2)
-               return (do {r; putNBits 1 (n `mod` 2)})
-
-
-encodeNNBIntBits :: (Integer, Integer) -> BitStream
-encodeNNBIntBits
+encodeNNBIntBits' :: (Integer, Integer) -> BitStream
+encodeNNBIntBits'
     = reverse . (map fromInteger) . unfoldr encodeNNBIntBitsAux
+
+encodeNNBIntBits :: Integer -> Integer -> BitPut
+encodeNNBIntBits _ 0 = return ()
+encodeNNBIntBits 0 w = encodeNNBIntBits 0 (w `div` 2) >> putNBits 1 (0::Word8)
+encodeNNBIntBits n w = encodeNNBIntBits (n `div` 2) (w `div` 2) >> putNBits 1 (n `mod` 2)
 
 reverseBits :: Word8 -> Word8
 reverseBits = reverseBits3 . reverseBits2 . reverseBits1
@@ -131,16 +125,16 @@ prop_From2sTo2s x =
 
 prop_FromNonNegToNonNeg :: (Integer,Integer) -> Bool
 prop_FromNonNegToNonNeg (n,w) =
-   n >= 0 && w >= n ==> fromNonNeg (fromIntegral (bitWidth w)) (runBitPut (encodeNNBIntBits' n w)) == n
+   n >= 0 && w >= n ==> fromNonNeg (fromIntegral (bitWidth w)) (runBitPut (encodeNNBIntBits n w)) == n
 
-bitWidth n = genericLength (encodeNNBIntBits (n,n))
+bitWidth n = genericLength (encodeNNBIntBits' (n,n))
 
 bitPutify :: BitStream -> BitPut
 bitPutify = mapM_ (putNBits 1)
 
 prop_NNBIntBits :: (Integer,Integer) -> Bool
 prop_NNBIntBits (n,w) =
-   n >=0 && w >= n ==> runBitPut (bitPutify (encodeNNBIntBits (n,w))) == runBitPut (encodeNNBIntBits' n w)
+   n >=0 && w >= n ==> runBitPut (bitPutify (encodeNNBIntBits' (n,w))) == runBitPut (encodeNNBIntBits n w)
 
 main = 
    do putStrLn "Checking reverse of reverse..."
