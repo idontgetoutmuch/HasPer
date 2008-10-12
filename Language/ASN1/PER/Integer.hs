@@ -1,8 +1,19 @@
-module Language.ASN1.PER.Integer (
-   toNonNegativeBinaryInteger,
-   fromNonNegativeBinaryInteger,
-   to2sComplement,
-   from2sComplement
+-----------------------------------------------------------------------------
+-- |
+-- Module      : Language.ASN1.PER.Integer
+-- Copyright   : Dominic Steinitz
+-- License     : BSD3-style (see LICENSE)
+--
+-- Maintainer  : Dominic Steinitz <dominic.steinitz@blueyonder.co.uk>
+-- Stability   : experimental
+--
+-- TBD
+-----------------------------------------------------------------------------
+module Language.ASN1.PER.Integer
+   ( toNonNegativeBinaryInteger
+   , fromNonNegativeBinaryInteger
+   , to2sComplement
+   , from2sComplement
    ) where
 
 import Data.Bits
@@ -67,6 +78,7 @@ fromNonNegativeBinaryInteger r x =
       ys = reverse (BL.unpack (rightShift (fromIntegral s) x))
       zs = map ((2^bSize)^) [0..genericLength ys]
 
+from2sComplement :: Num a => BL.ByteString -> a
 from2sComplement a = x
    where
       l = fromIntegral (BL.length a)
