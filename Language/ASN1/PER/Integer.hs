@@ -21,6 +21,7 @@ import Data.Word
 import Data.List
 import qualified Data.ByteString.Lazy as BL
 import Data.Binary.BitPut
+import Control.Monad.State
 
 g :: (Integer, Integer) -> Maybe (Integer, (Integer, Integer))
 g (0,0) = Nothing
@@ -38,6 +39,22 @@ h' p n =
    do putNBits 1 (n `mod` 2)
       h' (p-1) (n `div` 2)
 
+h'' 0 =
+   do p <- get
+      lift $ putNBits (fromIntegral (p+1)) (0::Word8)
+      
+h'' n =
+   do p <- get
+      case p of
+         0 -> 
+            do put 7
+               h'' (n `div` 2)
+               lift $ putNBits 1 (n `mod` 2)
+         otherwise -> 
+            do put (p-1)
+               h'' (n `div` 2)
+               lift $ putNBits 1 (n `mod` 2)
+
 l n = genericLength ((flip (curry (unfoldr g)) 7) (-n-1)) + 1
 
 to2sComplement3 :: Integer -> BitPut
@@ -47,6 +64,9 @@ to2sComplement3 n
    | otherwise = h' 8 (2^p + n)
    where
       p = l n
+
+to2sComplement4 :: Integer -> BitPut
+to2sComplement4 = undefined
 
 to2sComplement :: Integer -> BL.ByteString
 to2sComplement n =
