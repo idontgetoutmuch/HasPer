@@ -122,7 +122,16 @@ first element in the list is the inner-most constraint.
 
 \begin{code}
 
-lEncode :: ASNType a -> a -> [ESS a] -> Either String BP.BitPut
+perEncode :: ASNType a -> a -> [ESS a] -> Either String BP.BitPut
+perEncode t v cl
+    = do
+        bts <- lEncode t v cl
+        return (bitPutify bts)
+
+bitPutify :: BitStream -> BP.BitPut
+bitPutify = mapM_ (BP.putNBits 1)
+
+lEncode :: ASNType a -> a -> [ESS a] -> Either String BitStream
 lEncode (BT t) v cl      = lToPer t v cl
 lEncode (RT _) _ _       = error "RT"
 lEncode (ConsT t c) v cl = lEncode t v (c:cl)
@@ -134,7 +143,7 @@ generate effective root and effective extension here.
 
 \begin{code}
 
-lToPer :: ASNBuiltin a -> a -> [ESS a] -> Either String BP.BitPut
+lToPer :: ASNBuiltin a -> a -> [ESS a] -> Either String BitStream
 lToPer INTEGER x cl         = lEncodeInt cl x
 lToPer VISIBLESTRING x cl   = lEncodeRCS cl x
 lToPer PRINTABLESTRING x cl = lEncodeRCS cl x
@@ -143,19 +152,50 @@ lToPer IA5STRING x cl       = lEncodeRCS cl x
 lToPer BOOLEAN x cl         = lEncodeBool cl x
 lToPer (ENUMERATED e) x cl  = lEncodeEnum e x -- no PER-Visible constraints
 lToPer (BITSTRING nbs) x cl = lEncodeBS nbs cl x
+lToPer (OCTETSTRING) x cl   = lEncodeOS cl x
+lToPer (SEQUENCE s) x cl    = lEncodeSeq s x -- no PER-Visible constraints
 
 \end{code}
 
+\section{ENCODING AN OPEN TYPE FIELD}}
 
+lEncodeOpen encodes an open type value. That is:
+i. the value is encoded as ususal;
+ii. it is padded at the end with 0s so that it has a octet-multiple length; and
+iii. its length is added as a prefix using the fragmentation rules (10.9)
+The first case is required since an extension addition group is
+encoded as an open type sequence and lEncodeOpen is always called by
+toPer on an extension component (avoids encoding it as an open
+type open type sequence!)
+
+\begin{code}
+
+lEncodeOpen :: ASNType a -> a -> Either String BitStream
+lEncodeOpen (BT (EXTADDGROUP s)) v -- to update when look at EXTADDGROUP
+    = lEncodeOpen (BT (SEQUENCE s)) v
+lEncodeOpen t v
+   = do enc <- lEncode t v []
+        pad <- padding enc
+        return (encodeWithLength id pad)
+
+padding enc
+    = let le  = length enc
+          bts = le `mod` 8
+          pad = if bts == 0
+                   then enc
+                   else enc ++ take (8-bts) [0,0..]
+      in return pad
+
+\end{code}
 
 
 \section{ENCODING THE BOOLEAN TYPE}
 
 \begin{code}
 
-lEncodeBool :: [ESS Bool] -> Bool -> Either String BP.BitPut
-lEncodeBool t True = return (bitPutify [1])
-lEncodeBool t _    = return (bitPutify [0])
+lEncodeBool :: [ESS Bool] -> Bool -> Either String BitStream
+lEncodeBool t True = return ( [1])
+lEncodeBool t _    = return ( [0])
 
 \end{code}
 
@@ -178,9 +218,9 @@ lEncodeBool t _    = return (bitPutify [0])
 \begin{code}
 
 myEncodeUInt (Val x)
-    = (bitPutify . encodeUInt . fromIntegral) x
+    = (encodeUInt . fromIntegral) x
 
-lEncodeInt :: [ESS InfInteger] -> InfInteger -> Either String BP.BitPut
+lEncodeInt :: [ESS InfInteger] -> InfInteger -> Either String BitStream
 lEncodeInt [] v = return (myEncodeUInt v)
 lEncodeInt cs v =
    lEitherTest parentRoot validPR lc v
@@ -195,7 +235,7 @@ lEncodeInt cs v =
 
 
 lEitherTest :: Either String IntegerConstraint -> Either String ValidIntegerConstraint
-               -> ESS InfInteger -> InfInteger -> Either String BP.BitPut
+               -> ESS InfInteger -> InfInteger -> Either String BitStream
 lEitherTest pr vpr lc v =
    lEncConsInt realRoot realExt effRoot effExt b v
    where
@@ -216,7 +256,7 @@ lEncConsInt :: (Eq t, Lattice t) =>
                -> Either String t
                -> Bool
                -> InfInteger
-               -> Either String BP.BitPut
+               -> Either String BitStream
 lEncConsInt rootCon extCon effRootCon effExtCon extensible v
     = if (not extensible)
         then lEncNonExtConsInt rootCon effRootCon v
@@ -272,7 +312,7 @@ lEncExtConsInt :: (Eq t, Lattice t) =>
                   -> Either String IntegerConstraint
                   -> Either String t
                   -> InfInteger
-                  -> Either String BP.BitPut
+                  -> Either String BitStream
 lEncExtConsInt realRC realEC effRC effEC n@(Val v) =
    do
       Valid rrc <- realRC
@@ -297,17 +337,16 @@ lEncExtConsInt realRC realEC effRC effEC n@(Val v) =
              | emptyConstraint
                   = throwError "Empty constraint"
              | isNonEmptyRC && inRange rrc
-                  = return $ do BP.putNBits 1 (0::Int)
+                  = return $ do
                                 case constraintType erc of
                                    UnConstrained ->
-                                      bitPutify (encodeUInt (fromIntegral v))
+                                        0:encodeUInt (fromIntegral v)
                                    SemiConstrained ->
-                                      bitPutify (encodeSCInt (fromIntegral v) rootLower)
+                                        0:encodeSCInt (fromIntegral v) rootLower
                                    Constrained ->
-                                      bitPutify (encodeNNBIntBits (fromIntegral (v - rootLower), fromIntegral (rootUpper - rootLower)))
+                                        0:encodeNNBIntBits (fromIntegral (v - rootLower), fromIntegral (rootUpper - rootLower))
              | isNonEmptyEC && inRange rec
-                  = return $ do BP.putNBits 1 (1::Int)
-                                bitPutify (encodeUInt (fromIntegral v))
+                  = return (1:encodeUInt (fromIntegral v))
              | otherwise
                   = throwError "Value out of range"
       foobar
@@ -315,7 +354,7 @@ lEncExtConsInt realRC realEC effRC effEC n@(Val v) =
 lEncNonExtConsInt :: Either String ValidIntegerConstraint
                      -> Either String IntegerConstraint
                      -> InfInteger
-                     -> Either String BP.BitPut
+                     -> Either String BitStream
 lEncNonExtConsInt realRC effRC n@(Val v) =
    do Valid rrc <- realRC
       erc <- effRC
@@ -339,11 +378,11 @@ lEncNonExtConsInt realRC effRC n@(Val v) =
                   = return $ do
                        case constraintType erc of
                                    UnConstrained ->
-                                      bitPutify (encodeUInt (fromIntegral v))
+                                      encodeUInt (fromIntegral v)
                                    SemiConstrained ->
-                                      bitPutify (encodeSCInt (fromIntegral v) rootLower)
+                                      encodeSCInt (fromIntegral v) rootLower
                                    Constrained ->
-                                      bitPutify (encodeNNBIntBits (fromIntegral (v - rootLower), fromIntegral (rootUpper - rootLower)))
+                                      encodeNNBIntBits (fromIntegral (v - rootLower), fromIntegral (rootUpper - rootLower))
              | otherwise
                   = throwError "Value out of range"
       foobar
@@ -583,7 +622,7 @@ encoding.
 
 \begin{code}
 
-lEncodeEnum :: Enumerate a -> a -> Either String BP.BitPut
+lEncodeEnum :: Enumerate a -> a -> Either String BitStream
 lEncodeEnum e x
     = let (b,inds) = assignIndex e
           no = genericLength inds
@@ -591,11 +630,11 @@ lEncodeEnum e x
         encodeEnumAux b no inds e x
 
 encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> a
-                 -> Either String BP.BitPut
+                 -> Either String BitStream
 encodeEnumAux b no (f:r) (EnumOption _ es) (Just n :*:rest)
     = if not b
-        then return (bitPutify (encodeNNBIntBits (f, no-1)))
-        else return (bitPutify (0: encodeNNBIntBits (f, no-1)))
+        then return (encodeNNBIntBits (f, no-1))
+        else return (0: encodeNNBIntBits (f, no-1))
 encodeEnumAux b no (f:r) (EnumOption _ es) (Nothing :*: rest)
     = encodeEnumAux b no r es rest
 encodeEnumAux b no inds (EnumExt ex) x
@@ -604,9 +643,9 @@ encodeEnumAux b no inds (EnumExt ex) x
 encodeEnumAux _ _ _ _ _ = throwError "No enumerated value!"
 
 encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> a
-                    -> Either String BP.BitPut
+                    -> Either String BitStream
 encodeEnumExtAux i l (EnumOption _ es) (Just n :*:rest)
-    = return (bitPutify (1:encodeNSNNInt i 0))
+    = return (1:encodeNSNNInt i 0)
 encodeEnumExtAux i l (EnumOption _ es) (Nothing :*:rest)
     = encodeEnumExtAux (i+1) l es rest
 encodeEnumExtAux i l _ _ = throwError "No enumerated extension value!"
@@ -658,12 +697,12 @@ findN i []
 
 \begin{code}
 
-lEncodeBS :: NamedBits -> [ESS BitString] -> BitString -> Either String BP.BitPut
+lEncodeBS :: NamedBits -> [ESS BitString] -> BitString -> Either String BitStream
 lEncodeBS nbs [] x = encodeBSNoSz nbs x
 lEncodeBS nbs cl x = encodeBSSz nbs cl x
 
 
-encodeBSSz :: NamedBits -> [ESS BitString] -> BitString -> Either String BP.BitPut
+encodeBSSz :: NamedBits -> [ESS BitString] -> BitString -> Either String BitStream
 encodeBSSz nbs cl xs = lEncValidBS nbs (effBSCon cl) (validBSCon cl) xs
 
 effBSCon ::[ESS BitString] -> Either String (ExtBS (ConType IntegerConstraint))
@@ -676,7 +715,7 @@ validBSCon cs = lSerialEffCons lBSConE top cs
 
 lEncValidBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
                -> Either String (ExtBS (ConType ValidIntegerConstraint))
-               -> BitString -> Either String BP.BitPut
+               -> BitString -> Either String BitStream
 lEncValidBS nbs m n v
     = do
         vsc <- m
@@ -688,7 +727,7 @@ lEncValidBS nbs m n v
 lEncNonExtBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> BitString
-                -> Either String BP.BitPut
+                -> Either String BitStream
 lEncNonExtBS nbs m n (BitString vs)
     = do
         vsc <- m
@@ -705,7 +744,7 @@ lEncNonExtBS nbs m n (BitString vs)
                     = throwError "Empty constraint"
                 | null nbs && inSizeRange okrc || (not . null) nbs
                     = do bs <- bsCode nbs rc vs
-                         return (bitPutify bs)
+                         return bs
                 | otherwise
                     = throwError "Value out of range"
         foobar
@@ -714,7 +753,7 @@ lEncNonExtBS nbs m n (BitString vs)
 lEncExtBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> BitString
-                -> Either String BP.BitPut
+                -> Either String BitStream
 lEncExtBS nbs m n (BitString vs)
     = do
         vsc <- m
@@ -734,15 +773,11 @@ lEncExtBS nbs m n (BitString vs)
                 | inSizeRange okrc
                     = do
                         bs <- bsCode nbs rc vs
-                        return $ do
-                                  BP.putNBits 1 (0::Int)
-                                  bitPutify bs
+                        return (0:bs)
                 | inSizeRange okec
                     = do
                         bs <- bsCode nbs rc vs
-                        return $ do
-                                  BP.putNBits 1 (1::Int)
-                                  bitPutify bs
+                        return (1:bs)
                 | otherwise
                     = throwError "Value out of range"
         foobar
@@ -795,16 +830,16 @@ rem0s (Val 0) xs = return xs
 
 
 \begin{code}
-encodeBSNoSz :: NamedBits -> BitString -> Either String BP.BitPut
+encodeBSNoSz :: NamedBits -> BitString -> Either String BitStream
 encodeBSNoSz nbs (BitString [])
-    = return (bitPutify [0,0,0,0,0,0,0,0])
+    = return ([])
 encodeBSNoSz nbs (BitString bs)
     = let rbs = reverse bs
           rem0 = if (not.null) nbs then strip0s rbs
             else rbs
           ln = genericLength rem0
        in
-        return (bitPutify (encodeBitsWithLength (reverse rem0)))
+        return (encodeBitsWithLength (reverse rem0))
 
 
 
@@ -813,6 +848,286 @@ strip0s (a:r)
         then strip0s r
         else (a:r)
 strip0s [] = []
+
+\end{code}
+
+\section{ENCODING THE OCTETSTRING TYPE}
+
+\begin{code}
+
+lEncodeOS :: [ESS OctetString] -> OctetString -> Either String BitStream
+lEncodeOS [] x = encodeOSNoSz x
+lEncodeOS cl x = encodeOSSz cl x
+
+\end{code}
+
+encodeOctS encodes an unconstrained SEQUENCEOF value.
+
+\begin{code}
+
+encodeOSNoSz :: OctetString -> Either String BitStream
+encodeOSNoSz (OctetString xs)
+    = let foo x = encodeNNBIntBits ((fromIntegral x),255)
+      in
+        return (encodeWithLength (concat . map foo) xs)
+
+
+encodeOSSz :: [ESS OctetString] -> OctetString -> Either String BitStream
+encodeOSSz cl xs = lEncValidOS (effOSCon cl) (validOSCon cl) xs
+
+effOSCon ::[ESS OctetString] -> Either String (ExtBS (ConType IntegerConstraint))
+effOSCon cs = lSerialEffCons lOSConE top cs
+
+
+validOSCon :: [ESS OctetString] -> Either String (ExtBS (ConType ValidIntegerConstraint))
+validOSCon cs = lSerialEffCons lOSConE top cs
+
+
+lEncValidOS :: Either String (ExtBS (ConType IntegerConstraint))
+               -> Either String (ExtBS (ConType ValidIntegerConstraint))
+               -> OctetString -> Either String BitStream
+lEncValidOS m n v
+    = do
+        vsc <- m
+        if extensibleBS vsc
+            then lEncExtOS m n v
+            else lEncNonExtOS m n v
+
+
+lEncNonExtOS :: Either String (ExtBS (ConType IntegerConstraint))
+                -> Either String (ExtBS (ConType ValidIntegerConstraint))
+                -> OctetString
+                -> Either String BitStream
+lEncNonExtOS m n (OctetString vs)
+    = do
+        vsc <- m
+        ok  <- n
+        let ConType rc = getBSRC vsc
+            ConType (Valid okrc) = getBSRC ok
+            emptyConstraint = rc == bottom
+            inSizeRange []      = False
+            inSizeRange (x:rs)
+                = let l = genericLength vs
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            foobar
+                | emptyConstraint
+                    = throwError "Empty constraint"
+                | inSizeRange okrc
+                    = do bs <- osCode rc vs
+                         return bs
+                | otherwise
+                    = throwError "Value out of range"
+        foobar
+
+
+lEncExtOS :: Either String (ExtBS (ConType IntegerConstraint))
+                -> Either String (ExtBS (ConType ValidIntegerConstraint))
+                -> OctetString
+                -> Either String BitStream
+lEncExtOS m n (OctetString vs)
+    = do
+        vsc <- m
+        ok  <- n
+        let ConType rc = getBSRC vsc
+            ConType (Valid okrc) = getBSRC ok
+            ConType ec = getBSEC vsc
+            ConType (Valid okec) = getBSEC ok
+            emptyConstraint = rc == bottom && ec == bottom
+            inSizeRange []      = False
+            inSizeRange (x:rs)
+                = let l = genericLength vs
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            foobar
+                | emptyConstraint
+                    = throwError "Empty constraint"
+                | inSizeRange okrc
+                    = do
+                        bs <- osCode rc vs
+                        return (0:bs)
+                | inSizeRange okec
+                    = do
+                        bs <- osCode rc vs
+                        return (1:bs)
+                | otherwise
+                    = throwError "Value out of range"
+        foobar
+
+osCode :: IntegerConstraint -> [Octet] -> Either String BitStream
+osCode rc xs
+      =  let l  = lower rc
+             u  = upper rc
+             octetToBits x = encodeNNBIntBits ((fromIntegral x),255)
+             octetsToBits  = (concat . map octetToBits)
+         in
+             if u == 0
+             then return []
+             else if u == l && u <= 65536
+                       then return (octetsToBits xs)
+                       else if u <= 65536
+                            then let Val ub = u
+                                     Val lb = l
+                                 in do
+                                     ln <- return (genericLength xs)
+                                     return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ octetsToBits xs)
+                            else return (encodeWithLength octetsToBits xs)
+
+\end{code}
+
+\section{ENCODING THE SEQUENCE TYPE}
+
+\begin{code}
+
+lEncodeSeq :: Sequence a -> a -> Either String BitStream
+lEncodeSeq s x
+    =   do ((rp,rb),(ap,ab)) <- encodeSeqAux ([],[]) ([],[]) s x
+           if null ap
+              then
+                 return (concat rp ++ concat rb ++ concat ap ++ concat ab)
+              else
+                 return (concat rp ++ concat rb ++ lengthAdds ap ++ concat ab)
+
+\end{code}
+
+I DON'T THINK THAT THE ELSE CASE IS FRAGMENTING CORRECTLY
+
+18.8 A length determinant of the number of extension additions is added if
+the sequence has any extension additions declared. This is encoded as a normally
+small length (10.9.3.4)
+
+\begin{code}
+
+lengthAdds ap
+    = let la = genericLength ap
+       in if la <= 63
+        then 0:encodeNNBIntBits (la-1, 63) ++ concat ap
+        else 1:encodeOctetsWithLength (encodeNNBIntOctets la) ++ concat ap
+
+\end{code}
+
+encodeSeqAux is the auxillary function for encodeSeq. When
+encoding a sequence, one has to both encode each component and
+produce a preamble which indicates the presence or absence of an
+optional or default value. The first list in the result is the
+preamble. The constructor Extens indicates the sequence is
+extensible, and the coding responsibility is passed to
+encodeExtSeqAux (where the values are encoded as an open type).
+Note that if another Extens occurs then reponsibility returns
+to encodeSeqAux since this is the 2 extension marker case
+(and what follows is in the extension root).
+
+encodeCO implments the encoding of a COMPONENTS OF component of a
+sequence. The (non-extension) components of the referenced
+sequence are embedded in the parent sequence and are enocoded as
+if components of this sequence.
+
+\begin{code}
+
+encodeSeqAux :: ([BitStream],[BitStream]) -> ([BitStream],[BitStream]) -> Sequence a -> a ->
+      Either String (([BitStream],[BitStream]),([BitStream],[BitStream]))
+encodeSeqAux (ap,ab) (rp,rb) Nil Empty
+    = if ((not.null) (concat ab))
+        then return (([1]:reverse rp,reverse rb),(reverse ap,reverse ab))
+        else return ((reverse rp,reverse rb),(reverse ap, reverse ab))
+encodeSeqAux (ap,ab) (rp,rb) (Extens as) xs
+    = encodeExtSeqAux (ap,ab) (rp,rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTCompOf (SEQUENCE s)) as) (x:*:xs) -- typically a reference
+    = do (p,b) <- encodeCO ([],[]) s x
+         encodeSeqAux (ap,ab) (p ++ rp,b ++ rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTMandatory (NamedType n t a)) as) (x:*:xs)
+    = do
+        bts <- lEncode a x []
+        encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeSeqAux (ap,ab) ([]:rp,[]:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Just x:*:xs)
+    = do
+        bts <- lEncode a x []
+        encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Just x:*:xs)
+    = do
+        bts <- lEncode a x []
+        encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+   encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs)
+    = do
+        bts <- lEncode a x []
+        encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
+
+encodeCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
+encodeCO (rp,rb) Nil _
+    = return (rp,rb)
+encodeCO (rp,rb) (Extens as) xs
+    = encodeExtCO (rp,rb) as xs
+encodeCO (rp,rb) (Cons (CTCompOf (SEQUENCE s)) as) (x:*:xs)
+    = do (p,b) <- encodeCO ([],[]) s x
+         encodeCO (p ++ rp,b ++ rb) as xs
+encodeCO (rp,rb) (Cons (CTMandatory (NamedType n t a)) as) (x:*:xs)
+    = do bts <- lEncode a x []
+         encodeCO ([]:rp,bts:rb) as xs
+encodeCO (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeCO ([]:rp,[]:rb) as xs
+encodeCO (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Just x:*:xs)
+    = do bts <- lEncode a x []
+         encodeCO ([]:rp,bts:rb) as xs
+encodeCO (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeCO ([0]:rp,[]:rb) as xs
+encodeCO (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Just x:*:xs)
+    = do
+        bts <- lEncode a x []
+        encodeCO ([1]:rp,bts:rb) as xs
+encodeCO (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+   encodeCO ([0]:rp,[]:rb) as xs
+encodeCO (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs)
+    = do
+        bts <- lEncode a x []
+        encodeCO ([1]:rp,bts:rb) as xs
+
+
+
+encodeExtCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
+encodeExtCO (rp,rb) Nil _
+    = return (rp,rb)
+encodeExtCO (rp,rb) (Extens as) xs
+    = encodeCO (rp,rb) as xs
+encodeExtCO (rp,rb) (Cons _ as) (_:*:xs)
+    = encodeExtCO (rp,rb) as xs
+
+\end{code}
+
+encodeExtSeqAux adds the encoding of any extension additions to
+the encoding of the extension root. If an addition is present a
+1 is added to a bitstream prefix and the value is encoded as an
+open type (using lEncodeOpen). If an addition is not present then a
+0 is added to the prefix.
+
+\begin{code}
+
+encodeExtSeqAux :: ([BitStream],[BitStream]) -> ([BitStream], [BitStream]) -> Sequence a -> a ->
+    Either String (([BitStream],[BitStream]),([BitStream],[BitStream]))
+encodeExtSeqAux (ap,ab) (rp,rb) Nil _
+    = if (length . filter (==[1])) ap > 0
+                then  return (([1]:reverse rp,reverse rb),(reverse ap,reverse ab))
+                else  return (([0]:reverse rp,reverse rb),(reverse ap,reverse ab))
+encodeExtSeqAux extAdds extRoot (Extens as) xs =
+   encodeSeqAux extAdds extRoot as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Just x:*:xs)
+    = do bts <- lEncodeOpen a x
+         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Nothing:*:xs) =
+   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Just x:*:xs)
+    = do bts <- lEncodeOpen a x
+         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs)
+   = do bts <- lEncodeOpen a x
+        encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 
 \end{code}
 
@@ -831,11 +1146,11 @@ Note that a check on the validity of the string value is made
 before any encoding.
 \begin{code}
 
-lEncodeRCS :: (Builtin a, Eq a, RS a, Lattice a)
-              => [ESS a] -> a -> Either String BP.BitPut
+lEncodeRCS :: (Eq a, RS a, Lattice a)
+              => [ESS a] -> a -> Either String BitStream
 lEncodeRCS [] vs
         | rcsMatch vs top
-            = return (bitPutify (encodeResString vs))
+            = return (encodeResString vs)
         | otherwise
             = throwError "Invalid value!"
 lEncodeRCS cs vs
@@ -845,11 +1160,11 @@ lEncodeRCS cs vs
             = throwError "Invalid value!"
 
 
-effCon :: (Builtin a, RS a, Lattice a, Eq a)
+effCon :: (RS a, Lattice a, Eq a)
           => [ESS a] -> Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
 effCon cs = lSerialEffCons lResConE top cs
 
-validCon :: (Builtin a, RS a, Lattice a, Eq a)
+validCon :: (RS a, Lattice a, Eq a)
             => [ESS a] -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
 validCon cs = lSerialEffCons lResConE top cs
 
@@ -869,7 +1184,7 @@ stringMatch (f:r) s = elem f s && stringMatch r s
 lEncValidRCS :: (RS a, Eq a, Lattice a) =>
                  Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
                  -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
-                 -> a -> Either String BP.BitPut
+                 -> a -> Either String BitStream
 lEncValidRCS m n v
     = do
         vsc <- m
@@ -890,7 +1205,7 @@ lEncNonExtRCS :: (RS a, Eq a, Lattice a) =>
                 Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
                 -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
                 -> a
-                -> Either String BP.BitPut
+                -> Either String BitStream
 lEncNonExtRCS m n vs
     = do
         vsc <- m
@@ -913,11 +1228,11 @@ lEncNonExtRCS m n vs
                 | emptyConstraint
                     = throwError "Empty constraint"
                 | not noSC && not noPAC && inPA pac && inSizeRange oksc
-                    = return (bitPutify (lEncodeRCSSzF sc pac vs))
+                    = return (lEncodeRCSSzF sc pac vs)
                 | noSC && not noPAC && inPA pac
-                    = return (bitPutify (lEncodeRCSF pac vs))
+                    = return (lEncodeRCSF pac vs)
                 | noPAC && not noSC && inSizeRange oksc
-                    = return (bitPutify (lEncodeRCSSz sc vs))
+                    = return (lEncodeRCSSz sc vs)
                 | otherwise
                     = throwError "Value out of range"
         foobar
@@ -927,7 +1242,7 @@ lEncExtRCS :: (RS a, Eq a, Lattice a) =>
               Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
               -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
               -> a
-              -> Either String BP.BitPut
+              -> Either String BitStream
 lEncExtRCS m n vs
     = do
         vsc <- m
@@ -971,41 +1286,31 @@ lEncExtRCS m n vs
                 | otherwise = foobarBoth
             foobarRC
                 | noRSC && inPA rpac
-                    = return $ do BP.putNBits 1 (0::Int)
-                                  bitPutify (lEncodeRCSF rpac vs)
+                    = return (0:lEncodeRCSF rpac vs)
                 | noRPAC && inSizeRange okrsc
-                    = return $ do BP.putNBits 1 (0::Int)
-                                  bitPutify (lEncodeRCSSz rsc vs)
+                    = return (0:lEncodeRCSSz rsc vs)
                 | inPA rpac && inSizeRange okrsc
-                    = return $ do BP.putNBits 1 (0::Int)
-                                  bitPutify (lEncodeRCSSzF rsc rpac vs)
+                    = return (0:lEncodeRCSSzF rsc rpac vs)
                 | otherwise
                     = throwError "Value out of range"
             foobarEC
                 | noESC && inPA epac
-                    = return $ do BP.putNBits 1 (1::Int)
-                                  bitPutify (lEncodeRCSF top vs)
+                    = return (1:lEncodeRCSF top vs)
                 | noEPAC && inSizeRange okesc
-                    = return $ do BP.putNBits 1 (1::Int)
-                                  bitPutify (encodeResString vs)
+                    = return (1:encodeResString vs)
                 | inPA epac && inSizeRange okesc
-                    = return $ do BP.putNBits 1 (1::Int)
-                                  bitPutify (lEncodeRCSF top vs)
+                    = return (1:lEncodeRCSF top vs)
                 | otherwise
                     = throwError "Value out of range"
             foobarBoth
                 | not noRPAC && inPA rpac && not noRSC && inSizeRange okrsc
-                    = return $ do BP.putNBits 1 (0::Int)
-                                  bitPutify (lEncodeRCSSzF rsc rpac vs)
+                    = return (0:lEncodeRCSSzF rsc rpac vs)
                 | noRPAC && noEPAC && not noRSC && inSizeRange okrsc
-                    = return $ do BP.putNBits 1 (0::Int)
-                                  bitPutify (lEncodeRCSSz rsc vs)
+                    = return (0:lEncodeRCSSz rsc vs)
                 | noRSC && noESC && not noRPAC && inPA rpac
-                    = return $ do BP.putNBits 1 (0::Int)
-                                  bitPutify (lEncodeRCSF rpac vs)
+                    = return (0:lEncodeRCSF rpac vs)
                 | noRPAC && noEPAC && not noESC && inSizeRange okesc
-                     = return $ do BP.putNBits 1 (1::Int)
-                                   bitPutify (encodeResString vs)
+                     = return (1:encodeResString vs)
                 | (not noRSC && inSizeRange okrsc && noRPAC && not noEPAC && inPA epac) ||
                   (not noRSC && inSizeRange okrsc && not noRPAC && not noEPAC && not (inPA epac) && inPA expac) ||
                   (not noESC && inSizeRange okesc && not noRPAC && inPA rpac) ||
@@ -1013,8 +1318,7 @@ lEncExtRCS m n vs
                   (not noESC && inSizeRange okesc && not noRPAC && not noEPAC && not (inPA epac) && inPA expac) ||
                   (noRSC && noESC && ((noRPAC && not noEPAC && inPA epac) ||
                   (not noRPAC && not noEPAC && not (inPA epac) && inPA expac)))
-                     =  return $ do BP.putNBits 1 (1::Int)
-                                    bitPutify (lEncodeRCSF top vs)
+                     =  return (1:lEncodeRCSF top vs)
                 | otherwise
                      = throwError "Value out of range"
         foobar
@@ -1159,8 +1463,7 @@ lEitherTest2 pr lc =
       (effExt,b) = lApplyExt pr lc
       effRoot    = lEvalC lc pr
 
-bitPutify :: BitStream -> BP.BitPut
-bitPutify = mapM_ (BP.putNBits 1)
+
 
 decodeUInt :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet InfInteger
 decodeUInt =

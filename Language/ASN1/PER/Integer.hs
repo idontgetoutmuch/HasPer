@@ -38,11 +38,12 @@ h' 0 n =
 h' p n =
    do putNBits 1 (n `mod` 2)
       h' (p-1) (n `div` 2)
-
+  
+-- h'' :: Integer -> StateT Word8 BitPut' ()
+  
 h'' 0 =
    do p <- get
       lift $ putNBits (fromIntegral (p+1)) (0::Word8)
-      
 h'' n =
    do p <- get
       case p of
