@@ -259,7 +259,7 @@ lLastApply esrc m
                        r2 = getRC x
                        e2 = getEC x
                        foobar1
-                         | not (isExtensible x) = lEitherApply x m
+                         | not (isExtensible x) = lEitherApply esrc m
                          | isValid r1 r2 && isValid r1 e2
                             = return (makeEC (updateV r1 r2)
                                                     (updateV r1 e2) True)
@@ -560,8 +560,7 @@ lResConE :: (RS a,
                 Lattice a,
                 Eq i,
                 Show i,
-                Eq a,
-                Builtin a) =>
+                Eq a) =>
                 Elem a -> Bool ->  Either String (ExtResStringConstraint (ResStringConstraint a i))
 lResConE (SZ (SC v)) b            = lEffSize v b
 lResConE (P (FR (EXT _))) b       = throwError "Invisible!"
@@ -579,6 +578,16 @@ lBSConE :: (Eq i,
 lBSConE (SZ (SC v)) b  = lEffSize v b
 lBSConE (C (Inc c)) b  = throwError "Invisible!"
 lBSConE (S (SV v))  b  = throwError "Invisible!"
+
+
+lOSConE :: (Eq i,
+            Show i,
+            Lattice i,
+            IC i) =>
+            Elem OctetString -> Bool -> Either String (ExtBS (ConType i))
+lOSConE (SZ (SC v)) b  = lEffSize v b
+lOSConE (C (Inc c)) b  = throwError "Invisible!"
+lOSConE (S (SV v))  b  = throwError "Invisible!"
 
 \end{code}
 
@@ -599,15 +608,14 @@ lPaConE :: (Lattice a,
             Eq a,
             Eq i,
             Show i,
-            IC i,
-            Builtin a) =>
+            IC i) =>
             Elem a -> Bool -> Either String (ExtResStringConstraint (ResStringConstraint a i))
 lPaConE (V (R (l,u))) b
     = let ls = getString l
           us = getString u
           rs = [head ls..head us]
         in
-            return (ExtResStringConstraint (ResStringConstraint (makeString rs) top)
+            return (ExtResStringConstraint (ResStringConstraint (makeString rs) bottom)
                         (ResStringConstraint top top) b)
 lPaConE (C (Inc c)) b = lProcessCST lPaConE c []
 lPaConE (S (SV v)) b

@@ -1,6 +1,7 @@
 \begin{code}
 {-# OPTIONS_GHC -XTypeOperators -XGADTs -XEmptyDataDecls
                 -XFlexibleInstances -XFlexibleContexts
+                -XScopedTypeVariables
 #-}
 module ASNTYPE where
 
@@ -112,7 +113,21 @@ data ASNType a where
     RT    :: ReferencedType -> ASNType a
     ConsT :: ASNType a -> ESS a -> ASNType a
 
+-- SOME REFERENCE THOUGHTS!!!!
+data TRef = forall a. Show a =>  TRef (ASNType a)
+
+
+refList = [("a", TRef (BT INTEGER)), ("b",TRef (BT VISIBLESTRING))]
+
+getType :: String -> [(String,TRef)] -> TRef
+getType nm [] = error ""
+getType nm (f:r) = if fst f == nm then snd f
+                                  else getType nm r
+--
+
+
 data ASNBuiltin a where
+   TYPEASS         :: TypeRef -> Maybe TagInfo -> ASNBuiltin a -> ASNBuiltin a -- to be changed
    EXTADDGROUP     :: Sequence a -> ASNBuiltin a
    BOOLEAN         :: ASNBuiltin Bool
    INTEGER         :: ASNBuiltin InfInteger
@@ -133,19 +148,6 @@ data ASNBuiltin a where
    TAGGED          :: TagInfo -> ASNBuiltin a -> ASNBuiltin a
 
 
-class Builtin a where
-    getNum :: Elem a -> Int
-    getNum x = 1
-
-instance Builtin VisibleString
-instance Builtin PrintableString
-instance Builtin NumericString
-instance Builtin UniversalString
-instance Builtin BMPString
-instance Builtin IA5String
-
-instance Builtin BitString where
-    getNum x = 2
 
 data ReferencedType = Ref TypeRef
 
@@ -241,6 +243,7 @@ instance SizeConstraint VisibleString
 instance SizeConstraint UniversalString
 instance SizeConstraint BMPString
 instance SizeConstraint BitString
+instance SizeConstraint OctetString
 
 class InnerType a
 
@@ -293,7 +296,8 @@ data ComponentType a where
    CTExtMand   :: NamedType a -> ComponentType (Maybe a)
    CTOptional  :: NamedType a -> ComponentType (Maybe a)
    CTDefault   :: NamedType a -> a -> ComponentType (Maybe a)
-   CTCompOf    :: ASNType a   -> ComponentType a
+   CTCompOf    :: ASNBuiltin a   -> ComponentType a -- these will typically be referenced
+                                                    -- types
 
 data NamedType a where
    NamedType :: Name -> Maybe TagInfo -> ASNType a -> NamedType a
@@ -319,7 +323,7 @@ the number of actual values in the list. The empty list is
 represented by EmptyHL of the type HL Nil Z where Z is a type
 indicating no values. The constructor ValueC takes a value
 and a list with no values and adds the value to the list.
-Its retuurn type is HL (a:*:l) (S Z) indicating that the list now
+Its return type is HL (a:*:l) (S Z) indicating that the list now
 has one value (S for successor). Finally the constructor
 NoValueC takes no value (of the appropriate type -- hence the use
 of the phantom type Phantom a) and a list and returns the list
@@ -473,9 +477,57 @@ data ConType i = ConType i
 data ExtBS i = ExtBS i i Bool
     deriving (Show, Eq)
 
+
 data ResStringConstraint a i = ResStringConstraint a i
     deriving (Show,Eq)
 
 data ExtResStringConstraint a = ExtResStringConstraint a a Bool
     deriving (Show, Eq)
+
+-- UNIVERSAL TAG FUNCTIONS
+
+getCTI :: ComponentType a -> TagInfo
+getCTI (CTMandatory (NamedType _ Nothing ct))   = getTI ct
+getCTI (CTMandatory (NamedType _ (Just t) ct))  = t
+getCTI (CTExtMand (NamedType _ Nothing ct))     = getTI ct
+getCTI (CTExtMand (NamedType _ (Just t) ct))    = t
+getCTI (CTOptional (NamedType _ Nothing ct))   = getTI ct
+getCTI (CTOptional (NamedType _ (Just t) ct))  = t
+getCTI (CTDefault (NamedType _ Nothing ct) d)  = getTI ct
+getCTI (CTDefault (NamedType _ (Just t) ct) d) = t
+
+getTI :: ASNType a -> TagInfo
+getTI (BT t) = getBuiltinTI t
+getTI (ConsT t _) = getTI t
+getTI (RT r) = error "TO DO!"
+
+getBuiltinTI :: ASNBuiltin a -> TagInfo
+getBuiltinTI BOOLEAN            = (Universal, 1, Explicit)
+getBuiltinTI INTEGER            = (Universal,2, Explicit)
+getBuiltinTI (BITSTRING _)      = (Universal, 3, Explicit)
+getBuiltinTI OCTETSTRING        = (Universal, 4, Explicit)
+getBuiltinTI PRINTABLESTRING    = (Universal, 19, Explicit)
+getBuiltinTI IA5STRING          = (Universal,22, Explicit)
+getBuiltinTI VISIBLESTRING      = (Universal, 26, Explicit)
+getBuiltinTI NUMERICSTRING      = (Universal, 18, Explicit)
+getBuiltinTI UNIVERSALSTRING    = (Universal, 28, Explicit)
+getBuiltinTI BMPSTRING          = (Universal, 30, Explicit)
+getBuiltinTI (SEQUENCE s)       = (Universal, 16, Explicit)
+getBuiltinTI (SEQUENCEOF s)     = (Universal, 16, Explicit)
+getBuiltinTI (SET s)            = (Universal, 17, Explicit)
+getBuiltinTI (SETOF s)          = (Universal, 17, Explicit)
+getBuiltinTI (CHOICE c)         = (minimum . getCTags) c
+
+getCTags :: Choice a -> [TagInfo]
+getCTags NoChoice                     = []
+getCTags (ChoiceExt xs)               = getCTags xs
+getCTags (ChoiceEAG xs)               = getCTags xs
+getCTags (ChoiceOption (NamedType n t (BT (EXTADDGROUP (Cons v rs)))) xs)
+        = getCTI v : getCTags (ChoiceOption (NamedType n t (BT (EXTADDGROUP rs)))xs)
+getCTags (ChoiceOption (NamedType n t (BT (EXTADDGROUP Nil))) xs)
+        = getCTags xs
+getCTags (ChoiceOption (NamedType n Nothing a) xs)
+        = getTI a : getCTags xs
+getCTags (ChoiceOption (NamedType n (Just t) a) xs)
+        = t : getCTags xs
 \end{code}

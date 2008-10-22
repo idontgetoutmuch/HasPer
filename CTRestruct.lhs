@@ -154,6 +154,7 @@ lToPer (ENUMERATED e) x cl  = lEncodeEnum e x -- no PER-Visible constraints
 lToPer (BITSTRING nbs) x cl = lEncodeBS nbs cl x
 lToPer (OCTETSTRING) x cl   = lEncodeOS cl x
 lToPer (SEQUENCE s) x cl    = lEncodeSeq s x -- no PER-Visible constraints
+lToPer (CHOICE c) x cl      = lEncodeChoice c x -- no PER-visible constraints
 
 \end{code}
 
@@ -176,7 +177,7 @@ lEncodeOpen (BT (EXTADDGROUP s)) v -- to update when look at EXTADDGROUP
 lEncodeOpen t v
    = do enc <- lEncode t v []
         pad <- padding enc
-        return (encodeWithLength id pad)
+        return (encodeOctetsWithLength pad)
 
 padding enc
     = let le  = length enc
@@ -1128,6 +1129,122 @@ encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothi
 encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs)
    = do bts <- lEncodeOpen a x
         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
+
+\end{code}
+
+\section{ENCODING THE CHOICE TYPE}
+
+encodeChoice encodes CHOICE values. It is not dissimilar to
+encodeSet in that the possible choice components must be
+assigned an index based on their canonical ordering. This index,
+which starts from 0, prefixes the value encoding and is absent if
+there is only a single choice. The auxillary function
+encodeChoiceAux deals with the possible cases, and
+encodeChoiceAux' is called once a value has been encoded to ensure
+that only one choice value is encoded.
+
+\begin{code}
+
+lEncodeChoice :: Choice a -> HL a (S Z) -> Either String BitStream
+lEncodeChoice c x
+    =   do ts  <- return (getCTags c)
+           (ea, ec) <- (encodeChoiceAux [] [] c x)
+           if length ec == 1
+               then return (concat ec)
+               else
+                let ps  = zip ts ec
+                    os  = mergesort choicePred ps
+                    pps = zip [0..] os
+                    fr  = (head . filter (not . nullValue)) pps
+                    ls  = genericLength os
+                in
+                 if null ea
+                 then return (encodeNNBIntBits (fst fr,ls-1) ++ (snd .snd) fr)
+                    else
+                    if length ec <= 63
+                    then return (ea ++ 0:encodeNNBIntBits (fst fr, 63) ++ (snd.snd) fr)
+                    else return (ea ++ 1:encodeOctetsWithLength (encodeNNBIntOctets (fst fr)) ++ (snd.snd) fr)
+
+\end{code}
+
+ IS THE ELSE CASE ABOVE CORRECT???
+
+\begin{code}
+
+mergesort :: (a -> a -> Bool) -> [a] -> [a]
+mergesort pred [] = []
+mergesort pred [x] = [x]
+mergesort pred xs = merge pred (mergesort pred xs1) (mergesort pred xs2)
+                             where (xs1,xs2) = split xs
+split :: [a] -> ([a],[a])
+split xs = splitrec xs xs []
+splitrec :: [a] -> [a] -> [a] -> ([a],[a])
+splitrec [] ys zs = (reverse zs, ys)
+splitrec [x] ys zs = (reverse zs, ys)
+splitrec (x1:x2:xs) (y:ys) zs = splitrec xs ys (y:zs)
+
+merge :: (a -> a -> Bool) -> [a] -> [a] -> [a]
+merge pred xs [] = xs
+merge pred [] ys = ys
+merge pred (x:xs) (y:ys)
+    = case pred x y
+        of True -> x: merge pred xs (y:ys)
+           False -> y: merge pred (x:xs) ys
+
+
+nullValue :: (Integer, (TagInfo, BitStream)) -> Bool
+nullValue (f,(s,t)) = null t
+
+
+choicePred :: (TagInfo, BitStream) -> (TagInfo, BitStream) -> Bool
+choicePred (t1,_) (t2,_) = t1 <= t2
+
+
+encodeChoiceAux :: [Int] -> [BitStream] -> Choice a -> HL a n ->  Either String ([Int], [BitStream])
+encodeChoiceAux ext body NoChoice _ = return (ext, reverse body)
+encodeChoiceAux ext body (ChoiceExt as) xs =
+   encodeChoiceExtAux [0] body as xs
+encodeChoiceAux ext body (ChoiceOption a as) (NoValueC x xs) =
+   encodeChoiceAux ext ([]:body) as xs
+encodeChoiceAux ext body (ChoiceOption (NamedType n t a) as) (ValueC x xs)
+    = do
+        bts <- lEncode a x []
+        encodeChoiceAux' ext (bts:body) as xs
+
+
+encodeChoiceAux' :: [Int] -> [BitStream] -> Choice a -> HL a n -> Either String ([Int], [BitStream])
+encodeChoiceAux' ext body NoChoice _ = return (ext, reverse body)
+encodeChoiceAux' ext body (ChoiceExt as) xs =
+   encodeChoiceExtAux' ext body as xs
+encodeChoiceAux' ext body (ChoiceOption a as) (NoValueC x xs) =
+   encodeChoiceAux' ext ([]:body) as xs
+encodeChoiceAux' ext body (ChoiceOption a as) (ValueC x xs) =
+   encodeChoiceAux' ext ([]:body) as xs
+
+
+encodeChoiceExtAux :: [Int] -> [BitStream] -> Choice a -> HL a n -> Either String ([Int], [BitStream])
+encodeChoiceExtAux ext body NoChoice _ = return (ext,reverse body)
+encodeChoiceExtAux ext body (ChoiceExt as) xs =
+   encodeChoiceAux ext body as xs
+encodeChoiceExtAux ext body (ChoiceEAG as) xs =
+   encodeChoiceExtAux ext body as xs
+encodeChoiceExtAux ext body (ChoiceOption a as) (NoValueC x xs) =
+   encodeChoiceExtAux ext ([]:body) as xs
+encodeChoiceExtAux ext body (ChoiceOption (NamedType n t a) as) (ValueC x xs)
+    = do bts <- lEncodeOpen a x
+         encodeChoiceExtAux' [1](bts:body) as xs
+
+encodeChoiceExtAux' :: [Int] -> [BitStream] -> Choice a -> HL a n -> Either String ([Int], [BitStream])
+encodeChoiceExtAux' ext body NoChoice _ = return (ext, reverse body)
+encodeChoiceExtAux' ext body (ChoiceExt as) xs =
+   encodeChoiceAux' ext body as xs
+encodeChoiceExtAux' ext body (ChoiceEAG as) xs =
+   encodeChoiceAux' ext body as xs
+encodeChoiceExtAux' ext body (ChoiceOption a as) (NoValueC x xs) =
+   encodeChoiceExtAux' ext body as xs
+encodeChoiceExtAux' ext body (ChoiceOption a as) (ValueC x xs) =
+   encodeChoiceExtAux' ext body as xs
+
 
 \end{code}
 
