@@ -9,11 +9,15 @@
 --
 -- TBD
 -----------------------------------------------------------------------------
+{-# 
+OPTIONS_GHC -fwarn-unused-imports
+#-}
+
 module Language.ASN1.PER.IntegerAux
    ( toNonNegativeBinaryInteger
    , fromNonNegativeBinaryInteger
+   , to2sComplementUsingReverse
    , to2sComplement
-   , to2sComplement''
    , from2sComplement
    , nnbIterator
    , reverseBits
@@ -50,8 +54,8 @@ to2sComplementReverse n
 
 l n = genericLength ((flip (curry (unfoldr nnbIterator)) 7) (-n-1)) + 1
 
-to2sComplement :: Integer -> BL.ByteString
-to2sComplement n =
+to2sComplementUsingReverse :: Integer -> BL.ByteString
+to2sComplementUsingReverse n =
    BL.reverse (BL.map reverseBits (runBitPut (to2sComplementReverse n)))
 
 h'' :: Integer -> StateT Word8 BitPut' ()
@@ -70,8 +74,8 @@ h'' n =
                h'' (n `div` 2)
                lift $ putNBits 1 (n `mod` 2)
 
-to2sComplement'' :: Integer -> BitPut
-to2sComplement'' n
+to2sComplement :: Integer -> BitPut
+to2sComplement n
    | n >= 0    = putNBits 1 (0::Word8) >> runStateT (h'' n) 7             >> return ()
    | otherwise =                          runStateT (h'' (2^(l n) + n)) 8 >> return ()
 

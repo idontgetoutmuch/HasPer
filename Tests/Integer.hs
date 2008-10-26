@@ -1,12 +1,12 @@
+{-# 
+OPTIONS_GHC -fwarn-unused-imports
+#-}
+
 module Tests.Integer where
 
 import Language.ASN1.PER.IntegerAux
-import Data.Bits
-import Data.Word
 import Data.List
-import qualified Data.ByteString.Lazy as BL
 import Data.Binary.BitPut
-import Test.LazySmallCheck
 
 type BitStream = [Int]
 

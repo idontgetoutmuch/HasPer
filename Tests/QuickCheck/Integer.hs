@@ -1,11 +1,12 @@
-module Main where
+{-# 
+OPTIONS_GHC -fwarn-unused-imports
+#-}
+
+module Tests.QuickCheck.Integer where
 
 import Language.ASN1.PER.IntegerAux
 import Tests.Integer
-import Data.Bits
 import Data.Word
-import Data.List
-import qualified Data.ByteString.Lazy as BL
 import Data.Binary.BitPut
 import Test.QuickCheck
 
@@ -19,21 +20,22 @@ prop_RevRev x =
    reverseBits (reverseBits x) == x
 
 prop_From2sTo2s x =
-   from2sComplement (to2sComplement x) == x
+   from2sComplement (runBitPut (to2sComplement x)) == x
 
 prop_FromNonNegToNonNeg (n,w) =
    n >= 0 && w >= n ==> fromNonNegativeBinaryInteger (fromIntegral (bitWidth w)) (runBitPut (toNonNegativeBinaryInteger n w)) == n
+
 
 prop_NNBIntBits (n,w) =
    n >=0 && w >= n ==> runBitPut (bitPutify (toNonNegativeBinaryInteger' (n,w))) == runBitPut (toNonNegativeBinaryInteger n w)
 
 prop_2sComplement n =
-   runBitPut (bitPutify (to2sComplement' n)) == to2sComplement n
+   runBitPut (bitPutify (to2sComplement' n)) == runBitPut (to2sComplement n)
 
 prop_2sComplement' n =
-   runBitPut (to2sComplement'' n) == to2sComplement n
+   to2sComplementUsingReverse n == runBitPut (to2sComplement n)
 
-main = 
+tests = 
    do putStrLn "Checking reverse of reverse..."
       quickCheck prop_RevRev
       putStrLn "Checking bitPut 2s complement using reverse == bitPut 2s complement..."
