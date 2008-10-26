@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      : Language.ASN1.PER.Integer
+-- Module      : Language.ASN1.PER.IntegerAux
 -- Copyright   : Dominic Steinitz
 -- License     : BSD3-style (see LICENSE)
 --
@@ -9,11 +9,12 @@
 --
 -- TBD
 -----------------------------------------------------------------------------
-module Language.ASN1.PER.Integer
+module Language.ASN1.PER.IntegerAux
    ( toNonNegativeBinaryInteger
    , fromNonNegativeBinaryInteger
    , to2sComplement
-   , from2sComplement
+   , from2sComplement,
+   , g
    ) where
 
 import Data.Bits
@@ -39,8 +40,19 @@ h' p n =
    do putNBits 1 (n `mod` 2)
       h' (p-1) (n `div` 2)
   
--- h'' :: Integer -> StateT Word8 BitPut' ()
-  
+to2sComplementReverse :: Integer -> BitPut
+to2sComplementReverse n
+   | n >= 0 = do h' 7 n
+                 putNBits 1 (0::Word8)
+   | otherwise = h' 8 (2^p + n)
+   where
+      p = genericLength ((flip (curry (unfoldr g)) 7) (-n-1)) + 1
+
+to2sComplement :: Integer -> BL.ByteString
+to2sComplement n =
+   BL.reverse (BL.map reverseBits (runBitPut (to2sComplementReverse n)))
+
+h'' :: Integer -> StateT Word8 BitPut' ()
 h'' 0 =
    do p <- get
       lift $ putNBits (fromIntegral (p+1)) (0::Word8)
@@ -56,22 +68,21 @@ h'' n =
                h'' (n `div` 2)
                lift $ putNBits 1 (n `mod` 2)
 
-l n = genericLength ((flip (curry (unfoldr g)) 7) (-n-1)) + 1
+to2sComplement' :: Integer -> BitPut
+to2sComplement' n
+   | n >= 0 = putNBits 1 (0::Word8) >> runStateT (h'' n) 7 >> return ()
+   | otherwise = undefined
 
-to2sComplement3 :: Integer -> BitPut
-to2sComplement3 n
-   | n >= 0 = do h' 7 n
-                 putNBits 1 (0::Word8)
-   | otherwise = h' 8 (2^p + n)
+from2sComplement :: Num a => BL.ByteString -> a
+from2sComplement a = x
    where
-      p = l n
-
-to2sComplement4 :: Integer -> BitPut
-to2sComplement4 = undefined
-
-to2sComplement :: Integer -> BL.ByteString
-to2sComplement n =
-   BL.reverse (BL.map reverseBits (runBitPut (to2sComplement3 n)))
+      l = fromIntegral (BL.length a)
+      b = l*8 - 1
+      (z:zs) = BL.unpack a
+      t = (fromIntegral (shiftR (0x80 .&. z) 7)) * 2^b
+      powersOf256 = 1:(map (256*) powersOf256)
+      r = zipWith (*) powersOf256 (map fromIntegral (reverse ((0x7f .&. z):zs)))
+      x = -t + (sum r)
 
 bottomNBits :: Int -> Word8
 bottomNBits 0 = 0
@@ -98,17 +109,6 @@ fromNonNegativeBinaryInteger r x =
       bSize = bitSize (head ys)
       ys = reverse (BL.unpack (rightShift (fromIntegral s) x))
       zs = map ((2^bSize)^) [0..genericLength ys]
-
-from2sComplement :: Num a => BL.ByteString -> a
-from2sComplement a = x
-   where
-      l = fromIntegral (BL.length a)
-      b = l*8 - 1
-      (z:zs) = BL.unpack a
-      t = (fromIntegral (shiftR (0x80 .&. z) 7)) * 2^b
-      powersOf256 = 1:(map (256*) powersOf256)
-      r = zipWith (*) powersOf256 (map fromIntegral (reverse ((0x7f .&. z):zs)))
-      x = -t + (sum r)
 
 toNonNegativeBinaryInteger :: Integer -> Integer -> BitPut
 toNonNegativeBinaryInteger _ 0 = return ()
