@@ -58,7 +58,7 @@ to2sComplementUsingReverse :: Integer -> BL.ByteString
 to2sComplementUsingReverse n =
    BL.reverse (BL.map reverseBits (runBitPut (to2sComplementReverse n)))
 
--- h'' :: Integer -> StateT Word8 BitPut' ()
+h'' :: Integer -> StateT Word8 BitPut' ()
 h'' 0 =
    do p <- get
       lift $ putNBits (fromIntegral p) (0::Word8)
