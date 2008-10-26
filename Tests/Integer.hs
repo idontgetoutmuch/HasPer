@@ -10,7 +10,7 @@ import Test.LazySmallCheck
 
 type BitStream = [Int]
 
-h b = map fromIntegral . reverse . flip (curry (unfoldr g)) b
+h b = map fromIntegral . reverse . flip (curry (unfoldr nnbIterator)) b
 
 to2sComplement' :: Integer -> BitStream
 to2sComplement' n
