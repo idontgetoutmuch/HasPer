@@ -33,16 +33,18 @@ prop_2sComplement n =
 prop_2sComplement' n =
    to2sComplementUsingReverse n == runBitPut (to2sComplement n)
 
-tests = 
+testsAux n = 
    do putStrLn "Checking reverse of reverse..."
-      smallCheck 15 prop_RevRev
+      smallCheck n prop_RevRev
       putStrLn "Checking bitPut 2s complement using reverse == bitPut 2s complement..."
-      smallCheck 15 prop_2sComplement'
+      smallCheck n prop_2sComplement'
       putStrLn "Checking unfolded 2s complement = bitPut 2s complement..."
-      smallCheck 15 prop_2sComplement
+      smallCheck n prop_2sComplement
       putStrLn "Checking from 2s complement of to 2s complement..."
-      smallCheck 15 prop_From2sTo2s
+      smallCheck n prop_From2sTo2s
       putStrLn "Checking unfolded non-negative binary integer = bitPut non-negative binary integer..."
-      smallCheck 15 prop_NNBIntBits
+      smallCheck n prop_NNBIntBits
       putStrLn "Checking from non-negative binary integer of to non-negative binary integer..."
-      smallCheck 15 prop_FromNonNegToNonNeg
+      smallCheck n prop_FromNonNegToNonNeg
+
+tests = testsAux 257
