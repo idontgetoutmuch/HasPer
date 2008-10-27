@@ -1550,6 +1550,9 @@ decode (ConsT t c) cl = decode t (c:cl)
 decode2 (BT t) cl = fromPer2 t cl
 decode2 (ConsT t c) cl = decode2 t (c:cl)
 
+decode2' (BT t) cl = fromPer2' t cl
+decode2' (ConsT t c) cl = decode2' t (c:cl)
+
 fromPer :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => ASNBuiltin a -> [ElementSetSpecs a] ->
                     t BG.BitGet a
 fromPer t@INTEGER cl  = decodeInt cl
@@ -1558,11 +1561,25 @@ fromPer2 :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
             => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
 fromPer2 t@INTEGER cl = decodeInt2 cl
 
+fromPer2' :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
+             => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
+fromPer2' t@INTEGER cl = decodeInt2' cl
+
 decodeInt [] = decodeUInt >>= \(Val x) -> return (Val (fromIntegral x))
+
+decodeInt' [] = decodeUInt' >>= \(Val x) -> return (Val (fromIntegral x))
 
 decodeInt2 [] = error "you haven't done unconstrained decoding!"
 decodeInt2 cs =
    lEitherTest2 parentRoot lc
+   where
+      lc         = last cs
+      ic         = init cs
+      parentRoot = lRootIntCons top ic
+
+decodeInt2' [] = error "you haven't done unconstrained decoding!"
+decodeInt2' cs =
+   lEitherTest2' parentRoot lc
    where
       lc         = last cs
       ic         = init cs
@@ -1574,7 +1591,11 @@ lEitherTest2 pr lc =
       (effExt,b) = lApplyExt pr lc
       effRoot    = lEvalC lc pr
 
-
+lEitherTest2' pr lc =
+   lDecConsInt2' effRoot effExt
+   where
+      (effExt,b) = lApplyExt pr lc
+      effRoot    = lEvalC lc pr
 
 decodeUInt :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet InfInteger
 decodeUInt =
@@ -1715,6 +1736,57 @@ lDecConsInt2 mrc mec =
              | otherwise
                   = throwError "Value out of range"
       foobar
+
+-- lDecConsInt2' :: (MonadError [Char] m) => m IntegerConstraint -> m IntegerConstraint -> m (BG.BitGet Integer)
+lDecConsInt2' mrc mec =
+   do rc <- mrc
+      ec <- mec
+      let extensionConstraint    = ec /= bottom
+          extensionRange         = (upper ec) - (lower ec) + 1
+          rootConstraint         = rc /= bottom
+          rootLower              = let Val x = lower rc in x
+          rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- fromIntegral means there's an Int bug lurking here
+          numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
+          emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
+          inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
+          unconstrained x        = (lower x) == minBound
+          semiconstrained x      = (upper x) == maxBound
+          constrained x          = not (unconstrained x) && not (semiconstrained x)
+          constraintType x
+             | unconstrained x   = UnConstrained
+             | semiconstrained x = SemiConstrained
+             | otherwise         = Constrained
+          foobar
+             | emptyConstraint
+                  = throwError "Empty constraint"
+             | rootConstraint &&
+               extensionConstraint
+                  = error "Root constraint and extension constraint and in range"
+             | rootConstraint
+                  = return $ if rootRange <= 1
+                                then
+                                   return (Val rootLower)
+                                else
+                                   do isExtension <- lift $ BG.getBit
+                                      if isExtension
+                                         then
+                                            throwError "Extension for constraint not supported"
+                                         else
+                                            do j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
+                                               let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
+                                               if v `inRange` rc
+                                                  then
+                                                     return (Val v)
+                                                  else
+                                                     throwError "Value not in root constraint"
+
+             | extensionConstraint
+               -- inRange ec
+                  = error "Extension constraint and in range"
+             | otherwise
+                  = throwError "Value out of range"
+      foobar
+
 
 \end{code}
 
