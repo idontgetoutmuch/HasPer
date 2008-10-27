@@ -16,6 +16,7 @@ OPTIONS_GHC -fwarn-unused-imports
 module Language.ASN1.PER.IntegerAux
    ( toNonNegativeBinaryInteger
    , fromNonNegativeBinaryInteger
+   , fromNonNegativeBinaryInteger'
    , to2sComplementUsingReverse
    , to2sComplement
    , from2sComplement
@@ -26,6 +27,7 @@ module Language.ASN1.PER.IntegerAux
 import Data.Bits
 import Data.Word
 import Data.List
+import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.Binary.BitPut
 import Control.Monad.State
@@ -107,6 +109,11 @@ rightShift 0 = id
 rightShift n = snd . BL.mapAccumL f 0 where
   f acc b = (b .&. (bottomNBits n), (b `shiftR` n) .|. (acc `shiftL` (8 - n)))
 
+rightShift' :: Int -> B.ByteString -> B.ByteString
+rightShift' 0 = id
+rightShift' n = snd . B.mapAccumL f 0 where
+  f acc b = (b .&. (bottomNBits n), (b `shiftR` n) .|. (acc `shiftL` (8 - n)))
+
 fromNonNegativeBinaryInteger :: Integer -> BL.ByteString -> Integer
 fromNonNegativeBinaryInteger r x =
    sum (zipWith (*) (map fromIntegral ys) zs)
@@ -115,6 +122,16 @@ fromNonNegativeBinaryInteger r x =
       bSize = bitSize (head ys)
       ys = reverse (BL.unpack (rightShift (fromIntegral s) x))
       zs = map ((2^bSize)^) [0..genericLength ys]
+
+fromNonNegativeBinaryInteger' :: Integer -> B.ByteString -> Integer
+fromNonNegativeBinaryInteger' r x =
+   sum (zipWith (*) (map fromIntegral ys) zs)
+   where
+      s = (-r) `mod` (fromIntegral bSize)
+      bSize = bitSize (head ys)
+      ys = reverse (B.unpack (rightShift' (fromIntegral s) x))
+      zs = map ((2^bSize)^) [0..genericLength ys]
+
 
 toNonNegativeBinaryInteger :: Integer -> Integer -> BitPut
 toNonNegativeBinaryInteger _ 0 = return ()

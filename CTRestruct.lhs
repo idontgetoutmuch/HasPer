@@ -66,33 +66,25 @@ The encoding is for UNALIGNED PER
 \begin{code}
 {-# OPTIONS_GHC -XMultiParamTypeClasses -XGADTs -XTypeOperators
                 -XEmptyDataDecls -XFlexibleInstances -XFlexibleContexts
+                -fwarn-unused-imports
 #-}
 
 module CTRestruct where
 
 import ASNTYPE
-import qualified Data.Map as Map
 import Data.List hiding (groupBy)
 import Data.Bits
 import Data.Char
-import Control.Monad.State
 import Control.Monad.Error
 import Control.Monad.Identity
 import qualified Data.ByteString as B
 import Data.Binary.Strict.BitUtil (rightShift)
 import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.Strict.BitPut as BP
-import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String,
-                ComponentType(Default), NamedType, OctetString, VisibleString)
-import Text.PrettyPrint
-import System
-import IO
+import qualified Data.ByteString.Lazy as BL
+import Language.ASN1.PER.Integer (fromNonNegativeBinaryInteger')
 import Data.Int
 import Data.Maybe
-import qualified Data.Foldable as F
-import Data.Monoid
-import qualified Data.Traversable as T
-import Control.Applicative
 import LatticeMod
 import ConstraintGeneration
 \end{code}
@@ -1590,6 +1582,16 @@ decodeUInt =
       chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
       octets   = decodeLargeLengthDeterminant chunkBy8 undefined
 
+{-
+decodeUInt' :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet InfInteger
+decodeUInt' =
+   do o <- octets
+      return (PI.from2sComplement o)
+   where
+      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
+      octets   = decodeLargeLengthDeterminant chunkBy8 undefined
+-}
+
 decodeLargeLengthDeterminant f t =
    do p <- lift BG.getBit
       if (not p)
@@ -1611,6 +1613,31 @@ decodeLargeLengthDeterminant f t =
                            then throwError (fragError ++ show fragSize)
                            else do frag <- f (fragSize * n16k) t
                                    rest <- decodeLargeLengthDeterminant f t
+                                   return (B.append frag rest)
+                        where
+                           fragError = "Unable to decode with fragment size of "
+
+decodeLargeLengthDeterminant' f t =
+   do p <- lift BG.getBit
+      if (not p)
+         then
+            do j <- lift $ BG.getLeftByteString 7
+               let l = fromNonNegativeBinaryInteger' 7 j
+               f l t
+         else
+            do q <- lift BG.getBit
+               if (not q)
+                  then
+                     do k <- lift $ BG.getLeftByteString 14
+                        let m = fromNonNegativeBinaryInteger' 14 k
+                        f m t
+                  else
+                     do n <- lift $ BG.getLeftByteString 6
+                        let fragSize = fromNonNegativeBinaryInteger' 6 n
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError (fragError ++ show fragSize)
+                           else do frag <- f (fragSize * n16k) t
+                                   rest <- decodeLargeLengthDeterminant' f t
                                    return (B.append frag rest)
                         where
                            fragError = "Unable to decode with fragment size of "

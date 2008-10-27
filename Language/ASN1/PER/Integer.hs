@@ -12,6 +12,7 @@
 module Language.ASN1.PER.Integer
    ( toNonNegativeBinaryInteger
    , fromNonNegativeBinaryInteger
+   , fromNonNegativeBinaryInteger'
    , to2sComplement
    , from2sComplement,
    ) where
@@ -19,6 +20,7 @@ module Language.ASN1.PER.Integer
 import qualified Language.ASN1.PER.IntegerAux as I
 import Data.Binary.BitPut
 import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString as B
 
 {-|
 'toNonNegativeBinaryInteger' takes two 'Integer' arguments and encodes
@@ -51,7 +53,9 @@ to2sComplement = I.to2sComplement
 {-|
 'from2sComplement' takes a 'ByteString' argument and decodes the
 bits as two's complement (<http://en.wikipedia.org/wiki/2s_complement>)
-into an 'Integer'.
+into a "number" 'Num' a.
 -}
-from2sComplement :: ByteString -> Integer
+from2sComplement :: Num a => ByteString -> a
 from2sComplement = I.from2sComplement
+
+fromNonNegativeBinaryInteger' = I.fromNonNegativeBinaryInteger'
