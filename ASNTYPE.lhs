@@ -1,14 +1,17 @@
 \begin{code}
+
 {-# OPTIONS_GHC -XTypeOperators -XGADTs -XEmptyDataDecls
                 -XFlexibleInstances -XFlexibleContexts
                 -XScopedTypeVariables
 #-}
+
 module ASNTYPE where
 
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String,
                 ComponentType(Default), NamedType, OctetString, VisibleString)
 import Data.Word
 \end{code}
+
 We need to mimic the ASN.1 {\tt Type} as defined in X.680
 
 An ASN.1 module is a collection of (mainly type) assignments. A
@@ -25,7 +28,6 @@ reference or a parameterised type (defined in X.683); or
 \item
 a {\tt ConstrainedType} -- a type with a constraint.
 \end{itemize}
-
 
 A {\tt ReferencedType} is:
 \begin{itemize}
@@ -64,6 +66,7 @@ GeneralConstraint} with or without an exception.
 A {\tt SubtypeConstraint} may be extensible as indicated by {\tt
 ...} and is defined in X.680 using the type {\tt ElementSetSpecs}
 as
+
 \begin{verbatim}
 ElementSetSpecs ::=
     RootElementSetSpec
@@ -97,6 +100,7 @@ UnionMark ::= "|" | UNION
 
 IntersectionMark ::= "^" | INTERSECTION
 \end{verbatim}
+
 In summary a {\tt SubtypeConstraint} is either a union of
 intersections of atomic constraints (such as single value, range and size) or everything except a subset of
 values of a type. A {\tt GeneralConstraint} is defined in X.682.

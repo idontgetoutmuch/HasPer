@@ -61,6 +61,10 @@ FooBar {1 2 3 4 5 6} DEFINITIONS ::=
 
 \section{Housekeeping}
 
+%include ASNTYPE.lhs
+
+\section{Encoding and Decoding}
+
 The encoding is for UNALIGNED PER
 
 \begin{code}
@@ -90,9 +94,6 @@ import Data.Maybe
 import LatticeMod
 import ConstraintGeneration
 \end{code}
-
-
-
 
 PER Top-Level encode function. There are three cases:
 i.   The input is a builtin type: toPer is called on this type.
