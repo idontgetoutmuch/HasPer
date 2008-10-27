@@ -96,23 +96,22 @@ mt7 = ConsT (ConsT (BT INTEGER) myCon5) myCon1
 myTest t x =
    case lEncode t x [] of
       Left s  -> s
-      Right m -> show (B.unpack (BP.runBitPut m))
+      Right m -> show m -- (B.unpack (BP.runBitPut m))
 
 myTAB t x =
     case lEncode t x [] of
         Left s  -> error ("First " ++ s)
         Right y -> case decode2 t [] of
                      Left t -> error ("Second " ++ t)
-                     Right x -> case BG.runBitGet (BP.runBitPut y) (runErrorT x) of
+                     Right x -> case BG.runBitGet (BP.runBitPut (bitPutify y)) (runErrorT x) of
                                    Left s -> error ("Third " ++ s)
                                    Right z -> case z of
                                                  Left u  -> error ("Fourth " ++ u)
                                                  Right n -> n
-
 myTAB1 t x =
     case lEncode t x [] of
         Left s  -> error ("First " ++ s)
-        Right y -> B.unpack (BP.runBitPut y)
+        Right y -> B.unpack (BP.runBitPut (bitPutify y))
 
 instance Arbitrary A.InfInteger where
    arbitrary =

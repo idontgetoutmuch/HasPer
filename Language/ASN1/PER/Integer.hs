@@ -14,7 +14,8 @@ module Language.ASN1.PER.Integer
    , fromNonNegativeBinaryInteger
    , fromNonNegativeBinaryInteger'
    , to2sComplement
-   , from2sComplement,
+   , from2sComplement
+   , from2sComplement'
    ) where
 
 import qualified Language.ASN1.PER.IntegerAux as I
@@ -59,3 +60,6 @@ from2sComplement :: Num a => ByteString -> a
 from2sComplement = I.from2sComplement
 
 fromNonNegativeBinaryInteger' = I.fromNonNegativeBinaryInteger'
+
+from2sComplement' :: Num a => B.ByteString -> a
+from2sComplement' = I.from2sComplement'

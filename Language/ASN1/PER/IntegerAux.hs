@@ -20,6 +20,7 @@ module Language.ASN1.PER.IntegerAux
    , to2sComplementUsingReverse
    , to2sComplement
    , from2sComplement
+   , from2sComplement'
    , nnbIterator
    , reverseBits
    ) where
@@ -87,6 +88,17 @@ from2sComplement a = x
       l = fromIntegral (BL.length a)
       b = l*8 - 1
       (z:zs) = BL.unpack a
+      t = (fromIntegral (shiftR (0x80 .&. z) 7)) * 2^b
+      powersOf256 = 1:(map (256*) powersOf256)
+      r = zipWith (*) powersOf256 (map fromIntegral (reverse ((0x7f .&. z):zs)))
+      x = -t + (sum r)
+
+from2sComplement' :: Num a => B.ByteString -> a
+from2sComplement' a = x
+   where
+      l = fromIntegral (B.length a)
+      b = l*8 - 1
+      (z:zs) = B.unpack a
       t = (fromIntegral (shiftR (0x80 .&. z) 7)) * 2^b
       powersOf256 = 1:(map (256*) powersOf256)
       r = zipWith (*) powersOf256 (map fromIntegral (reverse ((0x7f .&. z):zs)))

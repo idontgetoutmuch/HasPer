@@ -81,8 +81,10 @@ import qualified Data.ByteString as B
 import Data.Binary.Strict.BitUtil (rightShift)
 import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.Strict.BitPut as BP
-import qualified Data.ByteString.Lazy as BL
-import Language.ASN1.PER.Integer (fromNonNegativeBinaryInteger')
+import Language.ASN1.PER.Integer
+   ( fromNonNegativeBinaryInteger'
+   , from2sComplement'
+   )
 import Data.Int
 import Data.Maybe
 import LatticeMod
@@ -1582,15 +1584,13 @@ decodeUInt =
       chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
       octets   = decodeLargeLengthDeterminant chunkBy8 undefined
 
-{-
 decodeUInt' :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet InfInteger
 decodeUInt' =
    do o <- octets
-      return (PI.from2sComplement o)
+      return (from2sComplement' o)
    where
       chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
-      octets   = decodeLargeLengthDeterminant chunkBy8 undefined
--}
+      octets   = decodeLargeLengthDeterminant' chunkBy8 undefined
 
 decodeLargeLengthDeterminant f t =
    do p <- lift BG.getBit
