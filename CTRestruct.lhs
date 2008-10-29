@@ -1565,39 +1565,16 @@ decodeInt [] = decodeUInt >>= \(Val x) -> return (Val (fromIntegral x))
 
 decodeInt' [] = decodeUInt' >>= \(Val x) -> return (Val (fromIntegral x))
 
-{-
-decodeInt2 [] = error "you haven't done unconstrained decoding!"
-decodeInt2 cs =
-   lEitherTest2 parentRoot lc
-   where
-      lc         = last cs
-      ic         = init cs
-      parentRoot = lRootIntCons top ic
--}
-
 decodeInt2' [] = 
    lDecConsInt2' bottom bottom
-   -- error "you haven't done unconstrained decoding!"
 decodeInt2' cs =
-   lEitherTest2' parentRoot lc
+   lDecConsInt2' effRoot effExt
    where
       lc         = last cs
       ic         = init cs
       parentRoot = lRootIntCons top ic
-
-{-
-lEitherTest2 pr lc =
-   lDecConsInt2 effRoot effExt
-   where
-      (effExt,b) = lApplyExt pr lc
-      effRoot    = lEvalC lc pr
--}
-
-lEitherTest2' pr lc =
-   lDecConsInt2' effRoot effExt
-   where
-      (effExt,b) = lApplyExt pr lc
-      effRoot    = lEvalC lc pr
+      (effExt,_) = lApplyExt parentRoot lc
+      effRoot    = lEvalC lc parentRoot
 
 decodeUInt :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet InfInteger
 decodeUInt =
