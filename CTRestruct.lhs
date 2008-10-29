@@ -1544,13 +1544,10 @@ findV m (a:rs)
 
 type ElementSetSpecs a = ESS a
 
+{-
 decode :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => ASNType a -> [ElementSetSpecs a] -> t BG.BitGet a
 decode (BT t) cl = fromPer t cl
 decode (ConsT t c) cl = decode t (c:cl)
-
-{-
-decode2 (BT t) cl = fromPer2 t cl
-decode2 (ConsT t c) cl = decode2 t (c:cl)
 -}
 
 decode2' (BT t) cl = fromPer2' t cl
@@ -1559,12 +1556,6 @@ decode2' (ConsT t c) cl = decode2' t (c:cl)
 fromPer :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => ASNBuiltin a -> [ElementSetSpecs a] ->
                     t BG.BitGet a
 fromPer t@INTEGER cl  = decodeInt cl
-
-{-
-fromPer2 :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
-            => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
-fromPer2 t@INTEGER cl = decodeInt2 cl
--}
 
 fromPer2' :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
              => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
@@ -1584,7 +1575,9 @@ decodeInt2 cs =
       parentRoot = lRootIntCons top ic
 -}
 
-decodeInt2' [] = error "you haven't done unconstrained decoding!"
+decodeInt2' [] = 
+   lDecConsInt2' bottom bottom
+   -- error "you haven't done unconstrained decoding!"
 decodeInt2' cs =
    lEitherTest2' parentRoot lc
    where
