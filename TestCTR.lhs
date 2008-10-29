@@ -26,6 +26,7 @@ import Control.Monad.Error
 import qualified LatticeMod as L
 
 import Test.QuickCheck
+import Test.HUnit
 
 import ASNTYPE as A
 import ConstraintGeneration
@@ -160,9 +161,25 @@ instance Arbitrary ConstraintAndInteger where
 prop_ValidConstraintAndInteger (ConstraintAndInteger c v) = 
    v >= A.lower c && v <= A.upper c
 
+\end{code}
+
+\begin{code}
+
+vInteger1 = Val 4096
+tabInteger1 = myTAB' (BT INTEGER) vInteger1
+
+unConstrainedIntegerTest1 =
+   TestCase (
+      assertEqual "Unconstrained INTEGER Test 1" vInteger1 tabInteger1
+   )
+
+tests = [
+   unConstrainedIntegerTest1
+   ]
+
 main =
    do quickCheck prop_ValidConstraintAndInteger
-      putStrLn (show (myTAB' (BT INTEGER) (Val 4096)))
+      runTestTT (TestList tests)
 
 \end{code}
 

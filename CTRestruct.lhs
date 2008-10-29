@@ -1597,8 +1597,6 @@ determinant itself in this particular case).
 
 \begin{code}
 
-decodeInt' [] = decodeUInt' >>= \(Val x) -> return (Val (fromIntegral x))
-
 decodeInt2' [] = 
    lDecConsInt2' bottom bottom
 decodeInt2' cs =
@@ -1610,7 +1608,7 @@ decodeInt2' cs =
       (effExt,_) = lApplyExt parentRoot lc
       effRoot    = lEvalC lc parentRoot
 
-decodeUInt' :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet InfInteger
+decodeUInt' :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet Integer
 decodeUInt' =
    do o <- octets
       return (from2sComplement' o)
@@ -1643,7 +1641,8 @@ lDecConsInt2' mrc mec =
              | otherwise         = Constrained
           foobar
              | emptyConstraint
-                  = throwError "Empty constraint"
+                  = return $ do x <- decodeUInt'
+                                return (Val x)
              | rootConstraint &&
                extensionConstraint
                   = error "Root constraint and extension constraint and in range"
