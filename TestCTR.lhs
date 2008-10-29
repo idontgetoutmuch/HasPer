@@ -98,6 +98,7 @@ myTest t x =
       Left s  -> s
       Right m -> show m -- (B.unpack (BP.runBitPut m))
 
+{-
 myTAB t x =
     case lEncode t x [] of
         Left s  -> error ("First " ++ s)
@@ -108,6 +109,8 @@ myTAB t x =
                                    Right z -> case z of
                                                  Left u  -> error ("Fourth " ++ u)
                                                  Right n -> n
+-}
+
 myTAB' t x =
     case lEncode t x [] of
         Left s  -> error ("First " ++ s)

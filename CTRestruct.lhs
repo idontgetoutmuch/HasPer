@@ -1548,8 +1548,10 @@ decode :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => ASNType a -> [Eleme
 decode (BT t) cl = fromPer t cl
 decode (ConsT t c) cl = decode t (c:cl)
 
+{-
 decode2 (BT t) cl = fromPer2 t cl
 decode2 (ConsT t c) cl = decode2 t (c:cl)
+-}
 
 decode2' (BT t) cl = fromPer2' t cl
 decode2' (ConsT t c) cl = decode2' t (c:cl)
@@ -1558,9 +1560,11 @@ fromPer :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => ASNBuiltin a -> [E
                     t BG.BitGet a
 fromPer t@INTEGER cl  = decodeInt cl
 
+{-
 fromPer2 :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
             => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
 fromPer2 t@INTEGER cl = decodeInt2 cl
+-}
 
 fromPer2' :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
              => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
@@ -1570,6 +1574,7 @@ decodeInt [] = decodeUInt >>= \(Val x) -> return (Val (fromIntegral x))
 
 decodeInt' [] = decodeUInt' >>= \(Val x) -> return (Val (fromIntegral x))
 
+{-
 decodeInt2 [] = error "you haven't done unconstrained decoding!"
 decodeInt2 cs =
    lEitherTest2 parentRoot lc
@@ -1577,6 +1582,7 @@ decodeInt2 cs =
       lc         = last cs
       ic         = init cs
       parentRoot = lRootIntCons top ic
+-}
 
 decodeInt2' [] = error "you haven't done unconstrained decoding!"
 decodeInt2' cs =
@@ -1586,11 +1592,13 @@ decodeInt2' cs =
       ic         = init cs
       parentRoot = lRootIntCons top ic
 
+{-
 lEitherTest2 pr lc =
    lDecConsInt2 effRoot effExt
    where
       (effExt,b) = lApplyExt pr lc
       effRoot    = lEvalC lc pr
+-}
 
 lEitherTest2' pr lc =
    lDecConsInt2' effRoot effExt
@@ -1686,8 +1694,21 @@ from2sComplement a = x
 
 \end{code}
 
+
+\section {INTEGER Decoding}
+
+Constrained {\em INTEGER}s are encoded as non-negative binary in
+the least number of bits
+unless the range is 1 (in which case the answer is the lower and upper bound) --- see Note 2 in Clause 12.
+
+Semi-constrained and unconstrained {\em INTEGER}s are encoded in a list of chunks of
+8 bits (octets) as non-negative binary or as two's complement respectively with a
+\lq\lq large\rq\rq\ length determinant (as there are no constraints on the length
+determinant itself in this particular case).
+
 \begin{code}
 
+{-
 -- lDecConsInt2 :: (MonadError [Char] m) => m IntegerConstraint -> m IntegerConstraint -> m (BG.BitGet Integer)
 lDecConsInt2 mrc mec =
    do rc <- mrc
@@ -1737,6 +1758,7 @@ lDecConsInt2 mrc mec =
              | otherwise
                   = throwError "Value out of range"
       foobar
+-}
 
 -- lDecConsInt2' :: (MonadError [Char] m) => m IntegerConstraint -> m IntegerConstraint -> m (BG.BitGet Integer)
 lDecConsInt2' mrc mec =
