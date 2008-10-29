@@ -1539,83 +1539,25 @@ findV m (a:rs)
 
 \end{code}
 
-
 \begin{code}
+
+-- fromPer :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => 
+--            ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
 
 type ElementSetSpecs a = ESS a
 
-{-
-decode :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => ASNType a -> [ElementSetSpecs a] -> t BG.BitGet a
-decode (BT t) cl = fromPer t cl
-decode (ConsT t c) cl = decode t (c:cl)
--}
-
 decode2' (BT t) cl = fromPer2' t cl
 decode2' (ConsT t c) cl = decode2' t (c:cl)
-
-fromPer :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => ASNBuiltin a -> [ElementSetSpecs a] ->
-                    t BG.BitGet a
-fromPer t@INTEGER cl  = decodeInt cl
 
 fromPer2' :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
              => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
 fromPer2' t@INTEGER cl = decodeInt2' cl
 
-decodeInt [] = decodeUInt >>= \(Val x) -> return (Val (fromIntegral x))
+\end{code}
 
-decodeInt' [] = decodeUInt' >>= \(Val x) -> return (Val (fromIntegral x))
+\section{Decoding Length Determinants}
 
-decodeInt2' [] = 
-   lDecConsInt2' bottom bottom
-decodeInt2' cs =
-   lDecConsInt2' effRoot effExt
-   where
-      lc         = last cs
-      ic         = init cs
-      parentRoot = lRootIntCons top ic
-      (effExt,_) = lApplyExt parentRoot lc
-      effRoot    = lEvalC lc parentRoot
-
-decodeUInt :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet InfInteger
-decodeUInt =
-   do o <- octets
-      return (from2sComplement o)
-   where
-      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
-      octets   = decodeLargeLengthDeterminant chunkBy8 undefined
-
-decodeUInt' :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet InfInteger
-decodeUInt' =
-   do o <- octets
-      return (from2sComplement' o)
-   where
-      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
-      octets   = decodeLargeLengthDeterminant' chunkBy8 undefined
-
-decodeLargeLengthDeterminant f t =
-   do p <- lift BG.getBit
-      if (not p)
-         then
-            do j <- lift $ BG.getLeftByteString 7
-               let l = fromNonNeg 7 j
-               f l t
-         else
-            do q <- lift BG.getBit
-               if (not q)
-                  then
-                     do k <- lift $ BG.getLeftByteString 14
-                        let m = fromNonNeg 14 k
-                        f m t
-                  else
-                     do n <- lift $ BG.getLeftByteString 6
-                        let fragSize = fromNonNeg 6 n
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError (fragError ++ show fragSize)
-                           else do frag <- f (fragSize * n16k) t
-                                   rest <- decodeLargeLengthDeterminant f t
-                                   return (B.append frag rest)
-                        where
-                           fragError = "Unable to decode with fragment size of "
+\begin{code}
 
 decodeLargeLengthDeterminant' f t =
    do p <- lift BG.getBit
@@ -1636,34 +1578,14 @@ decodeLargeLengthDeterminant' f t =
                         let fragSize = fromNonNegativeBinaryInteger' 6 n
                         if fragSize <= 0 || fragSize > 4
                            then throwError (fragError ++ show fragSize)
-                           else do frag <- f (fragSize * n16k) t
+                           else do frag <- f (fragSize * 16 * (2^10)) t
                                    rest <- decodeLargeLengthDeterminant' f t
                                    return (B.append frag rest)
                         where
                            fragError = "Unable to decode with fragment size of "
 
-n16k = 16*(2^10)
-
-fromNonNeg r x =
-   sum (zipWith (*) (map fromIntegral ys) zs)
-   where
-      s = (-r) `mod` bSize
-      bSize = bitSize (head ys)
-      ys = reverse (B.unpack (rightShift s x))
-      zs = map ((2^bSize)^) [0..genericLength ys]
-
-from2sComplement a = x
-   where
-      l = fromIntegral (B.length a)
-      b = l*8 - 1
-      (z:zs) = B.unpack a
-      t = (fromIntegral (shiftR (0x80 .&. z) 7)) * 2^b
-      powersOf256 = 1:(map (256*) powersOf256)
-      r = zipWith (*) powersOf256 (map fromIntegral (reverse ((0x7f .&. z):zs)))
-      x = -t + (sum r)
 
 \end{code}
-
 
 \section {INTEGER Decoding}
 
@@ -1675,6 +1597,31 @@ Semi-constrained and unconstrained {\em INTEGER}s are encoded in a list of chunk
 8 bits (octets) as non-negative binary or as two's complement respectively with a
 \lq\lq large\rq\rq\ length determinant (as there are no constraints on the length
 determinant itself in this particular case).
+
+\begin{code}
+
+decodeInt' [] = decodeUInt' >>= \(Val x) -> return (Val (fromIntegral x))
+
+decodeInt2' [] = 
+   lDecConsInt2' bottom bottom
+decodeInt2' cs =
+   lDecConsInt2' effRoot effExt
+   where
+      lc         = last cs
+      ic         = init cs
+      parentRoot = lRootIntCons top ic
+      (effExt,_) = lApplyExt parentRoot lc
+      effRoot    = lEvalC lc parentRoot
+
+decodeUInt' :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet InfInteger
+decodeUInt' =
+   do o <- octets
+      return (from2sComplement' o)
+   where
+      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
+      octets   = decodeLargeLengthDeterminant' chunkBy8 undefined
+
+\end{code}
 
 \begin{code}
 
