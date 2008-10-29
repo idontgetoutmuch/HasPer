@@ -1,10 +1,3 @@
-\documentclass{article}
-%include polycode.fmt
-
-\newcommand{\bottom}{\perp}
-
-\begin{document}
-
 \section{Introduction}
 
 Testing encoding for UNALIGNED PER

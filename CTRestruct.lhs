@@ -1674,6 +1674,10 @@ lDecConsInt2' mrc mec =
 
 \end{code}
 
+\section{Appendix: Tests}
+
+%include TestCTR.lhs
+
 \bibliographystyle{plainnat}
 
 \bibliography{3gpp,ASN1}
