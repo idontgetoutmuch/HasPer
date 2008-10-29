@@ -162,6 +162,7 @@ prop_ValidConstraintAndInteger (ConstraintAndInteger c v) =
 
 main =
    do quickCheck prop_ValidConstraintAndInteger
+      putStrLn (show (myTAB' (BT INTEGER) (Val 4096)))
 
 \end{code}
 

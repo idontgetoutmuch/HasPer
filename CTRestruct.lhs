@@ -77,12 +77,10 @@ module CTRestruct where
 
 import ASNTYPE
 import Data.List hiding (groupBy)
-import Data.Bits
 import Data.Char
 import Control.Monad.Error
 import Control.Monad.Identity
 import qualified Data.ByteString as B
-import Data.Binary.Strict.BitUtil (rightShift)
 import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.Strict.BitPut as BP
 import Language.ASN1.PER.Integer
@@ -1583,7 +1581,6 @@ decodeLargeLengthDeterminant' f t =
                                    return (B.append frag rest)
                         where
                            fragError = "Unable to decode with fragment size of "
-
 
 \end{code}
 
