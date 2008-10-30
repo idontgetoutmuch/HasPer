@@ -1598,9 +1598,9 @@ determinant itself in this particular case).
 \begin{code}
 
 decodeInt2' [] = 
-   lDecConsInt2' bottom bottom
+   lDecConsInt2' bottom undefined bottom
 decodeInt2' cs =
-   lDecConsInt2' effRoot effExt
+   lDecConsInt2' effRoot isExtensible effExt
    where
       lc                    = last cs
       ic                    = init cs
@@ -1620,8 +1620,8 @@ decodeUInt' =
 
 \begin{code}
 
--- lDecConsInt2' :: (MonadError [Char] m) => m IntegerConstraint -> m IntegerConstraint -> m (BG.BitGet Integer)
-lDecConsInt2' mrc mec =
+-- lDecConsInt2' :: (MonadError [Char] m) => m IntegerConstraint -> Bool -> m IntegerConstraint -> m (BG.BitGet Integer)
+lDecConsInt2' mrc isExtensible mec =
    do rc <- mrc
       ec <- mec
       let extensionConstraint    = ec /= bottom
@@ -1639,31 +1639,42 @@ lDecConsInt2' mrc mec =
              | unconstrained x   = UnConstrained
              | semiconstrained x = SemiConstrained
              | otherwise         = Constrained
+          decodeRootConstrained = 
+             if rootRange <= 1
+                then
+                   return (Val rootLower)
+                else
+                   do j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
+                      let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
+                      if v `inRange` rc
+                         then
+                            return (Val v)
+                         else
+                            throwError "Value not in root constraint"
           foobar
              | emptyConstraint
-                  = return $ do x <- decodeUInt'
-                                return (Val x)
+                  = do x <- decodeUInt'
+                       return (Val x)
              | rootConstraint &&
                extensionConstraint
                   = error "Root constraint and extension constraint and in range"
-             | rootConstraint
-                  = return $ if rootRange <= 1
-                                then
-                                   return (Val rootLower)
-                                else
-                                   do j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
-                                      let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
-                                      if v `inRange` rc
-                                         then
-                                            return (Val v)
-                                         else
-                                            throwError "Value not in root constraint"
+             | rootConstraint &&
+               isExtensible
+                  = do isExtension <- lift $ BG.getBit
+                       if isExtension
+                          then 
+                             throwError "Extension for constraint not supported"
+                          else
+                             decodeRootConstrained
+             | rootConstraint 
+                  = decodeRootConstrained
              | extensionConstraint
                -- inRange ec
                   = error "Extension constraint and in range"
              | otherwise
                   = throwError "Value out of range"
-      foobar
+      do error (show isExtensible)
+         return foobar
 
 
 \end{code}

@@ -166,7 +166,8 @@ unConstrainedIntegerTest1 =
       assertEqual "Unconstrained INTEGER Test 1" vInteger1 tabInteger1
    )
 
-tInteger9 = ConsT (BT INTEGER) (RE (UNION (IC (ATOM (E (V (R (4000,4254))))))))
+cInteger9 = UNION (IC (ATOM (E (V (R (4000,4254))))))
+tInteger9 = ConsT (BT INTEGER) (RE cInteger9)
 vInteger9'1 = Val 4002
 tabInteger9'1 = myTAB' tInteger9 vInteger9'1
 
@@ -175,9 +176,18 @@ constrainedIntegerTest1 =
       assertEqual "Constrained INTEGER Test 1" vInteger9'1 tabInteger9'1
    )
 
+tInteger9Extension = ConsT (BT INTEGER) (EXT cInteger9)
+tabInteger9'1Extension = myTAB' tInteger9Extension vInteger9'1
+
+constrainedIntegerExtensionTest1 =
+   TestCase (
+      assertEqual "Constrained INTEGER Extension Test 1" vInteger9'1 tabInteger9'1Extension
+   )
+
 tests =
    [ unConstrainedIntegerTest1
    , constrainedIntegerTest1
+   , constrainedIntegerExtensionTest1
    ]
 
 main =
