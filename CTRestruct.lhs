@@ -1602,11 +1602,11 @@ decodeInt2' [] =
 decodeInt2' cs =
    lDecConsInt2' effRoot effExt
    where
-      lc         = last cs
-      ic         = init cs
-      parentRoot = lRootIntCons top ic
-      (effExt,_) = lApplyExt parentRoot lc
-      effRoot    = lEvalC lc parentRoot
+      lc                    = last cs
+      ic                    = init cs
+      parentRoot            = lRootIntCons top ic
+      (effExt,isExtensible) = lApplyExt parentRoot lc
+      effRoot               = lEvalC lc parentRoot
 
 decodeUInt' :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet Integer
 decodeUInt' =
@@ -1651,19 +1651,13 @@ lDecConsInt2' mrc mec =
                                 then
                                    return (Val rootLower)
                                 else
-                                   do isExtension <- lift $ BG.getBit
-                                      if isExtension
+                                   do j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
+                                      let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
+                                      if v `inRange` rc
                                          then
-                                            throwError "Extension for constraint not supported"
+                                            return (Val v)
                                          else
-                                            do j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
-                                               let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
-                                               if v `inRange` rc
-                                                  then
-                                                     return (Val v)
-                                                  else
-                                                     throwError "Value not in root constraint"
-
+                                            throwError "Value not in root constraint"
              | extensionConstraint
                -- inRange ec
                   = error "Extension constraint and in range"
