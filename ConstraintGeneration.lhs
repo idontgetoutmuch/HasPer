@@ -28,7 +28,7 @@ Generation of Integer constraints.
 lApplyExt :: (IC a, Eq a, Lattice a, Show a) =>
              Either String a -> ESS InfInteger -> (Either String a, Bool)
 lApplyExt rp (RE _)  = (bottom, False)
-lApplyExt rp (EXT _) = (bottom, False)
+lApplyExt rp (EXT _) = (bottom, True)
 lApplyExt rp (EXTWITH _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
 
 -- Need to define calcEC (follow rules outlined in X.680 G.4.3.8)

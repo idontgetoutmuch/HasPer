@@ -1673,8 +1673,7 @@ lDecConsInt2' mrc isExtensible mec =
                   = error "Extension constraint and in range"
              | otherwise
                   = throwError "Value out of range"
-      do error (show isExtensible)
-         return foobar
+      return foobar
 
 
 \end{code}
