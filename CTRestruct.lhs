@@ -1625,11 +1625,13 @@ lDecConsInt2' mrc isExtensible mec =
    do rc <- mrc
       ec <- mec
       let extensionConstraint    = ec /= bottom
-          extensionRange         = (upper ec) - (lower ec) + 1
+          tc                     = rc `ljoin` ec
+          extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- fromIntegral means there's an Int bug lurking here
           rootConstraint         = rc /= bottom
           rootLower              = let Val x = lower rc in x
           rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- fromIntegral means there's an Int bug lurking here
           numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
+          numOfExtensionBits     = genericLength (encodeNNBIntBits (extensionRange - 1, extensionRange - 1))
           emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
           inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
           unconstrained x        = (lower x) == minBound
@@ -1651,13 +1653,25 @@ lDecConsInt2' mrc isExtensible mec =
                             return (Val v)
                          else
                             throwError "Value not in root constraint"
+          decodeExtensionConstrained = 
+             do v <- decodeUInt'
+                if v `inRange` tc
+                   then
+                      return (Val v)
+                   else
+                      throwError "Value not in extension constraint: could be invalid value or unsupported extension"
           foobar
              | emptyConstraint
                   = do x <- decodeUInt'
                        return (Val x)
              | rootConstraint &&
                extensionConstraint
-                  = error "Root constraint and extension constraint and in range"
+                  = do isExtension <- lift $ BG.getBit
+                       if isExtension
+                          then
+                             decodeExtensionConstrained
+                          else
+                             decodeRootConstrained
              | rootConstraint &&
                isExtensible
                   = do isExtension <- lift $ BG.getBit
