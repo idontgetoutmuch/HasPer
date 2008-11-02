@@ -1557,6 +1557,31 @@ fromPer2' t@INTEGER cl = decodeInt2' cl
 
 \begin{code}
 
+decodeLargeLengthDeterminant f t =
+   do p <- lift BG.getBit
+      if (not p)
+         then
+            do j <- lift $ BG.getLeftByteString 7
+               let l = fromNonNegativeBinaryInteger' 7 j
+               f l t
+         else
+            do q <- lift BG.getBit
+               if (not q)
+                  then
+                     do k <- lift $ BG.getLeftByteString 14
+                        let m = fromNonNegativeBinaryInteger' 14 k
+                        f m t
+                  else
+                     do n <- lift $ BG.getLeftByteString 6
+                        let fragSize = fromNonNegativeBinaryInteger' 6 n
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError (fragError ++ show fragSize)
+                           else do frag <- f (fragSize * 16 * (2^10)) t
+                                   rest <- decodeLargeLengthDeterminant f t
+                                   return (frag ++ rest)
+                        where
+                           fragError = "Unable to decode with fragment size of "
+
 decodeLargeLengthDeterminant' f t =
    do p <- lift BG.getBit
       if (not p)
@@ -1620,7 +1645,6 @@ decodeUInt' =
 
 \begin{code}
 
--- lDecConsInt2' :: (MonadError [Char] m) => m IntegerConstraint -> Bool -> m IntegerConstraint -> m (BG.BitGet Integer)
 lDecConsInt2' mrc isExtensible mec =
    do rc <- mrc
       ec <- mec
@@ -1683,10 +1707,9 @@ lDecConsInt2' mrc isExtensible mec =
              | rootConstraint 
                   = decodeRootConstrained
              | extensionConstraint
-               -- inRange ec
-                  = error "Extension constraint and in range"
+                  = throwError "Extension constraint without a root constraint"
              | otherwise
-                  = throwError "Value out of range"
+                  = throwError "Unexpected error decoding INTEGER"
       return foobar
 
 

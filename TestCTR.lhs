@@ -187,6 +187,8 @@ constrainedIntegerTest1 =
 tInteger9Extension = ConsT (BT INTEGER) (EXT cInteger9)
 tabInteger9'1Extension = myTAB' tInteger9Extension vInteger9'1
 
+-- INTEGER (4000..4254)
+
 constrainedIntegerExtensionTest1 =
    TestCase (
       assertEqual "Constrained INTEGER Extension Test 1" vInteger9'1 tabInteger9'1Extension
@@ -196,6 +198,8 @@ cInteger9'1 = UNION (IC (ATOM (E (V (R (5000,5254))))))
 tInteger9Extension1 = ConsT (BT INTEGER) (EXTWITH cInteger9 cInteger9'1)
 tabInteger9'1Extension1 = myTAB' tInteger9Extension1 vInteger9'1
 
+-- INTEGER (4000..4254, ..., 5000..5254)
+
 constrainedIntegerExtensionTest2 =
    TestCase (
       assertEqual "Constrained INTEGER Extension Test 2" vInteger9'1 tabInteger9'1Extension1
@@ -203,6 +207,8 @@ constrainedIntegerExtensionTest2 =
 
 vInteger9'2 = Val 5002
 tabInteger9'1Extension2 = myTAB' tInteger9Extension1 vInteger9'2
+
+-- INTEGER (4000..4254, ..., 5000..5254)
 
 constrainedIntegerExtensionTest3 =
    TestCase (
