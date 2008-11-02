@@ -4,6 +4,12 @@ FooBar {1 2 0 0 6 1} DEFINITIONS ::=
       SEQUENCE {
 	first BIT STRING (SIZE (0..65537))
       }
+   T3 ::=
+      INTEGER
+   T4 ::=
+      INTEGER (T3,...)
+   T5 ::=
+      INTEGER(...,)
   END
 
 
