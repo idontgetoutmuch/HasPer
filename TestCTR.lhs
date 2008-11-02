@@ -21,8 +21,10 @@ import qualified LatticeMod as L
 import Test.QuickCheck
 import Test.HUnit
 
-import ASNTYPE as A
+import ASNTYPE
 import ConstraintGeneration
+
+import Language.ASN1(TagType(..), TagPlicity(..))
 
 sc1 = UNION (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
 sc2 = UNION (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
@@ -87,6 +89,29 @@ mt5 = ConsT (BT INTEGER) myCon4
 mt6 = ConsT (BT INTEGER) myCon5
 mt7 = ConsT (ConsT (BT INTEGER) myCon5) myCon1
 
+\end{code}
+
+\subsection{SEQUENCE}
+
+See Figure~\ref{sequenceTest1}.
+
+\begin{code}
+
+c1 = CTMandatory (NamedType "c1" (Just (Context,1,Explicit)) (BT INTEGER))
+c2 = CTMandatory (NamedType "c2" (Just (Context,2,Explicit)) (BT INTEGER))
+
+\end{code}
+
+\begin{asn1}[caption={SEQUENCE Test 1},label=sequenceTest1]
+SEQUENCE {c2 [2] EXPLICIT INTEGER,
+          c1 [1] EXPLICIT INTEGER}
+\end{asn1}
+
+\begin{code}
+
+tSequence1 = BT (SEQUENCE (Cons c2 (Cons c1 Nil)))
+vSequence1 = (Val 3) :*: ((Val 5) :*: Empty)
+
 myTest t x =
    case lEncode t x [] of
       Left s  -> s
@@ -121,38 +146,38 @@ myTAB1 t x =
         Left s  -> error ("First " ++ s)
         Right y -> B.unpack (BP.runBitPut (bitPutify y))
 
-instance Arbitrary A.InfInteger where
+instance Arbitrary InfInteger where
    arbitrary =
       frequency [
-         (1,return A.NegInf),
-         (2,liftM A.Val arbitrary),
-         (1,return A.PosInf)
+         (1,return NegInf),
+         (2,liftM Val arbitrary),
+         (1,return PosInf)
          ]
 
-instance Arbitrary A.IntegerConstraint where
+instance Arbitrary IntegerConstraint where
    arbitrary =
       oneof [
          validIntegerConstraint
          ]
 
 validIntegerConstraint =
-   do l <- frequency [(1,return A.NegInf), (2,liftM A.Val (choose (-2^10,2^10)))]
+   do l <- frequency [(1,return NegInf), (2,liftM Val (choose (-2^10,2^10)))]
       u <- suchThat arbitrary (>= l)
-      return (A.IntegerConstraint {A.lower = l, A.upper = u})
+      return (IntegerConstraint {lower = l, upper = u})
 
 validConstraintAndInteger =
    do c <- validIntegerConstraint
-      v <- suchThat arbitrary (liftM2 (&&) (>= (A.lower c)) (<= (A.upper c)))
+      v <- suchThat arbitrary (liftM2 (&&) (>= (lower c)) (<= (upper c)))
       return (ConstraintAndInteger c v)
 
-data ConstraintAndInteger = ConstraintAndInteger A.IntegerConstraint A.InfInteger
+data ConstraintAndInteger = ConstraintAndInteger IntegerConstraint InfInteger
    deriving (Eq,Show)
    
 instance Arbitrary ConstraintAndInteger where
    arbitrary = validConstraintAndInteger
 
 prop_ValidConstraintAndInteger (ConstraintAndInteger c v) = 
-   v >= A.lower c && v <= A.upper c
+   v >= lower c && v <= upper c
 
 \end{code}
 

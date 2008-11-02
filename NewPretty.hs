@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XGADTs -fwarn-incomplete-patterns #-}
+{-# OPTIONS_GHC -XGADTs -XMultiParamTypeClasses -fwarn-incomplete-patterns #-}
 
 module NewPretty where
 
@@ -24,6 +24,7 @@ prettySeq (Cons x xs) =
 
 prettyComponentType :: ComponentType a -> Doc
 prettyComponentType (CTMandatory m) = prettyNamedType m
+prettyComponentType (CTOptional m ) = prettyNamedType m <+> text "OPTIONAL"
 
 prettyBuiltinType :: ASNBuiltin a -> Doc
 prettyBuiltinType (BITSTRING []) =
@@ -106,3 +107,19 @@ prettySingleValue (BT IA5STRING) (SV e) = text (show e)
 prettySingleValue (BT PRINTABLESTRING) (SV e) = doubleQuotes (text (printableString e))
 
 prettyBitString = (<> text "B") . (quotes . text . concat . map show .  bitString)
+
+class Pretty a where
+   pretty :: a -> Doc
+
+instance Pretty InfInteger where
+   pretty NegInf = text "MIN"
+   pretty PosInf = text "MAX"
+   pretty (Val x)  = text (show x)
+
+prettyTypeVal :: ASNType a -> a -> Doc
+prettyTypeVal (BT INTEGER) x = pretty x
+
+
+prettyElementTypeVal :: ComponentType a -> a -> Doc
+prettyElementTypeVal (CTMandatory (NamedType n _ t)) x =
+   text n <+> prettyTypeVal t x

@@ -1715,6 +1715,18 @@ lDecConsInt2' mrc isExtensible mec =
 
 \end{code}
 
+\section{SEQUENCE Decoding}
+
+\begin{code}
+
+l :: Integral n => Sequence a -> n
+l Nil = 0
+l (Extens s) = undefined
+l (Cons c s) = 1+undefined
+
+\end{code}
+
+
 \section{Appendix: Tests}
 
 %include TestCTR.lhs
