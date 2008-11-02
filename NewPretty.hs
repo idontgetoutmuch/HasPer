@@ -94,13 +94,13 @@ prettyPermittedAlphabet :: ASNType a -> PA a -> Doc
 prettyPermittedAlphabet t (FR a) = text "FROM" <+> parens (prettyElementSetSpecs t a)
 
 prettyValueRange :: ASNType a -> VR a -> Doc
-prettyValueRange (BT INTEGER) (R (x,y)) = text (show x) <> text ".." <> text (show y)
+prettyValueRange (BT INTEGER) (R (x,y)) = pretty x <> text ".." <> pretty y
 prettyValueRange (BT IA5STRING) (R (x,y)) = text (iA5String x) <> text ".." <> text (iA5String y)
 prettyValueRange (BT PRINTABLESTRING) (R (x,y)) = text (printableString x) <> text ".." <> text (printableString y)
 prettyValueRange (BT NUMERICSTRING) (R (x,y)) = text (numericString x) <> text ".." <> text (numericString y)
 
 prettySingleValue :: ASNType a -> SV a -> Doc
-prettySingleValue (BT INTEGER) (SV e) = text (show e)
+prettySingleValue (BT INTEGER) (SV e) = pretty e
 prettySingleValue (BT (BITSTRING _)) (SV e) = prettyBitString e
 prettySingleValue (BT IA5STRING) (SV e) = text (show e)
 prettySingleValue (BT PRINTABLESTRING) (SV e) = doubleQuotes (text (printableString e))
