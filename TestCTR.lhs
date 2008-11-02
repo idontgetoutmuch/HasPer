@@ -2,9 +2,17 @@
 
 Testing encoding for UNALIGNED PER
 
+%if False
+
 \begin{code}
 {-# OPTIONS_GHC -fwarn-incomplete-patterns -XFlexibleContexts
 #-}
+
+\end{code}
+
+%endif
+
+\begin{code}
 
 module TestCTR where
 

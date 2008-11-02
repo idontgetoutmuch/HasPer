@@ -1,3 +1,5 @@
+%if False
+
 \begin{code}
 
 {-# OPTIONS_GHC -XTypeOperators -XGADTs -XEmptyDataDecls
@@ -5,11 +7,18 @@
                 -XScopedTypeVariables
 #-}
 
+\end{code}
+
+%endif
+
+\begin{code}
+
 module ASNTYPE where
 
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String,
                 ComponentType(Default), NamedType, OctetString, VisibleString)
 import Data.Word
+
 \end{code}
 
 We need to mimic the ASN.1 {\tt Type} as defined in X.680

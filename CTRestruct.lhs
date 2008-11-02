@@ -67,11 +67,20 @@ FooBar {1 2 3 4 5 6} DEFINITIONS ::=
 
 The encoding is for UNALIGNED PER
 
+%if False
+
 \begin{code}
+
 {-# OPTIONS_GHC -XMultiParamTypeClasses -XGADTs -XTypeOperators
                 -XEmptyDataDecls -XFlexibleInstances -XFlexibleContexts
                 -fwarn-unused-imports
 #-}
+
+\end{code}
+
+%endif
+
+\begin{code}
 
 module CTRestruct where
 
@@ -91,6 +100,7 @@ import Data.Int
 import Data.Maybe
 import LatticeMod
 import ConstraintGeneration
+
 \end{code}
 
 PER Top-Level encode function. There are three cases:
@@ -151,7 +161,7 @@ lToPer (CHOICE c) x cl      = lEncodeChoice c x -- no PER-visible constraints
 
 \end{code}
 
-\section{ENCODING AN OPEN TYPE FIELD}}
+\section{ENCODING AN OPEN TYPE FIELD}
 
 lEncodeOpen encodes an open type value. That is:
 i. the value is encoded as ususal;
@@ -1726,13 +1736,14 @@ l (Cons c s) = 1+undefined
 
 \end{code}
 
-
-\section{Appendix: Tests}
-
-%include TestCTR.lhs
+\section{Bibliography}
 
 \bibliographystyle{plainnat}
 
 \bibliography{3gpp,ASN1}
+
+\section{Appendix: Tests}
+
+%include TestCTR.lhs
 
 \end{document}
