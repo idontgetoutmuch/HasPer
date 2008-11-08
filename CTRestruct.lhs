@@ -1562,9 +1562,16 @@ type ElementSetSpecs a = ESS a
 decode2' (BT t) cl = fromPer2' t cl
 decode2' (ConsT t c) cl = decode2' t (c:cl)
 
+decode2'' (BT t) cl = fromPer2'' t cl
+decode2'' (ConsT t c) cl = decode2'' t (c:cl)
+
 fromPer2' :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
              => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
 fromPer2' t@INTEGER cl = decodeInt2' cl
+
+fromPer2'' :: (Lattice (t1 IntegerConstraint), Monad t1, MonadTrans t, MonadError [Char] (t BG.BitGet)) =>
+              ASNBuiltin a -> [ElementSetSpecs a] -> t1 (t BG.BitGet a)
+fromPer2'' t@INTEGER cl = decodeInt2'' cl
 
 \end{code}
 
@@ -1647,6 +1654,19 @@ decodeInt2' cs =
       parentRoot            = lRootIntCons top ic
       (effExt,isExtensible) = lApplyExt parentRoot lc
       effRoot               = lEvalC lc parentRoot
+
+decodeInt2'' [] = 
+   lDecConsInt2' bottom undefined bottom
+{-
+decodeInt2'' cs =
+   lDecConsInt2' effRoot isExtensible effExt
+   where
+      lc                    = last cs
+      ic                    = init cs
+      parentRoot            = lRootIntCons top ic
+      (effExt,isExtensible) = lApplyExt parentRoot lc
+      effRoot               = lEvalC lc parentRoot
+-}
 
 decodeUInt' :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet Integer
 decodeUInt' =
@@ -1739,9 +1759,46 @@ l Nil = 0
 l (Cons (CTMandatory _) ts) = undefined
 l (Cons (CTOptional  _) ts) = 1+undefined
 
+bitMask n = sequence $ take n $ repeat $ BG.getBit
+
 fromSequence (SEQUENCE s) =
-   do j <- lift $ BG.getLeftByteString (l s)
-      throwError (show j)
+   do j <- lift $ bitMask (l s)
+      undefined -- fromSequenceAux j s
+
+
+decode2''' = undefined
+
+decode3 :: (Monad m, MonadTrans t, MonadError [Char] (t BG.BitGet)) => ASNType a -> m (t BG.BitGet a)
+decode3 (BT INTEGER) = 
+   return $ do n <- decodeUInt'
+               return (Val n)
+
+fromSequenceAux :: (Monad m, MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> m (t BG.BitGet a)
+fromSequenceAux _ Nil = return $ return Empty
+fromSequenceAux bitmap (Cons (CTMandatory (NamedType _ t)) ts) = 
+   do x <- decode3 t
+      mxs <- fromSequenceAux bitmap ts
+      return$ do xs <- mxs
+                 y  <- x
+                 return (y :*: xs)
+
+fromSequenceAuy :: (Lattice (m IntegerConstraint), Monad m, MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> m (t BG.BitGet a)
+fromSequenceAuy _ Nil = return $ return Empty
+fromSequenceAuy bitmap (Cons (CTMandatory (NamedType _ t)) ts) = 
+   do x <- decode2'' t []
+      mxs <- fromSequenceAuy bitmap ts
+      return$ do xs <- mxs
+                 y  <- x
+                 return (y :*: xs)
+
+fromSequenceAuz :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> Either String (t BG.BitGet a)
+fromSequenceAuz _ Nil = return $ return Empty
+fromSequenceAuz bitmap (Cons (CTMandatory (NamedType _ t)) ts) = 
+   do x <- decode2' t []
+      mxs <- fromSequenceAuz bitmap ts
+      return$ do xs <- mxs
+                 y  <- x
+                 return (y :*: xs)
 
 \end{code}
 
