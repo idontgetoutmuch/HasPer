@@ -105,8 +105,8 @@ See Figure~\ref{sequenceTest1}.
 
 \begin{code}
 
-c1 = CTMandatory (NamedType "c1" (Just (Context,1,Explicit)) (BT INTEGER))
-c2 = CTMandatory (NamedType "c2" (Just (Context,2,Explicit)) (BT INTEGER))
+c1 = CTMandatory (NamedType "c1" (BT (TAGGED (Context,1,Explicit) (BT INTEGER))))
+c2 = CTMandatory (NamedType "c2" (BT (TAGGED (Context,2,Explicit) (BT INTEGER))))
 
 \end{code}
 
