@@ -103,6 +103,9 @@ import ConstraintGeneration
 
 \end{code}
 
+
+
+
 PER Top-Level encode function. There are three cases:
 i.   The input is a builtin type: toPer is called on this type.
 ii.  The input is a referenced type: the type has to be retrieved
@@ -147,6 +150,7 @@ generate effective root and effective extension here.
 \begin{code}
 
 lToPer :: ASNBuiltin a -> a -> [ESS a] -> Either String BitStream
+lToPer NULL _ _             = Right []
 lToPer INTEGER x cl         = lEncodeInt cl x
 lToPer VISIBLESTRING x cl   = lEncodeRCS cl x
 lToPer PRINTABLESTRING x cl = lEncodeRCS cl x
@@ -175,8 +179,6 @@ type open type sequence!)
 \begin{code}
 
 lEncodeOpen :: ASNType a -> a -> Either String BitStream
-lEncodeOpen (BT (EXTADDGROUP s)) v -- to update when look at EXTADDGROUP
-    = lEncodeOpen (BT (SEQUENCE s)) v
 lEncodeOpen t v
    = do enc <- lEncode t v []
         pad <- padding enc
@@ -1037,25 +1039,25 @@ encodeSeqAux (ap,ab) (rp,rb) (Extens as) xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTCompOf (SEQUENCE s)) as) (x:*:xs) -- typically a reference
     = do (p,b) <- encodeCO ([],[]) s x
          encodeSeqAux (ap,ab) (p ++ rp,b ++ rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTMandatory (NamedType n t a)) as) (x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTMandatory (NamedType t a)) as) (x:*:xs)
     = do
         bts <- lEncode a x []
         encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Just x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Just x:*:xs)
     = do
         bts <- lEncode a x []
         encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Just x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Just x:*:xs)
     = do
         bts <- lEncode a x []
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:xs)
     = do
         bts <- lEncode a x []
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
@@ -1068,23 +1070,23 @@ encodeCO (rp,rb) (Extens as) xs
 encodeCO (rp,rb) (Cons (CTCompOf (SEQUENCE s)) as) (x:*:xs)
     = do (p,b) <- encodeCO ([],[]) s x
          encodeCO (p ++ rp,b ++ rb) as xs
-encodeCO (rp,rb) (Cons (CTMandatory (NamedType n t a)) as) (x:*:xs)
+encodeCO (rp,rb) (Cons (CTMandatory (NamedType t a)) as) (x:*:xs)
     = do bts <- lEncode a x []
          encodeCO ([]:rp,bts:rb) as xs
-encodeCO (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+encodeCO (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
    encodeCO ([]:rp,[]:rb) as xs
-encodeCO (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Just x:*:xs)
+encodeCO (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Just x:*:xs)
     = do bts <- lEncode a x []
          encodeCO ([]:rp,bts:rb) as xs
-encodeCO (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Nothing:*:xs) =
+encodeCO (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
    encodeCO ([0]:rp,[]:rb) as xs
-encodeCO (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Just x:*:xs)
+encodeCO (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Just x:*:xs)
     = do
         bts <- lEncode a x []
         encodeCO ([1]:rp,bts:rb) as xs
-encodeCO (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+encodeCO (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
    encodeCO ([0]:rp,[]:rb) as xs
-encodeCO (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs)
+encodeCO (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:xs)
     = do
         bts <- lEncode a x []
         encodeCO ([1]:rp,bts:rb) as xs
@@ -1117,19 +1119,24 @@ encodeExtSeqAux (ap,ab) (rp,rb) Nil _
                 else  return (([0]:reverse rp,reverse rb),(reverse ap,reverse ab))
 encodeExtSeqAux extAdds extRoot (Extens as) xs =
    encodeSeqAux extAdds extRoot as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (EAG a as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType n t a)) as) (Just x:*:xs)
+encodeExtSeqAux (ap,ab) (rp,rb) (EAG a as) (Just x:*:xs)
+    = do bts <- lEncodeOpen (BT (SEQUENCE a)) x
+         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
+   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Just x:*:xs)
     = do bts <- lEncodeOpen a x
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType n t a)) as) (Just x:*:xs)
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Just x:*:xs)
     = do bts <- lEncodeOpen a x
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType n t a) d) as) (Just x:*:xs)
+encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:xs)
    = do bts <- lEncodeOpen a x
         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 
@@ -1209,7 +1216,7 @@ encodeChoiceAux ext body (ChoiceExt as) xs =
    encodeChoiceExtAux [0] body as xs
 encodeChoiceAux ext body (ChoiceOption a as) (NoValueC x xs) =
    encodeChoiceAux ext ([]:body) as xs
-encodeChoiceAux ext body (ChoiceOption (NamedType n t a) as) (ValueC x xs)
+encodeChoiceAux ext body (ChoiceOption (NamedType t a) as) (ValueC x xs)
     = do
         bts <- lEncode a x []
         encodeChoiceAux' ext (bts:body) as xs
@@ -1233,7 +1240,7 @@ encodeChoiceExtAux ext body (ChoiceEAG as) xs =
    encodeChoiceExtAux ext body as xs
 encodeChoiceExtAux ext body (ChoiceOption a as) (NoValueC x xs) =
    encodeChoiceExtAux ext ([]:body) as xs
-encodeChoiceExtAux ext body (ChoiceOption (NamedType n t a) as) (ValueC x xs)
+encodeChoiceExtAux ext body (ChoiceOption (NamedType t a) as) (ValueC x xs)
     = do bts <- lEncodeOpen a x
          encodeChoiceExtAux' [1](bts:body) as xs
 
@@ -1547,10 +1554,8 @@ findV m (a:rs)
 
 \end{code}
 
-\begin{code}
 
--- fromPer :: (MonadError [Char] (t BG.BitGet), MonadTrans t) => 
---            ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
+\begin{code}
 
 type ElementSetSpecs a = ESS a
 
@@ -1747,3 +1752,4 @@ l (Cons c s) = 1+undefined
 %include TestCTR.lhs
 
 \end{document}
+

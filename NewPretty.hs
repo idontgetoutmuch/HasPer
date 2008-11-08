@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XGADTs -XMultiParamTypeClasses -fwarn-incomplete-patterns #-}
+{-# OPTIONS_GHC -XGADTs -fwarn-incomplete-patterns #-}
 
 module NewPretty where
 
@@ -53,16 +53,15 @@ prettyChoice (ChoiceOption nt xs) =
    vcat [prettyNamedType nt <> comma, prettyChoice xs]
 
 prettyNamedType :: NamedType a -> Doc
-prettyNamedType (NamedType n ti ct) =
-   case ti of
-      Nothing ->
-         text n <+> prettyType ct
-      Just (tt, tv, tp) ->
+prettyNamedType (NamedType n (BT (TAGGED (tt,tv,tp) t))) =
          case tt of
             Context ->
-               text n <+> brackets (text (show tv)) <+> prettyPlicity tp <+> prettyType ct
+               text n <+> brackets (text (show tv)) <+> prettyPlicity tp <+> prettyType t
             _ ->
-               text n <+> brackets (text (show tt) <+> text (show tv)) <+> prettyPlicity tp <+> prettyType ct
+               text n <+> brackets (text (show tt) <+> text (show tv)) <+> prettyPlicity tp <+> prettyType t
+prettyNamedType (NamedType n ct) = prettyType ct
+
+
 
 prettyPlicity Implicit = text "IMPLICIT"
 prettyPlicity Explicit = text "EXPLICIT"
@@ -95,13 +94,13 @@ prettyPermittedAlphabet :: ASNType a -> PA a -> Doc
 prettyPermittedAlphabet t (FR a) = text "FROM" <+> parens (prettyElementSetSpecs t a)
 
 prettyValueRange :: ASNType a -> VR a -> Doc
-prettyValueRange (BT INTEGER) (R (x,y)) = pretty x <> text ".." <> pretty y
+prettyValueRange (BT INTEGER) (R (x,y)) = text (show x) <> text ".." <> text (show y)
 prettyValueRange (BT IA5STRING) (R (x,y)) = text (iA5String x) <> text ".." <> text (iA5String y)
 prettyValueRange (BT PRINTABLESTRING) (R (x,y)) = text (printableString x) <> text ".." <> text (printableString y)
 prettyValueRange (BT NUMERICSTRING) (R (x,y)) = text (numericString x) <> text ".." <> text (numericString y)
 
 prettySingleValue :: ASNType a -> SV a -> Doc
-prettySingleValue (BT INTEGER) (SV e) = pretty e
+prettySingleValue (BT INTEGER) (SV e) = text (show e)
 prettySingleValue (BT (BITSTRING _)) (SV e) = prettyBitString e
 prettySingleValue (BT IA5STRING) (SV e) = text (show e)
 prettySingleValue (BT PRINTABLESTRING) (SV e) = doubleQuotes (text (printableString e))
@@ -121,5 +120,5 @@ prettyTypeVal (BT INTEGER) x = pretty x
 
 
 prettyElementTypeVal :: ComponentType a -> a -> Doc
-prettyElementTypeVal (CTMandatory (NamedType n _ t)) x =
+prettyElementTypeVal (CTMandatory (NamedType n t)) x =
    text n <+> prettyTypeVal t x

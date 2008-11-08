@@ -16,27 +16,120 @@
 module ASNTYPE where
 
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String,
-                ComponentType(Default), NamedType, OctetString, VisibleString)
+                ComponentType(Default), NamedType, OctetString, VisibleString, NULL)
 import Data.Word
 
 \end{code}
 
-We need to mimic the ASN.1 {\tt Type} as defined in X.680
+An ASN.1 module is typically populated by {\em inter alia} a collection of type assignments which associate
+upper-case letter prefixed identifiers (formally known as type references) with ASN.1 types. Type references
+begin with an upper-case letter to distinguish them from value references which are used to identify
+ASN.1 values. These type references are then used to specify other types enabling a shorthand representation
+of potentially complex ASN.1 types.
 
-An ASN.1 module is a collection of (mainly type) assignments. A
-type assignment associates a type reference with a type where a type reference is simply an
-identifier.
-
-A {\tt Type} is:
+ASN.1 types are categorised as follows:
 \begin{itemize}
 \item
-a {\tt BuiltinType} -- any of the standard ASN.1 types or a tagged type;
+a built-in type -- any of the standard ASN.1 types or a tagged type;
 \item
-a {\tt ReferencedType} -- a (qualified or unqualified) type
-reference or a parameterised type (defined in X.683); or
+a referenced type -- a (qualified or unqualified) type reference or a parameterised type (defined in X.683);
+or
 \item
-a {\tt ConstrainedType} -- a type with a constraint.
+a constrained type -- a type with a constraint.
 \end{itemize}
+
+We represent ASN.1 types using Haskell's algebraic data type mechanism which enables the
+classification alluded to above to be described using a single type. Thus {\tt ASNType} is
+defined as
+\begin{code}
+
+data ASNType a where
+    BT    :: ASNBuiltin a -> ASNType a
+    RT    :: ReferencedType -> ASNType a
+    ConsT :: ASNType a -> ESS a -> ASNType a
+
+\end{code}
+
+where the keyword {\tt data} introduces a new type identifier, and the various forms that
+values of the type can take are listed below. Thus an {\tt ASNType} value can be
+\begin{itemize}
+\item
+a built-in type which we call {\tt ASNBuiltin} prefixed by the constructor {\tt BT};
+\item
+a referenced type {\tt ReferencedType} prefixed by {\tt RT}; or
+\item
+a constrained type which is simply an {\tt ASNType} value associated with a constraint prefixed by
+{\tt ConsT}. The constraint is called {\tt ESS} which we will explain later in this document.
+
+This type is parameterised by the various ASN.1 builtin types. It is a recursive type
+since a constrained type is built from an {\tt ASNType} value.
+
+We also use an algebraic type to represent the ASN.1 built-in types. However, in this case it
+is a {\em generalised algebraic data type} (GADT) which allows us to specify appropriate
+return types for each class of values of the type, rather than requiring each to have the same
+type, as was the case for {\tt ASNType}. The GADT {\tt ASNBuiltin} closely resembles the
+production listed in section 16.2 of X.680. Note that the character string types are
+represented individually without the need for another type to represent restricted and unrestricted
+character strings.
+
+\begin{code}
+
+data ASNBuiltin a where
+   TYPEASS         :: TypeRef -> Maybe TagInfo -> ASNBuiltin a -> ASNBuiltin a -- to be changed
+   BITSTRING       :: NamedBits -> ASNBuiltin BitString
+   BOOLEAN         :: ASNBuiltin Bool
+   INTEGER         :: ASNBuiltin InfInteger
+   ENUMERATED      :: Enumerate a -> ASNBuiltin a
+   OCTETSTRING     :: ASNBuiltin OctetString
+   PRINTABLESTRING :: ASNBuiltin PrintableString
+   IA5STRING       :: ASNBuiltin IA5String
+   VISIBLESTRING   :: ASNBuiltin VisibleString
+   NUMERICSTRING   :: ASNBuiltin NumericString
+   UNIVERSALSTRING :: ASNBuiltin UniversalString
+   BMPSTRING       :: ASNBuiltin BMPString
+   NULL            :: ASNBuiltin Null
+   SEQUENCE        :: Sequence a -> ASNBuiltin a
+   SEQUENCEOF      :: ASNBuiltin a -> ASNBuiltin [a]
+   SET             :: Sequence a -> ASNBuiltin a
+   SETOF           :: ASNBuiltin a -> ASNBuiltin [a]
+   CHOICE          :: Choice a -> ASNBuiltin (HL a (S Z))
+   TAGGED          :: TagInfo -> ASNType a -> ASNBuiltin a
+
+\end{code}
+
+The {\tt ASNBuiltin type} includes:
+\begin{itemize}
+\item
+the constructors {\tt NULL}, {\tt BOOLEAN}, {\tt INTEGER}, {\tt OCTETSTRING} and the various
+character string constructors which directly represent their associated ASN.1 builtin type;
+\item
+the constructor {\tt BITSTRING} requires the (possibly empty) collection of named bits to
+construct a value of the bitstring type;
+\item
+the constructors {\tt SEQUENCE} and {\tt SET} which require a {\tt Sequence} input to specify the
+particular type of sequence being represented. That is, the sequence input describes the particular sequence being
+used since, for example, a sequence constructed from an integer and a boolean value, has a
+different type from one constructed from a couple of visible strings and another sequence of
+booleans;
+\item
+the constructor {\tt ENUMERATE} also requires an input which represents the particular
+enumeration;
+\item
+the {\tt SEQUENCEOF} and {\tt SETOF} constructors which require the type of the individual
+components to be provided as input. These could be any of the builtin types and thus the type
+{\tt ASNBuiltin, in common with the type {\tt ASNType}, is a recursive type. The return type for
+{\tt SEQUENCEOF} and {\tt SETOF} is a list type (denoted {\tt [a]}) since values of these
+types may include zero or more component values;
+\item
+the {\tt CHOICE} constructor which, because of the similarities of a choice type to a sequence type,
+also requires an input that specifies the particular choices that are available. However, the
+return type needs to emphasise that only one value may actually be used. This is achieved by using
+a new type {\tt HL} which we describe later in this paper; and
+\item
+the {\tt TAGGED} constructor whcih creates a tagged value from a tag and builtin type value.
+\end{itemize}
+
+
 
 A {\tt ReferencedType} is:
 \begin{itemize}
@@ -75,7 +168,6 @@ GeneralConstraint} with or without an exception.
 A {\tt SubtypeConstraint} may be extensible as indicated by {\tt
 ...} and is defined in X.680 using the type {\tt ElementSetSpecs}
 as
-
 \begin{verbatim}
 ElementSetSpecs ::=
     RootElementSetSpec
@@ -109,7 +201,6 @@ UnionMark ::= "|" | UNION
 
 IntersectionMark ::= "^" | INTERSECTION
 \end{verbatim}
-
 In summary a {\tt SubtypeConstraint} is either a union of
 intersections of atomic constraints (such as single value, range and size) or everything except a subset of
 values of a type. A {\tt GeneralConstraint} is defined in X.682.
@@ -121,48 +212,44 @@ X.680 16.1
 Type ::= BuiltinType | ReferencedType | ConstrainedType
 
 \begin{code}
-data ASNType a where
-    BT    :: ASNBuiltin a -> ASNType a
-    RT    :: ReferencedType -> ASNType a
-    ConsT :: ASNType a -> ESS a -> ASNType a
 
 -- SOME REFERENCE THOUGHTS!!!!
+
 data TRef = forall a. Show a =>  TRef (ASNType a)
 
 
-refList = [("a", TRef (BT INTEGER)), ("b",TRef (BT VISIBLESTRING))]
+refList = [("a", TRef (BT INTEGER)), ("b", TRef (BT VISIBLESTRING)),("c",  TRef (BT BOOLEAN))]
 
 getType :: String -> [(String,TRef)] -> TRef
 getType nm [] = error ""
 getType nm (f:r) = if fst f == nm then snd f
                                   else getType nm r
+
+{-
+
+No good because cannot directly define a recursive function over these structures.
+trefList
+    = ("a", (BT INTEGER)):*: (("b", (BT VISIBLESTRING)) :*: (("c", (BT BOOLEAN)) :*: Nil))
+
+
+
+getType x (f:*:r)
+    = if x == fst f
+        then snd f
+        else getType x r
+getType x _ = error "No such type reference"
+
+
+-}
+
 --
-
-
-data ASNBuiltin a where
-   TYPEASS         :: TypeRef -> Maybe TagInfo -> ASNBuiltin a -> ASNBuiltin a -- to be changed
-   EXTADDGROUP     :: Sequence a -> ASNBuiltin a
-   BOOLEAN         :: ASNBuiltin Bool
-   INTEGER         :: ASNBuiltin InfInteger
-   ENUMERATED      :: Enumerate a -> ASNBuiltin a
-   BITSTRING       :: NamedBits -> ASNBuiltin BitString
-   OCTETSTRING     :: ASNBuiltin OctetString
-   PRINTABLESTRING :: ASNBuiltin PrintableString
-   IA5STRING       :: ASNBuiltin IA5String
-   VISIBLESTRING   :: ASNBuiltin VisibleString
-   NUMERICSTRING   :: ASNBuiltin NumericString
-   UNIVERSALSTRING :: ASNBuiltin UniversalString
-   BMPSTRING       :: ASNBuiltin BMPString
-   SEQUENCE        :: Sequence a -> ASNBuiltin a
-   SEQUENCEOF      :: ASNBuiltin a -> ASNBuiltin [a]
-   SET             :: Sequence a -> ASNBuiltin a
-   SETOF           :: ASNBuiltin a -> ASNBuiltin [a]
-   CHOICE          :: Choice a -> ASNBuiltin (HL a (S Z))
-   TAGGED          :: TagInfo -> ASNBuiltin a -> ASNBuiltin a
 
 
 
 data ReferencedType = Ref TypeRef
+
+data Null = Null
+    deriving Show
 
 data InfInteger = NegInf | Val Integer | PosInf
     deriving (Show, Ord, Eq)
@@ -289,6 +376,7 @@ sequence and Extens signals an extension marker.
 data Sequence a where
    Nil     :: Sequence Nil
    Extens  :: Sequence l    -> Sequence l
+   EAG     :: Sequence a -> Sequence l -> Sequence (Maybe a :*: l)
    Cons    :: ComponentType a -> Sequence l -> Sequence (a:*:l)
 \end{code}
 
@@ -313,7 +401,7 @@ data ComponentType a where
                                                     -- types
 
 data NamedType a where
-   NamedType :: Name -> Maybe TagInfo -> ASNType a -> NamedType a
+   NamedType :: Name -> ASNType a -> NamedType a
 
 \end{code}
 
@@ -500,14 +588,14 @@ data ExtResStringConstraint a = ExtResStringConstraint a a Bool
 -- UNIVERSAL TAG FUNCTIONS
 
 getCTI :: ComponentType a -> TagInfo
-getCTI (CTMandatory (NamedType _ Nothing ct))   = getTI ct
-getCTI (CTMandatory (NamedType _ (Just t) ct))  = t
-getCTI (CTExtMand (NamedType _ Nothing ct))     = getTI ct
-getCTI (CTExtMand (NamedType _ (Just t) ct))    = t
-getCTI (CTOptional (NamedType _ Nothing ct))   = getTI ct
-getCTI (CTOptional (NamedType _ (Just t) ct))  = t
-getCTI (CTDefault (NamedType _ Nothing ct) d)  = getTI ct
-getCTI (CTDefault (NamedType _ (Just t) ct) d) = t
+getCTI (CTMandatory (NamedType _  (BT (TAGGED t ct)))) = t
+getCTI (CTMandatory (NamedType _  t))             = getTI t
+getCTI (CTExtMand (NamedType _  (BT (TAGGED t ct))))   = t
+getCTI (CTExtMand (NamedType _ t))                = getTI t
+getCTI (CTOptional (NamedType _  (BT (TAGGED t ct))))  = t
+getCTI (CTOptional (NamedType _  t))              = getTI t
+getCTI (CTDefault (NamedType _  (BT (TAGGED t ct))) d) = t
+getCTI (CTDefault (NamedType _  t) d)             = getTI t
 
 getTI :: ASNType a -> TagInfo
 getTI (BT t) = getBuiltinTI t
@@ -519,6 +607,7 @@ getBuiltinTI BOOLEAN            = (Universal, 1, Explicit)
 getBuiltinTI INTEGER            = (Universal,2, Explicit)
 getBuiltinTI (BITSTRING _)      = (Universal, 3, Explicit)
 getBuiltinTI OCTETSTRING        = (Universal, 4, Explicit)
+getBuiltinTI NULL               = (Universal, 5, Explicit)
 getBuiltinTI PRINTABLESTRING    = (Universal, 19, Explicit)
 getBuiltinTI IA5STRING          = (Universal,22, Explicit)
 getBuiltinTI VISIBLESTRING      = (Universal, 26, Explicit)
@@ -535,12 +624,8 @@ getCTags :: Choice a -> [TagInfo]
 getCTags NoChoice                     = []
 getCTags (ChoiceExt xs)               = getCTags xs
 getCTags (ChoiceEAG xs)               = getCTags xs
-getCTags (ChoiceOption (NamedType n t (BT (EXTADDGROUP (Cons v rs)))) xs)
-        = getCTI v : getCTags (ChoiceOption (NamedType n t (BT (EXTADDGROUP rs)))xs)
-getCTags (ChoiceOption (NamedType n t (BT (EXTADDGROUP Nil))) xs)
-        = getCTags xs
-getCTags (ChoiceOption (NamedType n Nothing a) xs)
-        = getTI a : getCTags xs
-getCTags (ChoiceOption (NamedType n (Just t) a) xs)
+getCTags (ChoiceOption (NamedType n (BT (TAGGED t a))) xs)
         = t : getCTags xs
+getCTags (ChoiceOption (NamedType n a) xs)
+        = getTI a : getCTags xs
 \end{code}
