@@ -1736,8 +1736,12 @@ lDecConsInt2' mrc isExtensible mec =
 
 l :: Integral n => Sequence a -> n
 l Nil = 0
-l (Extens s) = undefined
-l (Cons c s) = 1+undefined
+l (Cons (CTMandatory _) ts) = undefined
+l (Cons (CTOptional  _) ts) = 1+undefined
+
+fromSequence (SEQUENCE s) =
+   do j <- lift $ BG.getLeftByteString (l s)
+      throwError (show j)
 
 \end{code}
 
