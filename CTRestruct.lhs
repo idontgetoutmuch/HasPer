@@ -1761,11 +1761,81 @@ l (Cons (CTOptional  _) ts) = 1+undefined
 
 bitMask n = sequence $ take n $ repeat $ BG.getBit
 
+fromSequenceAuz :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> Either String (t BG.BitGet a)
+fromSequenceAuz _ Nil = return $ return Empty
+fromSequenceAuz bitmap (Cons (CTMandatory (NamedType _ t)) ts) = 
+   do x <- decode2' t []
+      mxs <- fromSequenceAuz bitmap ts
+      return $ do xs <- mxs
+                  y  <- x
+                  return (y :*: xs)
+
+forget :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => Either String (t BG.BitGet a) -> t BG.BitGet a
+forget (Left e) = throwError e
+forget (Right x) = x
+
+fromSequence :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => ASNBuiltin a -> t BG.BitGet a
 fromSequence (SEQUENCE s) =
-   do j <- lift $ bitMask (l s)
-      undefined -- fromSequenceAux j s
+   do m <- lift $ bitMask (l s)
+      forget (fromSequenceAuz m s)
 
+foo m s =
+   case fromSequenceAuz m s of
+      Left e -> error e
+      Right mfsa -> mfsa
 
+bar (SEQUENCE s) =
+   do x <- lift $ bitMask (l s)
+      foo x s
+
+bar' (SEQUENCE s) =
+   do x <- lift $ bitMask (l s)
+      case fromSequenceAuz x s of
+         Left e -> error e
+         Right mfsa -> mfsa
+
+bar'' (SEQUENCE s) =
+   do x <- lift $ bitMask (l s)
+      case fromSequenceAuz x s of
+         Left e -> error e
+         Right mfsa -> mfsa
+
+bar''' (SEQUENCE s) =
+   do x <- lift $ bitMask (l s)
+      case fromSequenceAuz x s of
+         Left e -> throwError e
+         Right mfsa -> mfsa
+
+baz x y =
+   do a <- x
+      b <- y
+      fromSequenceAuz a b
+
+{-
+bar1 (SEQUENCE s) =
+   do x <- Right $ lift $ bitMask (l s)
+      y <- fromSequenceAuz undefined s
+      do x1 <- x
+         y1 <- y
+         
+      return y
+-}
+
+swap :: (Functor m, Monad m) => Either String (m a) -> m (Either String a)
+swap (Left s) = return (Left s)
+swap (Right x) = fmap Right x
+
+{-
+      do m <- lift $ bitMask $ 3
+         Right return mm
+         undefined
+      -- fromSequenceAuz undefined undefined
+      f <- fromSequenceAuz x undefined
+      return $ do j <- lift $ bitMask (l s)
+                  g <- f
+                  return (g j)
+-}
+  
 decode2''' = undefined
 
 decode3 :: (Monad m, MonadTrans t, MonadError [Char] (t BG.BitGet)) => ASNType a -> m (t BG.BitGet a)
@@ -1787,15 +1857,6 @@ fromSequenceAuy _ Nil = return $ return Empty
 fromSequenceAuy bitmap (Cons (CTMandatory (NamedType _ t)) ts) = 
    do x <- decode2'' t []
       mxs <- fromSequenceAuy bitmap ts
-      return$ do xs <- mxs
-                 y  <- x
-                 return (y :*: xs)
-
-fromSequenceAuz :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> Either String (t BG.BitGet a)
-fromSequenceAuz _ Nil = return $ return Empty
-fromSequenceAuz bitmap (Cons (CTMandatory (NamedType _ t)) ts) = 
-   do x <- decode2' t []
-      mxs <- fromSequenceAuz bitmap ts
       return$ do xs <- mxs
                  y  <- x
                  return (y :*: xs)
