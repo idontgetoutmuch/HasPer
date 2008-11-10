@@ -68,9 +68,16 @@ We also use an algebraic type to represent the ASN.1 built-in types. However, in
 is a {\em generalised algebraic data type} (GADT) which allows us to specify appropriate
 return types for each class of values of the type, rather than requiring each to have the same
 type, as was the case for {\tt ASNType}. The GADT {\tt ASNBuiltin} closely resembles the
-production listed in section 16.2 of X.680. Note that the character string types are
-represented individually without the need for another type to represent restricted and unrestricted
-character strings.
+production listed in section 16.2 of X.680. Note that:
+\begin{itemize}
+\item
+the character string types are represented individually without the need for another type
+to represent restricted and unrestricted character strings; and
+\item
+the following types are not incldued in this specification: {\tt EmbeddedPDVType},
+{\tt ExternalType}, {\tt InstanceOfType}, {\tt ObjectClassFieldType},
+{\tt ObjectIdentifierType}, {\tt RealType} and {\tt RelativeOIDType}.
+\end{itemize}
 
 \begin{code}
 
