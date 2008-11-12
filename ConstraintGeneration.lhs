@@ -623,6 +623,19 @@ lPaConE (S (SV v)) b
                                       (ResStringConstraint top top) b)
 
 
+
+lSeqOfConE :: (Eq i,
+            Show i,
+            Lattice i,
+            IC i) =>
+            Elem [a] -> Bool -> Either String (ExtBS (ConType i))
+lSeqOfConE (SZ (SC v)) b  = lEffSize v b
+lSeqOfConE (C (Inc c)) b  = throwError "Invisible!"
+lSeqOfConE (S (SV v))  b  = throwError "Invisible!"
+lSeqOfConE (IT (WC c)) b  = throwError "Invisible!"
+lSeqOfConE (IT WCS) b     = throwError "Invisible!"
+
+
 lEffSize :: (IC a1,
                 Lattice a1,
                 Eq a1,

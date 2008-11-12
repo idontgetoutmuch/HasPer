@@ -128,19 +128,19 @@ first element in the list is the inner-most constraint.
 
 \begin{code}
 
-perEncode :: ASNType a -> a -> [ESS a] -> Either String BP.BitPut
-perEncode t v cl
+perEncode :: ASNType a -> [ESS a] -> a -> Either String BP.BitPut
+perEncode t cl v
     = do
-        bts <- lEncode t v cl
+        bts <- lEncode t cl v
         return (bitPutify bts)
 
 bitPutify :: BitStream -> BP.BitPut
 bitPutify = mapM_ (BP.putNBits 1)
 
-lEncode :: ASNType a -> a -> [ESS a] -> Either String BitStream
-lEncode (BT t) v cl      = lToPer t v cl
-lEncode (RT _) _ _       = error "RT"
-lEncode (ConsT t c) v cl = lEncode t v (c:cl)
+lEncode :: ASNType a -> [ESS a] -> a -> Either String BitStream
+lEncode (BT t) cl v      = lToPer t v cl
+lEncode (RT r t) cl v    = lEncode t cl v
+lEncode (ConsT t c) cl v = lEncode t (c:cl) v
 
 \end{code}
 
@@ -161,6 +161,8 @@ lToPer (ENUMERATED e) x cl  = lEncodeEnum e x -- no PER-Visible constraints
 lToPer (BITSTRING nbs) x cl = lEncodeBS nbs cl x
 lToPer (OCTETSTRING) x cl   = lEncodeOS cl x
 lToPer (SEQUENCE s) x cl    = lEncodeSeq s x -- no PER-Visible constraints
+lToPer (SEQUENCEOF s) x cl  = lEncodeSeqOf cl s x
+lToPer (SET s) x cl         = lEncodeSet s x -- no PER-Visible constraints
 lToPer (CHOICE c) x cl      = lEncodeChoice c x -- no PER-visible constraints
 
 \end{code}
@@ -180,7 +182,7 @@ type open type sequence!)
 
 lEncodeOpen :: ASNType a -> a -> Either String BitStream
 lEncodeOpen t v
-   = do enc <- lEncode t v []
+   = do enc <- lEncode t [] v
         pad <- padding enc
         return (encodeOctetsWithLength pad)
 
@@ -1041,25 +1043,25 @@ encodeSeqAux (ap,ab) (rp,rb) (Cons (CTCompOf (SEQUENCE s)) as) (x:*:xs) -- typic
          encodeSeqAux (ap,ab) (p ++ rp,b ++ rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTMandatory (NamedType t a)) as) (x:*:xs)
     = do
-        bts <- lEncode a x []
+        bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([]:rp,[]:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Just x:*:xs)
     = do
-        bts <- lEncode a x []
+        bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Just x:*:xs)
     = do
-        bts <- lEncode a x []
+        bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:xs)
     = do
-        bts <- lEncode a x []
+        bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
 
 encodeCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
@@ -1071,24 +1073,24 @@ encodeCO (rp,rb) (Cons (CTCompOf (SEQUENCE s)) as) (x:*:xs)
     = do (p,b) <- encodeCO ([],[]) s x
          encodeCO (p ++ rp,b ++ rb) as xs
 encodeCO (rp,rb) (Cons (CTMandatory (NamedType t a)) as) (x:*:xs)
-    = do bts <- lEncode a x []
+    = do bts <- lEncode a [] x
          encodeCO ([]:rp,bts:rb) as xs
 encodeCO (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
    encodeCO ([]:rp,[]:rb) as xs
 encodeCO (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Just x:*:xs)
-    = do bts <- lEncode a x []
+    = do bts <- lEncode a [] x
          encodeCO ([]:rp,bts:rb) as xs
 encodeCO (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
    encodeCO ([0]:rp,[]:rb) as xs
 encodeCO (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Just x:*:xs)
     = do
-        bts <- lEncode a x []
+        bts <- lEncode a [] x
         encodeCO ([1]:rp,bts:rb) as xs
 encodeCO (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
    encodeCO ([0]:rp,[]:rb) as xs
 encodeCO (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:xs)
     = do
-        bts <- lEncode a x []
+        bts <- lEncode a [] x
         encodeCO ([1]:rp,bts:rb) as xs
 
 
@@ -1141,6 +1143,188 @@ encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:
         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 
 \end{code}
+
+\section{ENCODING THE SEQUENCE-OF TYPE}
+
+encodeSO implements the encoding of an unconstrained
+sequence-of value. This requires both the encoding of
+each of the components, and in most cases the encoding
+of the length of the sequence-of (which may require
+fragmentation into 64K blocks).
+
+\begin{code}
+
+lEncodeSeqOf :: [ESS [a]] -> ASNType a -> [a] -> Either String BitStream
+lEncodeSeqOf [] t x = lEncodeUncSeqOf t x
+lEncodeSeqOf cl t x = lEncodeConSeqOf t cl x
+
+
+\end{code}
+
+lEncodeUncSeqOf encodes an unconstrained SEQUENCEOF value.
+
+\begin{code}
+
+lEncodeUncSeqOf :: ASNType a -> [a] -> Either String BitStream
+lEncodeUncSeqOf t xs = encodeSOWithLength t xs
+
+\end{code}
+
+encodeSOWithLength encodes a sequence-of value with the appropriate
+length encoding.
+
+\begin{code}
+encodeSOWithLength :: ASNType a -> [a] -> Either String BitStream
+encodeSOWithLength s vs
+    = do
+        bs <- encodeAll s vs
+        return (encodeBitsWithLength bs)
+
+\end{code}
+
+\begin{code}
+
+lEncodeConSeqOf :: ASNType a -> [ESS [a]] -> [a] -> Either String BitStream
+lEncodeConSeqOf t cl xs = lEncValidSeqOf t (effSeqOfCon cl) (validSeqOfCon cl) xs
+
+effSeqOfCon ::[ESS [a]] -> Either String (ExtBS (ConType IntegerConstraint))
+effSeqOfCon cs = lSerialEffCons lSeqOfConE top cs
+
+
+validSeqOfCon :: [ESS [a]] -> Either String (ExtBS (ConType ValidIntegerConstraint))
+validSeqOfCon cs = lSerialEffCons lSeqOfConE top cs
+
+
+lEncValidSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
+               -> Either String (ExtBS (ConType ValidIntegerConstraint))
+               -> [a] -> Either String BitStream
+lEncValidSeqOf t m n v
+    = do
+        vsc <- m
+        if extensibleBS vsc
+            then lEncExtSeqOf t m n v
+            else lEncNonExtSeqOf t m n v
+
+lEncNonExtSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
+                -> Either String (ExtBS (ConType ValidIntegerConstraint))
+                -> [a]
+                -> Either String BitStream
+lEncNonExtSeqOf t m n vs
+    = do
+        vsc <- m
+        ok  <- n
+        let ConType rc = getBSRC vsc
+            ConType (Valid okrc) = getBSRC ok
+            emptyConstraint = rc == bottom
+            inSizeRange []      = False
+            inSizeRange (x:rs)
+                = let l = genericLength vs
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            foobar
+                | emptyConstraint
+                    = throwError "Empty constraint"
+                | inSizeRange okrc
+                    = do bs <- encodeAll t vs
+                         return bs
+                | otherwise
+                    = throwError "Value out of range"
+        foobar
+
+
+encodeAll t (f:r)
+    = do
+        x <- lEncode t [] f
+        r <- encodeAll t r
+        return (x ++ r)
+encodeAll t [] = return []
+
+
+lEncExtSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
+                -> Either String (ExtBS (ConType ValidIntegerConstraint))
+                -> [a]
+                -> Either String BitStream
+lEncExtSeqOf t m n vs
+    = do
+        vsc <- m
+        ok  <- n
+        let ConType rc = getBSRC vsc
+            ConType (Valid okrc) = getBSRC ok
+            ConType ec = getBSEC vsc
+            ConType (Valid okec) = getBSEC ok
+            emptyConstraint = rc == bottom && ec == bottom
+            inSizeRange []      = False
+            inSizeRange (x:rs)
+                = let l = genericLength vs
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            foobar
+                | emptyConstraint
+                    = throwError "Empty constraint"
+                | inSizeRange okrc
+                    = do
+                        bs <- encodeAll t vs
+                        return (0:bs)
+                | inSizeRange okec
+                    = do
+                        bs <- encodeAll t vs
+                        return (1:bs)
+                | otherwise
+                    = throwError "Value out of range"
+        foobar
+
+\end{code}
+
+
+\section{ENCODING THE SET TYPE}
+
+Encoding the SET type. The encoding is the same as for a
+SEQUENCE except that the components must be canonically ordered.
+The ordering is based on the component's tags. Note, the
+preamble must be reordered to match the ordering of the
+components.
+
+\begin{code}
+
+lEncodeSet :: Sequence a -> a -> Either String BitStream
+lEncodeSet s x
+    =   do
+            ((rp,rb),(ap,ab)) <- encodeSeqAux ([],[]) ([],[]) s x
+            let ts  = getTags s
+                ps  = zip ts rb
+                pps = zip rp ps
+                os  = mergesort setPred pps
+                pr  = concat (map fst os)
+                en  = concat (map (snd . snd) os)
+            return (pr ++ en ++ concat ap ++ concat ab)
+
+\end{code}
+
+
+
+ Sorting predicate and tag selector
+
+\begin{code}
+
+setPred :: (BitStream,(TagInfo, BitStream)) -> (BitStream,(TagInfo, BitStream)) -> Bool
+setPred (_,(t1,_)) (_,(t2,_)) = t1 < t2
+
+tagOrder :: ASNType a -> ASNType a -> Bool
+tagOrder x y = getTI x < getTI y
+
+
+getTags :: Sequence a -> [TagInfo]
+getTags Nil               = []
+getTags (Extens xs)       = getTags' xs
+getTags (Cons a xs)       = getCTI a : getTags xs
+
+
+getTags' :: Sequence a -> [TagInfo]
+getTags' Nil         = []
+getTags' (Extens xs) = getTags xs
+getTags' (Cons a xs) = getTags' xs
+
+\end{code}
+
+
 
 \section{ENCODING THE CHOICE TYPE}
 
@@ -1218,7 +1402,7 @@ encodeChoiceAux ext body (ChoiceOption a as) (NoValueC x xs) =
    encodeChoiceAux ext ([]:body) as xs
 encodeChoiceAux ext body (ChoiceOption (NamedType t a) as) (ValueC x xs)
     = do
-        bts <- lEncode a x []
+        bts <- lEncode a [] x
         encodeChoiceAux' ext (bts:body) as xs
 
 
@@ -1644,7 +1828,7 @@ determinant itself in this particular case).
 
 \begin{code}
 
-decodeInt2' [] = 
+decodeInt2' [] =
    lDecConsInt2' bottom undefined bottom
 decodeInt2' cs =
    lDecConsInt2' effRoot isExtensible effExt
@@ -1655,7 +1839,7 @@ decodeInt2' cs =
       (effExt,isExtensible) = lApplyExt parentRoot lc
       effRoot               = lEvalC lc parentRoot
 
-decodeInt2'' [] = 
+decodeInt2'' [] =
    lDecConsInt2' bottom undefined bottom
 {-
 decodeInt2'' cs =
@@ -1700,7 +1884,7 @@ lDecConsInt2' mrc isExtensible mec =
              | unconstrained x   = UnConstrained
              | semiconstrained x = SemiConstrained
              | otherwise         = Constrained
-          decodeRootConstrained = 
+          decodeRootConstrained =
              if rootRange <= 1
                 then
                    return (Val rootLower)
@@ -1712,7 +1896,7 @@ lDecConsInt2' mrc isExtensible mec =
                             return (Val v)
                          else
                             throwError "Value not in root constraint"
-          decodeExtensionConstrained = 
+          decodeExtensionConstrained =
              do v <- decodeUInt'
                 if v `inRange` tc
                    then
@@ -1735,11 +1919,11 @@ lDecConsInt2' mrc isExtensible mec =
                isExtensible
                   = do isExtension <- lift $ BG.getBit
                        if isExtension
-                          then 
+                          then
                              throwError "Extension for constraint not supported"
                           else
                              decodeRootConstrained
-             | rootConstraint 
+             | rootConstraint
                   = decodeRootConstrained
              | extensionConstraint
                   = throwError "Extension constraint without a root constraint"
@@ -1763,7 +1947,7 @@ bitMask n = sequence $ take n $ repeat $ BG.getBit
 
 fromSequenceAuz :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> Either String (t BG.BitGet a)
 fromSequenceAuz _ Nil = return $ return Empty
-fromSequenceAuz bitmap (Cons (CTMandatory (NamedType _ t)) ts) = 
+fromSequenceAuz bitmap (Cons (CTMandatory (NamedType _ t)) ts) =
    do x <- decode2' t []
       mxs <- fromSequenceAuz bitmap ts
       return $ do xs <- mxs
@@ -1817,7 +2001,7 @@ bar1 (SEQUENCE s) =
       y <- fromSequenceAuz undefined s
       do x1 <- x
          y1 <- y
-         
+
       return y
 -}
 
@@ -1835,17 +2019,17 @@ swap (Right x) = fmap Right x
                   g <- f
                   return (g j)
 -}
-  
+
 decode2''' = undefined
 
 decode3 :: (Monad m, MonadTrans t, MonadError [Char] (t BG.BitGet)) => ASNType a -> m (t BG.BitGet a)
-decode3 (BT INTEGER) = 
+decode3 (BT INTEGER) =
    return $ do n <- decodeUInt'
                return (Val n)
 
 fromSequenceAux :: (Monad m, MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> m (t BG.BitGet a)
 fromSequenceAux _ Nil = return $ return Empty
-fromSequenceAux bitmap (Cons (CTMandatory (NamedType _ t)) ts) = 
+fromSequenceAux bitmap (Cons (CTMandatory (NamedType _ t)) ts) =
    do x <- decode3 t
       mxs <- fromSequenceAux bitmap ts
       return$ do xs <- mxs
@@ -1854,7 +2038,7 @@ fromSequenceAux bitmap (Cons (CTMandatory (NamedType _ t)) ts) =
 
 fromSequenceAuy :: (Lattice (m IntegerConstraint), Monad m, MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> m (t BG.BitGet a)
 fromSequenceAuy _ Nil = return $ return Empty
-fromSequenceAuy bitmap (Cons (CTMandatory (NamedType _ t)) ts) = 
+fromSequenceAuy bitmap (Cons (CTMandatory (NamedType _ t)) ts) =
    do x <- decode2'' t []
       mxs <- fromSequenceAuy bitmap ts
       return$ do xs <- mxs
@@ -1874,4 +2058,3 @@ fromSequenceAuy bitmap (Cons (CTMandatory (NamedType _ t)) ts) =
 %include TestCTR.lhs
 
 \end{document}
-

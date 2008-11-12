@@ -45,7 +45,7 @@ defined as
 
 data ASNType a where
     BT    :: ASNBuiltin a -> ASNType a
-    RT    :: ReferencedType -> ASNType a
+    RT    :: ReferencedType -> ASNType a -> ASNType a
     ConsT :: ASNType a -> ESS a -> ASNType a
 
 \end{code}
@@ -74,7 +74,7 @@ production listed in section 16.2 of X.680. Note that:
 the character string types are represented individually without the need for another type
 to represent restricted and unrestricted character strings; and
 \item
-the following types are not incldued in this specification: {\tt EmbeddedPDVType},
+the following types are not included in this specification: {\tt EmbeddedPDVType},
 {\tt ExternalType}, {\tt InstanceOfType}, {\tt ObjectClassFieldType},
 {\tt ObjectIdentifierType}, {\tt RealType} and {\tt RelativeOIDType}.
 \end{itemize}
@@ -82,7 +82,6 @@ the following types are not incldued in this specification: {\tt EmbeddedPDVType
 \begin{code}
 
 data ASNBuiltin a where
-   TYPEASS         :: TypeRef -> Maybe TagInfo -> ASNBuiltin a -> ASNBuiltin a -- to be changed
    BITSTRING       :: NamedBits -> ASNBuiltin BitString
    BOOLEAN         :: ASNBuiltin Bool
    INTEGER         :: ASNBuiltin InfInteger
@@ -96,9 +95,9 @@ data ASNBuiltin a where
    BMPSTRING       :: ASNBuiltin BMPString
    NULL            :: ASNBuiltin Null
    SEQUENCE        :: Sequence a -> ASNBuiltin a
-   SEQUENCEOF      :: ASNBuiltin a -> ASNBuiltin [a]
+   SEQUENCEOF      :: ASNType a -> ASNBuiltin [a]
    SET             :: Sequence a -> ASNBuiltin a
-   SETOF           :: ASNBuiltin a -> ASNBuiltin [a]
+   SETOF           :: ASNType a -> ASNBuiltin [a]
    CHOICE          :: Choice a -> ASNBuiltin (HL a (S Z))
    TAGGED          :: TagInfo -> ASNType a -> ASNBuiltin a
 
@@ -123,8 +122,8 @@ the constructor {\tt ENUMERATE} also requires an input which represents the part
 enumeration;
 \item
 the {\tt SEQUENCEOF} and {\tt SETOF} constructors which require the type of the individual
-components to be provided as input. These could be any of the builtin types and thus the type
-{\tt ASNBuiltin, in common with the type {\tt ASNType}, is a recursive type. The return type for
+components to be provided as input. These could be any of the ASN.1 types (or any named type).
+The return type for
 {\tt SEQUENCEOF} and {\tt SETOF} is a list type (denoted {\tt [a]}) since values of these
 types may include zero or more component values;
 \item
@@ -527,7 +526,7 @@ data Excl a = EXCEPT (Elem a)
 
 data IE a = E (Elem a) | Exc (Elem a) (Excl a)
 
-data Elem a = S (SV a) | C (CT a) | V (VR a) | SZ (Sz a) | P (PA a)
+data Elem a = S (SV a) | C (CT a) | V (VR a) | SZ (Sz a) | P (PA a) | IT (IS a)
 
 data SV a = SingleValue a => SV a
 
@@ -607,7 +606,7 @@ getCTI (CTDefault (NamedType _  t) d)             = getTI t
 getTI :: ASNType a -> TagInfo
 getTI (BT t) = getBuiltinTI t
 getTI (ConsT t _) = getTI t
-getTI (RT r) = error "TO DO!"
+getTI (RT r t) = getTI t
 
 getBuiltinTI :: ASNBuiltin a -> TagInfo
 getBuiltinTI BOOLEAN            = (Universal, 1, Explicit)
