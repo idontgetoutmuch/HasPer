@@ -24,7 +24,7 @@ import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.Strict.BitPut as BP
 import Control.Monad.Error
 
-import qualified LatticeMod as L
+import LatticeMod 
 
 import Test.QuickCheck
 import Test.HUnit
@@ -36,12 +36,88 @@ import Language.ASN1(TagType(..), TagPlicity(..))
 
 sc1 = UNION (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
 sc2 = UNION (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
+sc3 = UNION (UC (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (259,262))))))
+             (ATOM (E (V (R (251,255))))))
+
 
 con1 = RE (UNION (IC (ATOM (E (V (R (250,253)))))))
 con2 = RE (UNION (IC (ATOM (E (V (R (245,253)))))))
 con3 = RE sc1
+con32 = RE sc3
 con4 = EXT sc1
 con5 = EXTWITH sc1 sc2
+
+-- String constraints
+pac1 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
+             (ATOM (E (P (FR (RE (UNION (IC (ATOM (E (S (SV (VisibleString "dan")))))))))))))
+
+pac2 = UNION (IC (INTER (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (8,8))))))))))))
+             (E (P (FR (RE (UNION (IC (ATOM (E (S (SV (VisibleString "0123456789")))))))))))))
+
+pac3 = UNION (IC (INTER (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (245,249))))))))))))
+             (E (S (SV (VisibleString "adn"))))))
+
+pac4 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
+             (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
+
+pac5 = UNION (IC (ATOM ((E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (3,3))))))))))))))
+
+ns1 = RE (UNION (IC (ATOM ((E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,1)))))))))))))))
+
+tester :: Either String (ExtResStringConstraint (ResStringConstraint VisibleString IntegerConstraint))
+tester =  lLastApply (ExtResStringConstraint (ResStringConstraint (VisibleString "Dan")
+            (IntegerConstraint 1 64)) top True) (Right (ExtResStringConstraint
+            (ResStringConstraint top (IntegerConstraint 1 1)) top False))
+
+
+dateCon = RE (UNION (IC (INTER (ATOM (E (SZ (SC (EXTWITH (UNION (IC (ATOM (E (V (R (8,8)))))))
+                    (UNION (IC (ATOM (E (V (R (9,20))))))))))))
+             (E (P (FR (RE (UNION (IC (ATOM (E (S (SV (VisibleString "0123456789"))))))))))))))
+
+nameStringCon
+    = RE (UNION (IC (INTER (ATOM (E (SZ (SC (EXT (UNION (IC (ATOM (E (V (R (1,64))))))))))))
+             (E (P (FR (RE (UNION (UC
+                            (UC (IC (ATOM (E (S (SV (VisibleString ['a'..'z']))))))
+                                    (ATOM (E (S (SV (VisibleString ['A'..'Z']))))))
+                                    (ATOM (E (S (SV (VisibleString "-."))))))))))))))
+
+nameString
+    = ConsT (BT VISIBLESTRING) nameStringCon
+
+
+name = BT (SEQUENCE nameSeq)
+
+
+nameSeq = Cons (CTMandatory (NamedType "givenName" nameString))
+                (Cons (CTMandatory (NamedType "initial" (ConsT nameString ns1)))
+                    (Cons (CTMandatory (NamedType "familyName"  nameString))
+                        (Extens Nil)))
+
+nameVal = VisibleString "John" :*: (VisibleString "P" :*: (VisibleString "Smith" :*: Empty))
+
+cpac1 = [RE pac1]
+cpac2 = [RE pac2]
+cpac3 = [RE pac3]
+cpac4 = [RE pac4]
+cpac5 = [dateCon]
+
+
+
+--Integer constraint generation
+applycon1 :: Either [Char] IntegerConstraint
+applycon1 = lRootIntCons top [con3, con1]
+
+applycon2 :: Either [Char] ValidIntegerConstraint
+applycon2 = lRootIntCons top [con3, con1]
+
+applycon3 :: Either [Char] IntegerConstraint
+applycon3 = lRootIntCons top [con32,con1]
+
+applycon4 :: Either [Char] ValidIntegerConstraint
+applycon4 = lRootIntCons top [con32,con1]
+
+
+--Integer types
 
 t1 = ConsT (BT INTEGER) con1
 t2 = ConsT t1 con2
@@ -51,17 +127,97 @@ t5 = ConsT (BT INTEGER) con4
 t6 = ConsT (BT INTEGER) con5
 t7 = ConsT (ConsT (BT INTEGER) con5) con1
 
-test1 = lEncode t1 252 []
-test2 = lEncode t2 250 []
-test3 = lEncode t3 250 []
-test4 = lEncode t4 247 []
-test5 = lEncode t5 247 []
-test6 = lEncode t6 247 []
-test7 = lEncode t6 272 []
-test8 = lEncode t6 274 []
-test9 = lEncode t7 251 []
-test10 = lEncode t7 271 []
+test1 = perEncode t1 [] 253
+test2 = perEncode t2 [] 250
+test3 = perEncode t3 [] 250
+test4 = perEncode t4 [] 247
+test5 = perEncode t5 [] 247
+test6 = perEncode t6 [] 247
+test7 = perEncode t6 [] 272
+test8 = perEncode t6 [] 274
+test9 = perEncode t7 [] 251
+test10 = perEncode t7 [] 271
+
+-- String types
+
+--constrained
+st1 = ConsT (BT VISIBLESTRING) (RE pac2)
+st2 = ConsT (BT VISIBLESTRING) (RE pac4)
+st3 = ConsT (BT VISIBLESTRING) dateCon
+st4 = ConsT (BT VISIBLESTRING) nameStringCon
+
+--unconstrained
+ust1 = ConsT (BT NUMERICSTRING) (RE pac5)
+
+testS1 = myTest st1 (VisibleString "19571111")
+testS2 = myTest st3 (VisibleString "19571111")
+testS3 = myTest st2 (VisibleString "Daniel")
+testS4 = myTest st4 (VisibleString "Smith")
+testS5 = myTest ust1 (NumericString "123")
+testS6 = myTest ust1 (NumericString "dan")
+
+-- BITSTRING
+pac41 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
+             (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
+st5 = ConsT (BT (BITSTRING [])) (RE pac41)
+st6 = ConsT (BT (BITSTRING [NB "A" 2, NB "B" 3])) (RE pac41)
+
+testBS1 = myTest st5 (BitString [1,1,0,0,0,0,0])
+testBS2 = myTest st6 (BitString [1,1,0,0,0,0,0,0,1,0,0,0])
+
+-- OCTETSTRING
+os41 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
+             (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
+os1 = ConsT (BT (OCTETSTRING)) (RE os41)
+
+testOS1 = myTest os1 (OctetString [20,140,5,16,23,87,10])
+
+-- SEQUENCE
+
+testSeq1 = myTest name nameVal
+
+
+-- CHOICE
+
+axSeq = Cons (CTMandatory (NamedType "a" (ConsT (BT INTEGER) con1)))
+                (Cons (CTMandatory (NamedType "b" (BT BOOLEAN)))
+                    (Cons (CTMandatory (NamedType "c" (BT (CHOICE choice1))))
+                        (Extens
+                          (EAG eag1
+                           (Extens (Cons (CTOptional (NamedType "i" (BT BMPSTRING)))
+                                (Cons (CTOptional (NamedType "j" (BT PRINTABLESTRING)))
+                                    Nil)))))))
+
+choice1 = ChoiceOption (NamedType "d" (BT INTEGER))
+            (ChoiceExt (ChoiceEAG
+                            (ChoiceOption (NamedType "e" (BT BOOLEAN))
+                                   (ChoiceOption (NamedType "f"  (BT IA5STRING))
+                                          (ChoiceEAG (ChoiceExt NoChoice))))))
+
+
+eag1 = Cons (CTMandatory (NamedType "g" (ConsT (BT NUMERICSTRING) (RE pac5))))
+        (Cons (CTOptional (NamedType "h" (BT BOOLEAN))) Nil)
+
+
+axVal = 253 :*:
+        (True :*:
+            ((NoValueC NoValue (ValueC True (NoValueC NoValue EmptyHL))) :*:
+                    ((Just ((NumericString "123") :*: (Just True :*: Empty))) :*:
+                        (Nothing :*: (Nothing :*: Empty)))))
+
+
+testChoice1 = myTest (BT (SEQUENCE axSeq)) axVal
+
+
+
+-- type inclusion tests
+ti1 :: Either String IntegerConstraint
+ti1 = lCalcE (C (Inc t1))
+
+ti2 :: Either String IntegerConstraint
+ti2 = lCalcE (C (Inc t6))
 \end{code}
+
 
 Examples from 13.6.1 of Dubuisson:
 
@@ -121,7 +277,7 @@ tSequence1 = BT (SEQUENCE (Cons c2 (Cons c1 Nil)))
 vSequence1 = (Val 3) :*: ((Val 5) :*: Empty)
 
 myTest t x =
-   case lEncode t x [] of
+   case lEncode t [] x of
       Left s  -> s
       Right m -> show m -- (B.unpack (BP.runBitPut m))
 
@@ -139,7 +295,7 @@ myTAB t x =
 -}
 
 myTAB' t x =
-    case lEncode t x [] of
+    case lEncode t [] x of
         Left s  -> error ("First " ++ s)
         Right y -> case decode2' t [] of
                      Left t -> error ("Second " ++ t)
@@ -150,7 +306,7 @@ myTAB' t x =
                                                  Right n -> n
 
 myTAB1 t x =
-    case lEncode t x [] of
+    case lEncode t [] x of
         Left s  -> error ("First " ++ s)
         Right y -> B.unpack (BP.runBitPut (bitPutify y))
 
@@ -180,11 +336,11 @@ validConstraintAndInteger =
 
 data ConstraintAndInteger = ConstraintAndInteger IntegerConstraint InfInteger
    deriving (Eq,Show)
-   
+
 instance Arbitrary ConstraintAndInteger where
    arbitrary = validConstraintAndInteger
 
-prop_ValidConstraintAndInteger (ConstraintAndInteger c v) = 
+prop_ValidConstraintAndInteger (ConstraintAndInteger c v) =
    v >= lower c && v <= upper c
 
 \end{code}
