@@ -60,6 +60,7 @@ a referenced type {\tt ReferencedType} prefixed by {\tt RT}; or
 \item
 a constrained type which is simply an {\tt ASNType} value associated with a constraint prefixed by
 {\tt ConsT}. The constraint is called {\tt ESS} which we will explain later in this document.
+\end{itemize}
 
 This type is parameterised by the various ASN.1 builtin types. It is a recursive type
 since a constrained type is built from an {\tt ASNType} value.
@@ -211,11 +212,13 @@ In summary a {\tt SubtypeConstraint} is either a union of
 intersections of atomic constraints (such as single value, range and size) or everything except a subset of
 values of a type. A {\tt GeneralConstraint} is defined in X.682.
 
-
-
 X.680 16.1
 
+\begin{verbatim}
+
 Type ::= BuiltinType | ReferencedType | ConstrainedType
+
+\end{verbatim}
 
 \begin{code}
 
@@ -231,7 +234,7 @@ getType nm [] = error ""
 getType nm (f:r) = if fst f == nm then snd f
                                   else getType nm r
 
-{-
+\end{code}
 
 No good because cannot directly define a recursive function over these structures.
 trefList
@@ -243,14 +246,9 @@ getType x (f:*:r)
     = if x == fst f
         then snd f
         else getType x r
-getType x _ = error "No such type reference"
+getType x \_ = error "No such type reference"
 
-
--}
-
---
-
-
+\begin{code}
 
 data ReferencedType = Ref TypeRef
 

@@ -1749,6 +1749,9 @@ decode2' (ConsT t c) cl = decode2' t (c:cl)
 decode2'' (BT t) cl = fromPer2'' t cl
 decode2'' (ConsT t c) cl = decode2'' t (c:cl)
 
+decode4 (BT t) cl = fromPer3 t cl
+decode4 (ConsT t c) cl = decode4 t (c:cl)
+
 fromPer2' :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
              => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
 fromPer2' t@INTEGER cl = decodeInt2' cl
@@ -1756,6 +1759,10 @@ fromPer2' t@INTEGER cl = decodeInt2' cl
 fromPer2'' :: (Lattice (t1 IntegerConstraint), Monad t1, MonadTrans t, MonadError [Char] (t BG.BitGet)) =>
               ASNBuiltin a -> [ElementSetSpecs a] -> t1 (t BG.BitGet a)
 fromPer2'' t@INTEGER cl = decodeInt2'' cl
+
+fromPer3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
+            ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
+fromPer3 t@INTEGER cl = decodeInt3 cl
 
 \end{code}
 
@@ -1813,6 +1820,32 @@ decodeLargeLengthDeterminant' f t =
                         where
                            fragError = "Unable to decode with fragment size of "
 
+decodeLargeLengthDeterminant3 f t =
+   do p <- lift BG.getBit
+      if (not p)
+         then
+            do j <- lift $ BG.getLeftByteString 7
+               let l = fromNonNegativeBinaryInteger' 7 j
+               f l t
+         else
+            do q <- lift BG.getBit
+               if (not q)
+                  then
+                     do k <- lift $ BG.getLeftByteString 14
+                        let m = fromNonNegativeBinaryInteger' 14 k
+                        f m t
+                  else
+                     do n <- lift $ BG.getLeftByteString 6
+                        let fragSize = fromNonNegativeBinaryInteger' 6 n
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError (DecodeError (fragError ++ show fragSize))
+                           else do frag <- f (fragSize * 16 * (2^10)) t
+                                   rest <- decodeLargeLengthDeterminant3 f t
+                                   return (B.append frag rest)
+                        where
+                           fragError = "Unable to decode with fragment size of "
+
+
 \end{code}
 
 \section {INTEGER Decoding}
@@ -1852,6 +1885,101 @@ decodeInt2'' cs =
       effRoot               = lEvalC lc parentRoot
 -}
 
+data ASNError =
+     ConstraintError String 
+   | BoundsError     String
+   | DecodeError     String
+   | ExtensionError  String
+   | OtherError      String
+      deriving Show
+
+instance Error ASNError where
+   noMsg = OtherError "The impossible happened"
+
+errorize (Left e)  = throwError (ConstraintError e)
+errorize (Right x) = return x
+
+-- decodeInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
+decodeInt3 [] =
+   lDecConsInt3 (return bottom) undefined (return bottom)
+decodeInt3 cs =
+   lDecConsInt3 (errorize effRoot) isExtensible (errorize effExt)
+   where
+      lc                    = last cs
+      ic                    = init cs
+      parentRoot            = lRootIntCons top ic
+      (effExt,isExtensible) = lApplyExt parentRoot lc
+      effRoot               = lEvalC lc parentRoot
+
+lDecConsInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => 
+                 t BG.BitGet IntegerConstraint -> Bool -> t BG.BitGet IntegerConstraint -> t BG.BitGet InfInteger
+lDecConsInt3 mrc isExtensible mec =
+   do rc <- mrc
+      ec <- mec
+      let extensionConstraint    = ec /= bottom
+          tc                     = rc `ljoin` ec
+          extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- fromIntegral means there's an Int bug lurking here
+          rootConstraint         = rc /= bottom
+          rootLower              = let Val x = lower rc in x
+          rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- fromIntegral means there's an Int bug lurking here
+          numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
+          numOfExtensionBits     = genericLength (encodeNNBIntBits (extensionRange - 1, extensionRange - 1))
+          emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
+          inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
+          unconstrained x        = (lower x) == minBound
+          semiconstrained x      = (upper x) == maxBound
+          constrained x          = not (unconstrained x) && not (semiconstrained x)
+          constraintType x
+             | unconstrained x   = UnConstrained
+             | semiconstrained x = SemiConstrained
+             | otherwise         = Constrained
+          decodeRootConstrained =
+             if rootRange <= 1
+                then
+                   return (Val rootLower)
+                else
+                   do j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
+                      let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
+                      if v `inRange` rc
+                         then
+                            return (Val v)
+                         else
+                            throwError (BoundsError "Value not in root constraint")
+          decodeExtensionConstrained =
+             do v <- decodeUInt3
+                if v `inRange` tc
+                   then
+                      return (Val v)
+                   else
+                      throwError (BoundsError "Value not in extension constraint: could be invalid value or unsupported extension")
+          foobar
+             | emptyConstraint
+                  = do x <- decodeUInt3
+                       return (Val x)
+             | rootConstraint &&
+               extensionConstraint
+                  = do isExtension <- lift $ BG.getBit
+                       if isExtension
+                          then
+                             decodeExtensionConstrained
+                          else
+                             decodeRootConstrained
+             | rootConstraint &&
+               isExtensible
+                  = do isExtension <- lift $ BG.getBit
+                       if isExtension
+                          then
+                             throwError (ExtensionError "Extension for constraint not supported")
+                          else
+                             decodeRootConstrained
+             | rootConstraint
+                  = decodeRootConstrained
+             | extensionConstraint
+                  = throwError (ConstraintError "Extension constraint without a root constraint")
+             | otherwise
+                  = throwError (OtherError "Unexpected error decoding INTEGER")
+      foobar
+
 decodeUInt' :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet Integer
 decodeUInt' =
    do o <- octets
@@ -1859,6 +1987,15 @@ decodeUInt' =
    where
       chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
       octets   = decodeLargeLengthDeterminant' chunkBy8 undefined
+
+decodeUInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => t BG.BitGet Integer
+decodeUInt3 =
+   do o <- octets
+      return (from2sComplement' o)
+   where
+      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
+      octets   = decodeLargeLengthDeterminant3 chunkBy8 undefined
+
 
 \end{code}
 
@@ -1995,6 +2132,10 @@ baz x y =
       b <- y
       fromSequenceAuz a b
 
+\end{code}
+
+\begin{verbatim}
+
 {-
 bar1 (SEQUENCE s) =
    do x <- Right $ lift $ bitMask (l s)
@@ -2005,9 +2146,17 @@ bar1 (SEQUENCE s) =
       return y
 -}
 
+\end{verbatim}
+
+\begin{code}
+
 swap :: (Functor m, Monad m) => Either String (m a) -> m (Either String a)
 swap (Left s) = return (Left s)
 swap (Right x) = fmap Right x
+
+\end{code}
+
+\begin{verbatim}
 
 {-
       do m <- lift $ bitMask $ 3
@@ -2019,6 +2168,10 @@ swap (Right x) = fmap Right x
                   g <- f
                   return (g j)
 -}
+
+\end{verbatim}
+
+\begin{code}
 
 decode2''' = undefined
 

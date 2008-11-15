@@ -304,6 +304,14 @@ myTAB' t x =
                                    Right z -> case z of
                                                  Left u  -> error ("Fourth " ++ u)
                                                  Right n -> n
+myTAB'' t x =
+    case lEncode t [] x of
+        Left s  -> error ("First " ++ s)
+        Right y -> case BG.runBitGet (BP.runBitPut (bitPutify y)) (runErrorT (decode4 t [])) of
+                      Left t -> error ("Second " ++ t)
+                      Right z -> case z of
+                                    Left e -> error ("Third " ++ (show e))
+                                    Right v -> v
 
 myTAB1 t x =
     case lEncode t [] x of
