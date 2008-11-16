@@ -1743,22 +1743,8 @@ findV m (a:rs)
 
 type ElementSetSpecs a = ESS a
 
-decode2' (BT t) cl = fromPer2' t cl
-decode2' (ConsT t c) cl = decode2' t (c:cl)
-
-decode2'' (BT t) cl = fromPer2'' t cl
-decode2'' (ConsT t c) cl = decode2'' t (c:cl)
-
 decode4 (BT t) cl = fromPer3 t cl
 decode4 (ConsT t c) cl = decode4 t (c:cl)
-
-fromPer2' :: (MonadError [Char] (t BG.BitGet), MonadTrans t)
-             => ASNBuiltin a -> [ElementSetSpecs a] -> Either String (t BG.BitGet a)
-fromPer2' t@INTEGER cl = decodeInt2' cl
-
-fromPer2'' :: (Lattice (t1 IntegerConstraint), Monad t1, MonadTrans t, MonadError [Char] (t BG.BitGet)) =>
-              ASNBuiltin a -> [ElementSetSpecs a] -> t1 (t BG.BitGet a)
-fromPer2'' t@INTEGER cl = decodeInt2'' cl
 
 fromPer3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
             ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
@@ -1769,56 +1755,6 @@ fromPer3 t@INTEGER cl = decodeInt3 cl
 \section{Decoding Length Determinants}
 
 \begin{code}
-
-decodeLargeLengthDeterminant f t =
-   do p <- lift BG.getBit
-      if (not p)
-         then
-            do j <- lift $ BG.getLeftByteString 7
-               let l = fromNonNegativeBinaryInteger' 7 j
-               f l t
-         else
-            do q <- lift BG.getBit
-               if (not q)
-                  then
-                     do k <- lift $ BG.getLeftByteString 14
-                        let m = fromNonNegativeBinaryInteger' 14 k
-                        f m t
-                  else
-                     do n <- lift $ BG.getLeftByteString 6
-                        let fragSize = fromNonNegativeBinaryInteger' 6 n
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError (fragError ++ show fragSize)
-                           else do frag <- f (fragSize * 16 * (2^10)) t
-                                   rest <- decodeLargeLengthDeterminant f t
-                                   return (frag ++ rest)
-                        where
-                           fragError = "Unable to decode with fragment size of "
-
-decodeLargeLengthDeterminant' f t =
-   do p <- lift BG.getBit
-      if (not p)
-         then
-            do j <- lift $ BG.getLeftByteString 7
-               let l = fromNonNegativeBinaryInteger' 7 j
-               f l t
-         else
-            do q <- lift BG.getBit
-               if (not q)
-                  then
-                     do k <- lift $ BG.getLeftByteString 14
-                        let m = fromNonNegativeBinaryInteger' 14 k
-                        f m t
-                  else
-                     do n <- lift $ BG.getLeftByteString 6
-                        let fragSize = fromNonNegativeBinaryInteger' 6 n
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError (fragError ++ show fragSize)
-                           else do frag <- f (fragSize * 16 * (2^10)) t
-                                   rest <- decodeLargeLengthDeterminant' f t
-                                   return (B.append frag rest)
-                        where
-                           fragError = "Unable to decode with fragment size of "
 
 decodeLargeLengthDeterminant3 f t =
    do p <- lift BG.getBit
@@ -1845,6 +1781,30 @@ decodeLargeLengthDeterminant3 f t =
                         where
                            fragError = "Unable to decode with fragment size of "
 
+decodeLargeLengthDeterminant3' f t =
+   do p <- lift BG.getBit
+      if (not p)
+         then
+            do j <- lift $ BG.getLeftByteString 7
+               let l = fromNonNegativeBinaryInteger' 7 j
+               f l t
+         else
+            do q <- lift BG.getBit
+               if (not q)
+                  then
+                     do k <- lift $ BG.getLeftByteString 14
+                        let m = fromNonNegativeBinaryInteger' 14 k
+                        f m t
+                  else
+                     do n <- lift $ BG.getLeftByteString 6
+                        let fragSize = fromNonNegativeBinaryInteger' 6 n
+                        if fragSize <= 0 || fragSize > 4
+                           then throwError (DecodeError (fragError ++ show fragSize))
+                           else do frag <- f (fragSize * 16 * (2^10)) t
+                                   rest <- decodeLargeLengthDeterminant3' f t
+                                   return (frag ++ rest)
+                        where
+                           fragError = "Unable to decode with fragment size of "
 
 \end{code}
 
@@ -1861,30 +1821,6 @@ determinant itself in this particular case).
 
 \begin{code}
 
-decodeInt2' [] =
-   lDecConsInt2' bottom undefined bottom
-decodeInt2' cs =
-   lDecConsInt2' effRoot isExtensible effExt
-   where
-      lc                    = last cs
-      ic                    = init cs
-      parentRoot            = lRootIntCons top ic
-      (effExt,isExtensible) = lApplyExt parentRoot lc
-      effRoot               = lEvalC lc parentRoot
-
-decodeInt2'' [] =
-   lDecConsInt2' bottom undefined bottom
-{-
-decodeInt2'' cs =
-   lDecConsInt2' effRoot isExtensible effExt
-   where
-      lc                    = last cs
-      ic                    = init cs
-      parentRoot            = lRootIntCons top ic
-      (effExt,isExtensible) = lApplyExt parentRoot lc
-      effRoot               = lEvalC lc parentRoot
--}
-
 data ASNError =
      ConstraintError String 
    | BoundsError     String
@@ -1899,7 +1835,7 @@ instance Error ASNError where
 errorize (Left e)  = throwError (ConstraintError e)
 errorize (Right x) = return x
 
--- decodeInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
+decodeInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
 decodeInt3 [] =
    lDecConsInt3 (return bottom) undefined (return bottom)
 decodeInt3 cs =
@@ -1980,14 +1916,6 @@ lDecConsInt3 mrc isExtensible mec =
                   = throwError (OtherError "Unexpected error decoding INTEGER")
       foobar
 
-decodeUInt' :: (MonadError [Char] (t1 BG.BitGet), MonadTrans t1) => t1 BG.BitGet Integer
-decodeUInt' =
-   do o <- octets
-      return (from2sComplement' o)
-   where
-      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
-      octets   = decodeLargeLengthDeterminant' chunkBy8 undefined
-
 decodeUInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => t BG.BitGet Integer
 decodeUInt3 =
    do o <- octets
@@ -1995,78 +1923,6 @@ decodeUInt3 =
    where
       chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
       octets   = decodeLargeLengthDeterminant3 chunkBy8 undefined
-
-
-\end{code}
-
-\begin{code}
-
-lDecConsInt2' mrc isExtensible mec =
-   do rc <- mrc
-      ec <- mec
-      let extensionConstraint    = ec /= bottom
-          tc                     = rc `ljoin` ec
-          extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- fromIntegral means there's an Int bug lurking here
-          rootConstraint         = rc /= bottom
-          rootLower              = let Val x = lower rc in x
-          rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- fromIntegral means there's an Int bug lurking here
-          numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
-          numOfExtensionBits     = genericLength (encodeNNBIntBits (extensionRange - 1, extensionRange - 1))
-          emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
-          inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
-          unconstrained x        = (lower x) == minBound
-          semiconstrained x      = (upper x) == maxBound
-          constrained x          = not (unconstrained x) && not (semiconstrained x)
-          constraintType x
-             | unconstrained x   = UnConstrained
-             | semiconstrained x = SemiConstrained
-             | otherwise         = Constrained
-          decodeRootConstrained =
-             if rootRange <= 1
-                then
-                   return (Val rootLower)
-                else
-                   do j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
-                      let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
-                      if v `inRange` rc
-                         then
-                            return (Val v)
-                         else
-                            throwError "Value not in root constraint"
-          decodeExtensionConstrained =
-             do v <- decodeUInt'
-                if v `inRange` tc
-                   then
-                      return (Val v)
-                   else
-                      throwError "Value not in extension constraint: could be invalid value or unsupported extension"
-          foobar
-             | emptyConstraint
-                  = do x <- decodeUInt'
-                       return (Val x)
-             | rootConstraint &&
-               extensionConstraint
-                  = do isExtension <- lift $ BG.getBit
-                       if isExtension
-                          then
-                             decodeExtensionConstrained
-                          else
-                             decodeRootConstrained
-             | rootConstraint &&
-               isExtensible
-                  = do isExtension <- lift $ BG.getBit
-                       if isExtension
-                          then
-                             throwError "Extension for constraint not supported"
-                          else
-                             decodeRootConstrained
-             | rootConstraint
-                  = decodeRootConstrained
-             | extensionConstraint
-                  = throwError "Extension constraint without a root constraint"
-             | otherwise
-                  = throwError "Unexpected error decoding INTEGER"
-      return foobar
 
 
 \end{code}
@@ -2082,71 +1938,11 @@ l (Cons (CTOptional  _) ts) = 1+undefined
 
 bitMask n = sequence $ take n $ repeat $ BG.getBit
 
-fromSequenceAuz :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> Either String (t BG.BitGet a)
-fromSequenceAuz _ Nil = return $ return Empty
-fromSequenceAuz bitmap (Cons (CTMandatory (NamedType _ t)) ts) =
-   do x <- decode2' t []
-      mxs <- fromSequenceAuz bitmap ts
-      return $ do xs <- mxs
-                  y  <- x
-                  return (y :*: xs)
-
 forget :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => Either String (t BG.BitGet a) -> t BG.BitGet a
 forget (Left e) = throwError e
 forget (Right x) = x
 
-fromSequence :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => ASNBuiltin a -> t BG.BitGet a
-fromSequence (SEQUENCE s) =
-   do m <- lift $ bitMask (l s)
-      forget (fromSequenceAuz m s)
-
-foo m s =
-   case fromSequenceAuz m s of
-      Left e -> error e
-      Right mfsa -> mfsa
-
-bar (SEQUENCE s) =
-   do x <- lift $ bitMask (l s)
-      foo x s
-
-bar' (SEQUENCE s) =
-   do x <- lift $ bitMask (l s)
-      case fromSequenceAuz x s of
-         Left e -> error e
-         Right mfsa -> mfsa
-
-bar'' (SEQUENCE s) =
-   do x <- lift $ bitMask (l s)
-      case fromSequenceAuz x s of
-         Left e -> error e
-         Right mfsa -> mfsa
-
-bar''' (SEQUENCE s) =
-   do x <- lift $ bitMask (l s)
-      case fromSequenceAuz x s of
-         Left e -> throwError e
-         Right mfsa -> mfsa
-
-baz x y =
-   do a <- x
-      b <- y
-      fromSequenceAuz a b
-
 \end{code}
-
-\begin{verbatim}
-
-{-
-bar1 (SEQUENCE s) =
-   do x <- Right $ lift $ bitMask (l s)
-      y <- fromSequenceAuz undefined s
-      do x1 <- x
-         y1 <- y
-
-      return y
--}
-
-\end{verbatim}
 
 \begin{code}
 
@@ -2155,48 +1951,6 @@ swap (Left s) = return (Left s)
 swap (Right x) = fmap Right x
 
 \end{code}
-
-\begin{verbatim}
-
-{-
-      do m <- lift $ bitMask $ 3
-         Right return mm
-         undefined
-      -- fromSequenceAuz undefined undefined
-      f <- fromSequenceAuz x undefined
-      return $ do j <- lift $ bitMask (l s)
-                  g <- f
-                  return (g j)
--}
-
-\end{verbatim}
-
-\begin{code}
-
-decode2''' = undefined
-
-decode3 :: (Monad m, MonadTrans t, MonadError [Char] (t BG.BitGet)) => ASNType a -> m (t BG.BitGet a)
-decode3 (BT INTEGER) =
-   return $ do n <- decodeUInt'
-               return (Val n)
-
-fromSequenceAux :: (Monad m, MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> m (t BG.BitGet a)
-fromSequenceAux _ Nil = return $ return Empty
-fromSequenceAux bitmap (Cons (CTMandatory (NamedType _ t)) ts) =
-   do x <- decode3 t
-      mxs <- fromSequenceAux bitmap ts
-      return$ do xs <- mxs
-                 y  <- x
-                 return (y :*: xs)
-
-fromSequenceAuy :: (Lattice (m IntegerConstraint), Monad m, MonadTrans t, MonadError [Char] (t BG.BitGet)) => [Bool] -> Sequence a -> m (t BG.BitGet a)
-fromSequenceAuy _ Nil = return $ return Empty
-fromSequenceAuy bitmap (Cons (CTMandatory (NamedType _ t)) ts) =
-   do x <- decode2'' t []
-      mxs <- fromSequenceAuy bitmap ts
-      return$ do xs <- mxs
-                 y  <- x
-                 return (y :*: xs)
 
 \end{code}
 

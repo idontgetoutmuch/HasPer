@@ -281,29 +281,6 @@ myTest t x =
       Left s  -> s
       Right m -> show m -- (B.unpack (BP.runBitPut m))
 
-{-
-myTAB t x =
-    case lEncode t x [] of
-        Left s  -> error ("First " ++ s)
-        Right y -> case decode2 t [] of
-                     Left t -> error ("Second " ++ t)
-                     Right x -> case BG.runBitGet (BP.runBitPut (bitPutify y)) (runErrorT x) of
-                                   Left s -> error ("Third " ++ s)
-                                   Right z -> case z of
-                                                 Left u  -> error ("Fourth " ++ u)
-                                                 Right n -> n
--}
-
-myTAB' t x =
-    case lEncode t [] x of
-        Left s  -> error ("First " ++ s)
-        Right y -> case decode2' t [] of
-                     Left t -> error ("Second " ++ t)
-                     Right x -> case BG.runBitGet (BP.runBitPut (bitPutify y)) (runErrorT x) of
-                                   Left s -> error ("Third " ++ s)
-                                   Right z -> case z of
-                                                 Left u  -> error ("Fourth " ++ u)
-                                                 Right n -> n
 myTAB'' t x =
     case lEncode t [] x of
         Left s  -> error ("First " ++ s)
@@ -356,7 +333,7 @@ prop_ValidConstraintAndInteger (ConstraintAndInteger c v) =
 \begin{code}
 
 vInteger1 = Val 4096
-tabInteger1 = myTAB' (BT INTEGER) vInteger1
+tabInteger1 = myTAB'' (BT INTEGER) vInteger1
 
 unConstrainedIntegerTest1 =
    TestCase (
@@ -364,7 +341,7 @@ unConstrainedIntegerTest1 =
    )
 
 vInteger2 = Val 5002
-tabInteger2 = myTAB' (BT INTEGER) vInteger2
+tabInteger2 = myTAB'' (BT INTEGER) vInteger2
 
 unConstrainedIntegerTest2 =
    TestCase (
@@ -374,7 +351,7 @@ unConstrainedIntegerTest2 =
 cInteger9 = UNION (IC (ATOM (E (V (R (4000,4254))))))
 tInteger9 = ConsT (BT INTEGER) (RE cInteger9)
 vInteger9'1 = Val 4002
-tabInteger9'1 = myTAB' tInteger9 vInteger9'1
+tabInteger9'1 = myTAB'' tInteger9 vInteger9'1
 
 constrainedIntegerTest1 =
    TestCase (
@@ -382,7 +359,7 @@ constrainedIntegerTest1 =
    )
 
 tInteger9Extension = ConsT (BT INTEGER) (EXT cInteger9)
-tabInteger9'1Extension = myTAB' tInteger9Extension vInteger9'1
+tabInteger9'1Extension = myTAB'' tInteger9Extension vInteger9'1
 
 -- INTEGER (4000..4254)
 
@@ -393,7 +370,7 @@ constrainedIntegerExtensionTest1 =
 
 cInteger9'1 = UNION (IC (ATOM (E (V (R (5000,5254))))))
 tInteger9Extension1 = ConsT (BT INTEGER) (EXTWITH cInteger9 cInteger9'1)
-tabInteger9'1Extension1 = myTAB' tInteger9Extension1 vInteger9'1
+tabInteger9'1Extension1 = myTAB'' tInteger9Extension1 vInteger9'1
 
 -- INTEGER (4000..4254, ..., 5000..5254)
 
@@ -403,7 +380,7 @@ constrainedIntegerExtensionTest2 =
    )
 
 vInteger9'2 = Val 5002
-tabInteger9'1Extension2 = myTAB' tInteger9Extension1 vInteger9'2
+tabInteger9'1Extension2 = myTAB'' tInteger9Extension1 vInteger9'2
 
 -- INTEGER (4000..4254, ..., 5000..5254)
 
