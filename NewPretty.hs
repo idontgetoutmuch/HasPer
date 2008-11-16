@@ -89,15 +89,22 @@ prettyExclusion t (EXCEPT e) = prettyElem t e
 prettyElem t (S s) = prettySingleValue t s
 prettyElem t (V r) = prettyValueRange t r
 prettyElem t (P a) = prettyPermittedAlphabet t a
+prettyElem t (C c) = error "C"
+prettyElem t (SZ s) = prettySizedElem t s
+prettyElem t (IT i) = error "IT"
+
+prettySizedElem :: ASNType a -> Sz a -> Doc
+prettySizedElem t (SC x) = text "SIZE" <+> parens (prettyElementSetSpecs (BT INTEGER) x)
 
 prettyPermittedAlphabet :: ASNType a -> PA a -> Doc
 prettyPermittedAlphabet t (FR a) = text "FROM" <+> parens (prettyElementSetSpecs t a)
 
 prettyValueRange :: ASNType a -> VR a -> Doc
-prettyValueRange (BT INTEGER) (R (x,y)) = text (show x) <> text ".." <> text (show y)
+prettyValueRange (BT INTEGER) (R (x,y)) = pretty x <> text ".." <> pretty y
 prettyValueRange (BT IA5STRING) (R (x,y)) = text (iA5String x) <> text ".." <> text (iA5String y)
 prettyValueRange (BT PRINTABLESTRING) (R (x,y)) = text (printableString x) <> text ".." <> text (printableString y)
 prettyValueRange (BT NUMERICSTRING) (R (x,y)) = text (numericString x) <> text ".." <> text (numericString y)
+prettyValueRange (BT (BITSTRING _)) (R (x,y)) = text (show x) <> text ".." <> text (show y)
 
 prettySingleValue :: ASNType a -> SV a -> Doc
 prettySingleValue (BT INTEGER) (SV e) = text (show e)

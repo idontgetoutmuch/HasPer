@@ -1952,8 +1952,6 @@ swap (Right x) = fmap Right x
 
 \end{code}
 
-\end{code}
-
 \section{Bibliography}
 
 \bibliographystyle{plainnat}

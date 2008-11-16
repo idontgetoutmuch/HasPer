@@ -165,6 +165,14 @@ st6 = ConsT (BT (BITSTRING [NB "A" 2, NB "B" 3])) (RE pac41)
 testBS1 = myTest st5 (BitString [1,1,0,0,0,0,0])
 testBS2 = myTest st6 (BitString [1,1,0,0,0,0,0,0,1,0,0,0])
 
+sibDataVariableType = 
+   ConsT (BT (BITSTRING [])) (RE (UNION (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,214)))))))))))))))
+
+sibDataVariableValue =
+   BitString [1,1,1,1,1,1,1,1]
+
+sibTest = myTest' sibDataVariableType sibDataVariableValue
+
 -- OCTETSTRING
 os41 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
              (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
@@ -280,6 +288,11 @@ myTest t x =
    case lEncode t [] x of
       Left s  -> s
       Right m -> show m -- (B.unpack (BP.runBitPut m))
+
+myTest' t x =
+   case lEncode t [] x of
+      Left s  -> error s
+      Right m -> m
 
 myTAB'' t x =
     case lEncode t [] x of
