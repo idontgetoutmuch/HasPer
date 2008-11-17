@@ -156,6 +156,8 @@ lToPer VISIBLESTRING x cl   = lEncodeRCS cl x
 lToPer PRINTABLESTRING x cl = lEncodeRCS cl x
 lToPer NUMERICSTRING x cl   = lEncodeRCS cl x
 lToPer IA5STRING x cl       = lEncodeRCS cl x
+lToPer BMPSTRING x cl       = lEncodeRCS cl x
+lToPer UNIVERSALSTRING x cl = lEncodeRCS cl x
 lToPer BOOLEAN x cl         = lEncodeBool cl x
 lToPer (ENUMERATED e) x cl  = lEncodeEnum e x -- no PER-Visible constraints
 lToPer (BITSTRING nbs) x cl = lEncodeBS nbs cl x
@@ -164,6 +166,8 @@ lToPer (SEQUENCE s) x cl    = lEncodeSeq s x -- no PER-Visible constraints
 lToPer (SEQUENCEOF s) x cl  = lEncodeSeqOf cl s x
 lToPer (SET s) x cl         = lEncodeSet s x -- no PER-Visible constraints
 lToPer (CHOICE c) x cl      = lEncodeChoice c x -- no PER-visible constraints
+lToPer (SETOF s) x cl       = lEncodeSeqOf cl s x -- no PER-visible constraints
+lToPer (TAGGED tag t) x cl  = lEncode t cl x 
 
 \end{code}
 
@@ -1823,7 +1827,7 @@ determinant itself in this particular case).
 \begin{code}
 
 data ASNError =
-     ConstraintError String 
+     ConstraintError String
    | BoundsError     String
    | DecodeError     String
    | ExtensionError  String
@@ -1848,7 +1852,7 @@ decodeInt3 cs =
       (effExt,isExtensible) = lApplyExt parentRoot lc
       effRoot               = lEvalC lc parentRoot
 
-lDecConsInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => 
+lDecConsInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
                  t BG.BitGet IntegerConstraint -> Bool -> t BG.BitGet IntegerConstraint -> t BG.BitGet InfInteger
 lDecConsInt3 mrc isExtensible mec =
    do rc <- mrc
