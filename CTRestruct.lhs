@@ -73,7 +73,7 @@ The encoding is for UNALIGNED PER
 
 {-# OPTIONS_GHC -XMultiParamTypeClasses -XGADTs -XTypeOperators
                 -XEmptyDataDecls -XFlexibleInstances -XFlexibleContexts
-                -fwarn-unused-imports
+                -fwarn-unused-imports -fwarn-incomplete-patterns
 #-}
 
 \end{code}
@@ -1749,6 +1749,7 @@ decode4 (ConsT t c) cl = decode4 t (c:cl)
 fromPer3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
             ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
 fromPer3 t@INTEGER cl = decodeInt3 cl
+fromPer3 t@(SEQUENCE s) cl = decodeSEQUENCE s
 
 \end{code}
 
@@ -1931,20 +1932,33 @@ decodeUInt3 =
 
 \begin{code}
 
+decodeSEQUENCE s =
+   do ps <- lift $ bitMask (l s)
+      decodeSEQUENCEAux ps s
+
 l :: Integral n => Sequence a -> n
 l Nil = 0
-l (Cons (CTMandatory _) ts) = undefined
-l (Cons (CTOptional  _) ts) = 1+undefined
+l (Cons (CTMandatory _) ts) = l ts
+l (Cons (CTOptional  _) ts) = 1 + (l ts)
 
 bitMask n = sequence $ take n $ repeat $ BG.getBit
 
-forget :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => Either String (t BG.BitGet a) -> t BG.BitGet a
-forget (Left e) = throwError e
-forget (Right x) = x
+type BitMap = [Bool]
+
+decodeSEQUENCEAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => BitMap -> Sequence a -> t BG.BitGet a
+decodeSEQUENCEAux _ Nil = return Empty -- ignoring the bit map doesn't look right - it's probably an error if it's not empty
+decodeSEQUENCEAux bitmap (Cons (CTMandatory (NamedType _ t)) ts) =
+   do x <- decode4 t []
+      xs <- decodeSEQUENCEAux bitmap ts
+      return (x :*: xs)
 
 \end{code}
 
 \begin{code}
+
+forget :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => Either String (t BG.BitGet a) -> t BG.BitGet a
+forget (Left e) = throwError e
+forget (Right x) = x
 
 swap :: (Functor m, Monad m) => Either String (m a) -> m (Either String a)
 swap (Left s) = return (Left s)

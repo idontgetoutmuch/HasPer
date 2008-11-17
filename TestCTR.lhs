@@ -272,6 +272,9 @@ See Figure~\ref{sequenceTest1}.
 c1 = CTMandatory (NamedType "c1" (BT (TAGGED (Context,1,Explicit) (BT INTEGER))))
 c2 = CTMandatory (NamedType "c2" (BT (TAGGED (Context,2,Explicit) (BT INTEGER))))
 
+d1 = CTMandatory (NamedType "c1" (BT INTEGER))
+d2 = CTMandatory (NamedType "c2" (BT INTEGER))
+
 \end{code}
 
 \begin{asn1}[caption={SEQUENCE Test 1},label=sequenceTest1]
@@ -283,6 +286,8 @@ SEQUENCE {c2 [2] EXPLICIT INTEGER,
 
 tSequence1 = BT (SEQUENCE (Cons c2 (Cons c1 Nil)))
 vSequence1 = (Val 3) :*: ((Val 5) :*: Empty)
+
+tSequence2 = BT (SEQUENCE (Cons d2 (Cons d1 Nil)))
 
 myTest t x =
    case lEncode t [] x of
@@ -402,6 +407,20 @@ constrainedIntegerExtensionTest3 =
       assertEqual "Constrained INTEGER Extension Test 3" vInteger9'2 tabInteger9'1Extension2
    )
 
+tabSequence1 = myTAB'' tSequence1 vSequence1
+
+sequenceTest1 =
+   TestCase (
+      assertEqual "SEQUENCE Test 1" vSequence1 tabSequence1
+   )
+
+tabSequence2 = myTAB'' tSequence2 vSequence1
+
+sequenceTest2 =
+   TestCase (
+      assertEqual "SEQUENCE Test 2" vSequence1 tabSequence2
+   )
+
 tests =
    [ unConstrainedIntegerTest1
    , unConstrainedIntegerTest2
@@ -409,6 +428,8 @@ tests =
    , constrainedIntegerExtensionTest1
    , constrainedIntegerExtensionTest2
    , constrainedIntegerExtensionTest3
+   , sequenceTest1
+   , sequenceTest2
    ]
 
 main =
