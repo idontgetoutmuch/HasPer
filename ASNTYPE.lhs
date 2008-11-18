@@ -632,4 +632,5 @@ getCTags (ChoiceOption (NamedType n (BT (TAGGED t a))) xs)
         = t : getCTags xs
 getCTags (ChoiceOption (NamedType n a) xs)
         = getTI a : getCTags xs
+
 \end{code}

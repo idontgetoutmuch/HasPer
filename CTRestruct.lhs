@@ -167,7 +167,7 @@ lToPer (SEQUENCEOF s) x cl  = lEncodeSeqOf cl s x
 lToPer (SET s) x cl         = lEncodeSet s x -- no PER-Visible constraints
 lToPer (CHOICE c) x cl      = lEncodeChoice c x -- no PER-visible constraints
 lToPer (SETOF s) x cl       = lEncodeSeqOf cl s x -- no PER-visible constraints
-lToPer (TAGGED tag t) x cl  = lEncode t cl x 
+lToPer (TAGGED tag t) x cl  = lEncode t cl x
 
 \end{code}
 
@@ -362,6 +362,7 @@ lEncExtConsInt realRC realEC effRC effEC n@(Val v) =
              | otherwise
                   = throwError "Value out of range"
       foobar
+lEncExtConsInt realRC realEC effRC effEC v = throwError "Cannot encode MAX or MIN."
 
 lEncNonExtConsInt :: Either String ValidIntegerConstraint
                      -> Either String IntegerConstraint
@@ -398,6 +399,7 @@ lEncNonExtConsInt realRC effRC n@(Val v) =
              | otherwise
                   = throwError "Value out of range"
       foobar
+lEncNonExtConsInt realRC effRC v = throwError "Cannot encode MAX or MIN."
 \end{code}
 
  10.6 Encoding as a normally small non-negative whole number
@@ -512,26 +514,29 @@ encodes the length of a block (1 to 4).
 \begin{code}
 
 addUncLen :: ([b] -> [Int]) -> [[[b]]] -> [Int]
-addUncLen encFun [] = lastLen 0
+addUncLen encFun [] = lastLen k16 0
 addUncLen encFun (x:xs)
     | l == 4 && last16 == k16 = blockLen 4 63 ++ (concat . map encFun) x
                                               ++ addUncLen encFun xs
-    | l == 1 && last16 < k16  = lastLen ((genericLength . head) x) ++ encFun (head x)
+    | l == 1 && last16 < k16  = lastLen k16 ((genericLength . head) x) ++ encFun (head x)
     | otherwise               = if last16 == k16
-                                    then blockLen l 63 ++ (concat . map encFun) x ++ lastLen 0
+                                    then blockLen l 63 ++ (concat . map encFun) x ++ lastLen k16 0
                                     else blockLen (l-1) 63 ++ (concat . map encFun) (init x)
-                                                           ++ lastLen ((genericLength.last) x)
+                                                           ++ lastLen k16 ((genericLength.last) x)
                                                            ++ encFun (last x)
     where
         l      = genericLength x
         last16 = (genericLength . last) x
-        k16    = 16*(2^10)
+
+k16 :: Integer
+k16    = 16*(2^10)
 
 
-lastLen :: Integer -> [Int]
-lastLen n
+lastLen :: Integer -> Integer -> [Int]
+lastLen r n
    | n <= 127       = 0:(encodeNNBIntBits (n, 127))
-   | n < 16*(2^10)  = 1:0:(encodeNNBIntBits (n, (16*(2^10)-1)))
+   | n < r          = 1:0:(encodeNNBIntBits (n, (r-1)))
+   | otherwise      = error "Length is out of range."
 
 blockLen :: Integer -> Integer -> [Int]
 blockLen x y = (1:1:(encodeNNBIntBits (x,y)))
@@ -680,6 +685,7 @@ assignN (f:xs) NoEnum b ls = (b,reverse ls)
 assignN (f:xs) (EnumOption (NamedNumber _ i) r)b ls = assignN (f:xs) r b (i:ls)
 assignN (f:xs) (EnumOption _ r) b ls = assignN xs r b (f:ls)
 assignN (f:xs) (EnumExt r) b ls = (True, reverse ls)
+assignN [] _ _ _ = error "No numbers to assign"
 
 
 getNamedNumbers :: Enumerate a -> [Integer]
@@ -830,6 +836,7 @@ editBS l u xs
 
 add0s :: InfInteger -> BitStream -> Either String BitStream
 add0s (Val n) xs = return (xs ++ take (fromInteger n) [0,0..])
+add0s _ _        = throwError "Invalid number input -- MIN or MAX."
 
 rem0s :: InfInteger -> BitStream -> Either String BitStream
 rem0s (Val (n+1)) xs
@@ -837,6 +844,7 @@ rem0s (Val (n+1)) xs
            then rem0s (Val n) (init xs)
            else throwError "Last value is not 0"
 rem0s (Val 0) xs = return xs
+rem0s _ _  = throwError "Cannot remove a negative, MIN or MAX number of 0s."
 
 \end{code}
 
@@ -1045,6 +1053,8 @@ encodeSeqAux (ap,ab) (rp,rb) (Extens as) xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTCompOf (SEQUENCE s)) as) (x:*:xs) -- typically a reference
     = do (p,b) <- encodeCO ([],[]) s x
          encodeSeqAux (ap,ab) (p ++ rp,b ++ rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (Cons (CTCompOf _) as) (x:*:xs)
+    = throwError "COMPONENTS OF can only be applied to a SEQUENCE."
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTMandatory (NamedType t a)) as) (x:*:xs)
     = do
         bts <- lEncode a [] x
@@ -1067,6 +1077,8 @@ encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:x
     = do
         bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (EAG _ _) _
+    = throwError "Impossible case: Extension Addition Groups only appear within an extension"
 
 encodeCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
 encodeCO (rp,rb) Nil _
@@ -1076,6 +1088,8 @@ encodeCO (rp,rb) (Extens as) xs
 encodeCO (rp,rb) (Cons (CTCompOf (SEQUENCE s)) as) (x:*:xs)
     = do (p,b) <- encodeCO ([],[]) s x
          encodeCO (p ++ rp,b ++ rb) as xs
+encodeCO (rp,rb) (Cons (CTCompOf _) as) (x:*:xs)
+    = throwError "COMPONENTS OF can only be applied to a SEQUENCE"
 encodeCO (rp,rb) (Cons (CTMandatory (NamedType t a)) as) (x:*:xs)
     = do bts <- lEncode a [] x
          encodeCO ([]:rp,bts:rb) as xs
@@ -1096,9 +1110,11 @@ encodeCO (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeCO ([1]:rp,bts:rb) as xs
+encodeCO (rp,rb) (EAG _ _) _
+    = throwError "Impossible case: Extension Addition Groups only appear in an extension."
 
 
-
+-- Only the root component list of the COMPONENTS OF type is inlcuded.
 encodeExtCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
 encodeExtCO (rp,rb) Nil _
     = return (rp,rb)
@@ -1106,7 +1122,8 @@ encodeExtCO (rp,rb) (Extens as) xs
     = encodeCO (rp,rb) as xs
 encodeExtCO (rp,rb) (Cons _ as) (_:*:xs)
     = encodeExtCO (rp,rb) as xs
-
+encodeExtCO (rp,rb) (EAG _ as) (x:*:xs)
+    = encodeExtCO (rp,rb) as xs
 \end{code}
 
 encodeExtSeqAux adds the encoding of any extension additions to
@@ -1145,6 +1162,9 @@ encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Nothing
 encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:xs)
    = do bts <- lEncodeOpen a x
         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
+encodeExtSeqAux (ap,ab) (rp,rb) _ _
+    = throwError "Impossible case for extension addition."
+
 
 \end{code}
 
@@ -1319,12 +1339,15 @@ getTags :: Sequence a -> [TagInfo]
 getTags Nil               = []
 getTags (Extens xs)       = getTags' xs
 getTags (Cons a xs)       = getCTI a : getTags xs
+getTags (EAG _ _)         = error "Impossible case for a root component."
+
 
 
 getTags' :: Sequence a -> [TagInfo]
 getTags' Nil         = []
 getTags' (Extens xs) = getTags xs
 getTags' (Cons a xs) = getTags' xs
+getTags' (EAG s t)   = getTags' t
 
 \end{code}
 
@@ -1376,10 +1399,12 @@ mergesort pred xs = merge pred (mergesort pred xs1) (mergesort pred xs2)
                              where (xs1,xs2) = split xs
 split :: [a] -> ([a],[a])
 split xs = splitrec xs xs []
+
 splitrec :: [a] -> [a] -> [a] -> ([a],[a])
 splitrec [] ys zs = (reverse zs, ys)
 splitrec [x] ys zs = (reverse zs, ys)
 splitrec (x1:x2:xs) (y:ys) zs = splitrec xs ys (y:zs)
+splitrec (x1:x2:xs) [] zs = error "Impossible case when used by split"
 
 merge :: (a -> a -> Bool) -> [a] -> [a] -> [a]
 merge pred xs [] = xs
