@@ -173,6 +173,14 @@ sibDataVariableValue =
 
 sibTest = myTest' sibDataVariableType sibDataVariableValue
 
+completeSIBListConstraint :: Constr [BitString]
+completeSIBListConstraint = UNION (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,16)))))))))))))
+
+completeSIBList = ConsT (BT (SEQUENCEOF sibDataVariableType)) (RE completeSIBListConstraint)
+
+completeSIBListTest = lEncode completeSIBList [] (take 3 $ repeat (BitString [1,1,1,1,1,1,1,1]))
+
+
 -- OCTETSTRING
 os41 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
              (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
@@ -275,6 +283,10 @@ c2 = CTMandatory (NamedType "c2" (BT (TAGGED (Context,2,Explicit) (BT INTEGER)))
 d1 = CTMandatory (NamedType "c1" (BT INTEGER))
 d2 = CTMandatory (NamedType "c2" (BT INTEGER))
 
+e1 = CTMandatory (NamedType "e1" tSequence1)
+e2 = CTMandatory (NamedType "e2" tSequence1)
+
+
 \end{code}
 
 \begin{asn1}[caption={SEQUENCE Test 1},label=sequenceTest1]
@@ -288,6 +300,10 @@ tSequence1 = BT (SEQUENCE (Cons c2 (Cons c1 Nil)))
 vSequence1 = (Val 3) :*: ((Val 5) :*: Empty)
 
 tSequence2 = BT (SEQUENCE (Cons d2 (Cons d1 Nil)))
+
+tSequence3 = BT (SEQUENCE (Cons e2 (Cons e1 Nil)))
+vSequence3 = ((Val 2) :*: (Val 3 :*: Nil)) :*: (((Val 5) :*: ((Val 7) :*: Nil)) :*: Nil)
+
 
 myTest t x =
    case lEncode t [] x of

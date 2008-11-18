@@ -12,7 +12,14 @@ import Text.PrettyPrint
 
 prettyType :: ASNType a -> Doc
 prettyType (BT bt) = prettyBuiltinType bt
-prettyType (ConsT t e) = prettyType t <+> parens (prettyElementSetSpecs t e)
+prettyType (ConsT (BT (SEQUENCEOF t)) e) =
+   text "SEQUENCE" <+> 
+   parens (prettyElementSetSpecs undefined e) <+> 
+   text "OF" <+> 
+   prettyType t
+prettyType (ConsT t e) = 
+   prettyType t <+> 
+   parens (prettyElementSetSpecs t e)
 
 prettySeq :: Sequence a -> Doc
 prettySeq Nil =
@@ -43,6 +50,8 @@ prettyBuiltinType (SEQUENCE s) =
    text "SEQUENCE" <> space <> braces (prettySeq s)
 prettyBuiltinType (SET s) =
    text "SET" <> space <> braces (prettySeq s)
+prettyBuiltinType (SEQUENCEOF t) =
+   text "SEQUENCE OF" <+> prettyType t
 
 prettyChoice :: Choice a -> Doc
 prettyChoice NoChoice =

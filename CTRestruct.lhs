@@ -1779,6 +1779,7 @@ fromPer3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
             ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
 fromPer3 t@INTEGER cl = decodeInt3 cl
 fromPer3 t@(SEQUENCE s) cl = decodeSEQUENCE s
+fromPer3 t@(TAGGED _ u) cl = decode4 u cl
 
 \end{code}
 
