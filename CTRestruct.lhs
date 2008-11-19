@@ -1900,13 +1900,22 @@ lower bound ("lb") is negative, then the result is undefined.
 
 {-
 decodeLengthDeterminant ::
-   (Integral x, MonadState (B.ByteString,x) m, MonadError [Char] m) =>
-      Constrained Integer -> (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
-decodeLengthDeterminant (Constrained lb ub) f t
-   | ub /= Nothing && ub == lb && ub <= (Just n64k) = f (fromJust ub) t
-   | ub == Nothing = decodeLargeLengthDeterminant f t
-   | ub <= (Just n64k) = do l <- mFromPer (RANGE INTEGER lb ub)
-                            f l t
+   (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
+   IntegerConstraint -> (Integer -> ASNType a -> t BG.BitGet [b]) -> ASNType a -> t BG.BitGet [b]
+decodeLengthDeterminant c f t
+   | ub /= maxBound && ub == lb && v <= 64*(2^10) = f v t
+   | ub == maxBound                               = decodeLargeLengthDeterminant3' f t
+   | v <= 64*(2^10)                               = do l <- undefined -- mFromPer (RANGE INTEGER lb ub)
+                                                       f l t
+   | otherwise = undefined
+   where
+      ub = upper c
+      lb = lower c
+      (Val v) = ub
+{-
+
+
+
    | otherwise = decodeLargeLengthDeterminant f t
 -}
 
@@ -2138,6 +2147,21 @@ nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
 decodeSequenceOf :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
                     ASNType a -> [ElementSetSpecs [a]] -> t BG.BitGet [a]
 decodeSequenceOf t [] = decodeLargeLengthDeterminant3' (flip nSequenceOfElements []) t
+
+\end{code}
+
+\subsection{BIT STRING --- Clause 15}
+
+{\em BIT STRING}s are encoded with a length determinant but the type
+is immaterial hence we use $\bottom$ as the type argument to
+{\em decodeLengthDeterminant}; the (function) argument to
+decode the individual components merely takes 1 bit at a time.
+
+\begin{code}
+
+fromPerBitString t = undefined
+   -- decodeLengthDeterminant (sizeLimit t) chunkBy1 undefined
+      -- where chunkBy1 = flip (const mmGetBits)
 
 \end{code}
 

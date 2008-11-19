@@ -1,4 +1,6 @@
-{-# OPTIONS_GHC -XGADTs -fwarn-incomplete-patterns #-}
+{-# OPTIONS_GHC -XGADTs #-}
+
+-- -fwarn-incomplete-patterns
 
 module NewPretty where
 

@@ -442,7 +442,7 @@ sequenceTest2 =
 
 sequenceOfTest1 = myTAB'' incompleteSIBList (take 3 $ repeat (BitString [1,1,1,1,1,1,1,1]))
 
-sequenceOfTest2 = myTAB'' (BT (SEQUENCEOF (BT INTEGER))) (take 3 $ repeat vInteger1)
+sequenceOfTest2 = myTAB'' (BT (SEQUENCEOF (BT INTEGER))) (take 127 $ repeat vInteger1)
 
 tests =
    [ unConstrainedIntegerTest1
