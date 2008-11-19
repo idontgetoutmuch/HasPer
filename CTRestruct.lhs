@@ -794,7 +794,7 @@ lEncExtBS nbs m n (BitString vs)
                         return (0:bs)
                 | inSizeRange okec
                     = do
-                        bs <- bsCode nbs rc vs
+                        bs <- bsExtCode nbs rc ec vs
                         return (1:bs)
                 | otherwise
                     = throwError "Value out of range"
@@ -822,6 +822,24 @@ bsCode nbs rc xs
                             else do
                                     ls <- exs
                                     return (encodeBitsWithLength ls)
+
+
+bsExtCode nbs rc ec xs
+    = let l  = lower rc
+          u  = upper rc
+          exs = if (not.null) nbs then editBS l u xs
+                     else return xs
+      in
+          if u <= 65536
+             then let Val ub = u
+                      Val lb = l
+                  in do
+                        ls <- exs
+                        ln <- return (genericLength ls)
+                        return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ ls)
+             else do
+                     ls <- exs
+                     return (encodeBitsWithLength ls)
 
 
 editBS :: InfInteger -> InfInteger -> BitStream -> Either String BitStream
@@ -966,7 +984,7 @@ lEncExtOS m n (OctetString vs)
                         return (0:bs)
                 | inSizeRange okec
                     = do
-                        bs <- osCode rc vs
+                        bs <- osExtCode rc ec vs
                         return (1:bs)
                 | otherwise
                     = throwError "Value out of range"
@@ -990,6 +1008,20 @@ osCode rc xs
                                      ln <- return (genericLength xs)
                                      return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ octetsToBits xs)
                             else return (encodeWithLength octetsToBits xs)
+
+osExtCode :: IntegerConstraint -> IntegerConstraint -> [Octet] -> Either String BitStream
+osExtCode rc ec xs
+    = let l  = lower rc
+          u  = upper ec
+          octetToBits x = encodeNNBIntBits ((fromIntegral x),255)
+          octetsToBits  = (concat . map octetToBits)
+      in if u <= 65536
+         then let Val ub = u
+                  Val lb = l
+              in do
+                   ln <- return (genericLength xs)
+                   return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ octetsToBits xs)
+         else return (encodeWithLength octetsToBits xs)
 
 \end{code}
 
@@ -1301,6 +1333,22 @@ soCode rc t xs
                             else do
                                     mEncodeWithLength (encodeList t) xs
 
+
+soExtCode rc ec t xs
+      =  let l  = lower rc
+             u  = upper ec
+         in
+            if u <= 65536
+                            then let Val ub = u
+                                     Val lb = l
+                                 in do
+                                     ln <- return (genericLength xs)
+                                     bs <- encodeAll t xs
+                                     return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ bs)
+                            else do
+                                    mEncodeWithLength (encodeList t) xs
+
+
 encodeList t [] = return []
 encodeList t (f:r)
     = do
@@ -1339,11 +1387,11 @@ lEncExtSeqOf t m n vs
                     = throwError "Empty constraint"
                 | inSizeRange okrc
                     = do
-                        bs <- encodeAll t vs
+                        bs <- soCode rc t vs
                         return (0:bs)
                 | inSizeRange okec
                     = do
-                        bs <- encodeAll t vs
+                        bs <- soExtCode rc ec t vs
                         return (1:bs)
                 | otherwise
                     = throwError "Value out of range"
