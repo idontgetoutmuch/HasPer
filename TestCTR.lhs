@@ -173,6 +173,8 @@ sibDataVariableValue =
 
 sibTest = myTest' sibDataVariableType sibDataVariableValue
 
+incompleteSIBList = BT (SEQUENCEOF sibDataVariableType)
+
 completeSIBListConstraint :: Constr [BitString]
 completeSIBListConstraint = UNION (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,16)))))))))))))
 
@@ -437,6 +439,10 @@ sequenceTest2 =
    TestCase (
       assertEqual "SEQUENCE Test 2" vSequence1 tabSequence2
    )
+
+sequenceOfTest1 = myTAB'' incompleteSIBList (take 3 $ repeat (BitString [1,1,1,1,1,1,1,1]))
+
+sequenceOfTest2 = myTAB'' (BT (SEQUENCEOF (BT INTEGER))) (take 3 $ repeat vInteger1)
 
 tests =
    [ unConstrainedIntegerTest1
