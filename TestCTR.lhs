@@ -24,7 +24,7 @@ import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.Strict.BitPut as BP
 import Control.Monad.Error
 
-import LatticeMod 
+import LatticeMod
 
 import Test.QuickCheck
 import Test.HUnit
@@ -165,7 +165,7 @@ st6 = ConsT (BT (BITSTRING [NB "A" 2, NB "B" 3])) (RE pac41)
 testBS1 = myTest st5 (BitString [1,1,0,0,0,0,0])
 testBS2 = myTest st6 (BitString [1,1,0,0,0,0,0,0,1,0,0,0])
 
-sibDataVariableType = 
+sibDataVariableType =
    ConsT (BT (BITSTRING [])) (RE (UNION (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,214)))))))))))))))
 
 sibDataVariableValue =
@@ -180,6 +180,7 @@ completeSIBList = ConsT (BT (SEQUENCEOF sibDataVariableType)) (RE completeSIBLis
 
 completeSIBListTest = lEncode completeSIBList [] (take 3 $ repeat (BitString [1,1,1,1,1,1,1,1]))
 
+seqOfTest1 = lEncode (BT (SEQUENCEOF (BT INTEGER))) [] (take 1 $ repeat (Val 1))
 
 -- OCTETSTRING
 os41 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))

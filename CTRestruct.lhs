@@ -1190,21 +1190,49 @@ lEncodeUncSeqOf encodes an unconstrained SEQUENCEOF value.
 \begin{code}
 
 lEncodeUncSeqOf :: ASNType a -> [a] -> Either String BitStream
-lEncodeUncSeqOf t xs = encodeSOWithLength t xs
+lEncodeUncSeqOf t xs = mEncodeWithLength (encodeList t) xs
 
-\end{code}
 
-encodeSOWithLength encodes a sequence-of value with the appropriate
-length encoding.
-
-\begin{code}
-encodeSOWithLength :: ASNType a -> [a] -> Either String BitStream
-encodeSOWithLength s vs
+--mEncodeWithLength :: ([t] -> Either String BitStream) -> [t] -> Either String BitStream
+mEncodeWithLength fun xs
     = do
-        bs <- encodeAll s vs
-        return (encodeBitsWithLength bs)
+           ls <- return ((groupBy 4 . groupBy (16*(2^10))) xs)
+           mAddUncLen fun ls
+
+
+--mAddUncLen :: ([b] -> Either String BitStream) -> [[[b]]] -> Either String BitStream
+mAddUncLen encFun [] = return (lastLen k16 0)
+mAddUncLen encFun (x:xs)
+    | l == 4 && last16 == k16
+        = do
+            bl <- return (blockLen 4 63)
+            bs <- encFun x
+            ls <- mAddUncLen encFun xs
+            return (bl ++ bs ++ ls)
+    | l == 1 && last16 < k16
+        = do
+            ll <- return (lastLen k16 ((genericLength . head) x))
+            bs <- encFun ([head x])
+            return (ll ++ bs)
+    | last16 == k16
+        = do
+            bl <- return (blockLen l 63)
+            bs <- encFun x
+            ll <- return (lastLen k16 0)
+            return (bl ++ bs ++ ll)
+    | otherwise
+        = do
+            bl <- return (blockLen (l-1) 63)
+            bs <- encFun (init x)
+            ll <- return (lastLen k16 ((genericLength.last) x))
+            ls <- encFun ([last x])
+            return (bl ++ bs ++ ll ++ ls)
+    where
+        l      = genericLength x
+        last16 = (genericLength . last) x
 
 \end{code}
+
 
 \begin{code}
 
@@ -1248,11 +1276,37 @@ lEncNonExtSeqOf t m n vs
                 | emptyConstraint
                     = throwError "Empty constraint"
                 | inSizeRange okrc
-                    = do bs <- encodeAll t vs
+                    = do bs <- soCode rc t vs
                          return bs
                 | otherwise
                     = throwError "Value out of range"
         foobar
+
+
+soCode rc t xs
+      =  let l  = lower rc
+             u  = upper rc
+         in
+             if u == 0
+             then return []
+             else if u == l && u <= 65536
+                       then encodeAll t xs
+                       else if u <= 65536
+                            then let Val ub = u
+                                     Val lb = l
+                                 in do
+                                     ln <- return (genericLength xs)
+                                     bs <- encodeAll t xs
+                                     return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ bs)
+                            else do
+                                    mEncodeWithLength (encodeList t) xs
+
+encodeList t [] = return []
+encodeList t (f:r)
+    = do
+        bs <- encodeAll t f
+        rs <- encodeList t r
+        return (bs ++ rs)
 
 
 encodeAll t (f:r)
@@ -1779,7 +1833,6 @@ fromPer3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
             ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
 fromPer3 t@INTEGER cl = decodeInt3 cl
 fromPer3 t@(SEQUENCE s) cl = decodeSEQUENCE s
-fromPer3 t@(TAGGED _ u) cl = decode4 u cl
 
 \end{code}
 
