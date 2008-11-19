@@ -1841,6 +1841,35 @@ fromPer3 t@(BITSTRING _) cl = error "you are here"
 
 \section{Decoding Length Determinants}
 
+This function decodes the length determinant as defined in 10.9.
+It does not currently cover 10.9.3.4: the determinant being a normally small length.
+
+Note that it assumes that the ASN.1 type makes semantic sense.
+For example, if the upper bound of the size constraint ("ub") is 0 and the
+lower bound ("lb") is negative, then the result is undefined.
+
+\begin{code}
+
+{-
+decodeLengthDeterminant ::
+   (Integral x, MonadState (B.ByteString,x) m, MonadError [Char] m) =>
+      Constrained Integer -> (Integer -> ASNType a -> m [b]) -> ASNType a -> m [b]
+decodeLengthDeterminant (Constrained lb ub) f t
+   | ub /= Nothing && ub == lb && ub <= (Just n64k) = f (fromJust ub) t
+   | ub == Nothing = decodeLargeLengthDeterminant f t
+   | ub <= (Just n64k) = do l <- mFromPer (RANGE INTEGER lb ub)
+                            f l t
+   | otherwise = decodeLargeLengthDeterminant f t
+-}
+
+\end{code}
+
+This function decodes the length determinant for unconstrained length or large "ub".
+See 10.9.4 and 10.9.3.4 -- 10.9.3.8.4 for further details. Note that we don't currently
+cover 10.9.3.4!!! It does so by taking a function which itself takes an iteration count,
+an ASN.1 type and returns a (monadic) list of decoded values which may or may not be
+values of the ASN.1 type.
+
 \begin{code}
 
 decodeLargeLengthDeterminant3 f t =
@@ -2049,6 +2078,18 @@ forget (Right x) = x
 swap :: (Functor m, Monad m) => Either String (m a) -> m (Either String a)
 swap (Left s) = return (Left s)
 swap (Right x) = fmap Right x
+
+\end{code}
+
+\section{SEQUENCE OF Decoding}
+
+\begin{code}
+
+nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
+
+decodeSequenceOf :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
+                    ASNType a -> [ElementSetSpecs [a]] -> t BG.BitGet [a]
+decodeSequenceOf t [] = decodeLargeLengthDeterminant3' (flip nSequenceOfElements []) t
 
 \end{code}
 
