@@ -1898,7 +1898,6 @@ lower bound ("lb") is negative, then the result is undefined.
 
 \begin{code}
 
-{-
 decodeLengthDeterminant ::
    (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
    IntegerConstraint -> (Integer -> ASNType a -> t BG.BitGet [b]) -> ASNType a -> t BG.BitGet [b]
