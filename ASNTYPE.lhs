@@ -575,8 +575,7 @@ data IntegerConstraint = IntegerConstraint {lower :: InfInteger, upper :: InfInt
 data ValidIntegerConstraint = Valid [IntegerConstraint]
     deriving (Show, Eq)
 
-
-data ConType i = ConType i
+data ConType i = ConType {conType :: i}
     deriving (Show, Eq)
 
 data ExtBS i = ExtBS i i Bool
