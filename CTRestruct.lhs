@@ -1883,7 +1883,7 @@ fromPer3 t@INTEGER cl = decodeInt3 cl
 fromPer3 t@(SEQUENCE s) cl = decodeSEQUENCE s
 fromPer3 t@(TAGGED _ u) cl = decode4 u cl
 fromPer3 t@(SEQUENCEOF s) cl = decodeSequenceOf s cl
-fromPer3 t@(BITSTRING _) cl = undefined -- decodeBitString cl
+fromPer3 t@(BITSTRING _) cl = decodeBitString cl
 
 \end{code}
 
@@ -2157,51 +2157,25 @@ decode the individual components merely takes 1 bit at a time.
 
 \begin{code}
 
--- decodeBitString :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => [ElementSetSpecs BitString] -> t BG.BitGet [B.ByteString]
-decodeBitString [] =
-   decodeBitStringAux (return bottom) undefined (return bottom)
-decodeBitString cs =
-   decodeBitStringAux (errorize effRoot) isExtensible (errorize effExt)
-   where
-      lc                    = last cs
-      ic                    = init cs
-      parentRoot            = lRootIntCons top ic
-      (effExt,isExtensible) = lApplyExt parentRoot lc
-      effRoot               = lEvalC lc parentRoot
+decodeBitString :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => [ElementSetSpecs BitString] -> t BG.BitGet BitString
+decodeBitString constraints =
+   do xs <- decodeBitStringAux (errorize (lSerialEffCons lBSConE top constraints))
+      return (BitString . concat . (map bitString) $ xs)
 
-{-
-decodeBitStringAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
-                 t BG.BitGet IntegerConstraint -> Bool -> t BG.BitGet IntegerConstraint -> t BG.BitGet [B.ByteString]
--}
-decodeBitStringAux mrc isExtensible mec =
-   do rc <- mrc
-      ec <- mec
-      decodeLengthDeterminant (rc `ljoin` ec) chunkBy1 undefined
-      where 
-         chunkBy1 = let compose = (.).(.) in lift `compose` (flip (const (sequence . return . BG.getLeftByteString . fromIntegral)))
-
-
-foo ::  [ElementSetSpecs BitString] -> Either String (ExtBS (ConType IntegerConstraint))
-foo constraints =
-   lSerialEffCons lBSConE top constraints
-
-bar :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
-       t BG.BitGet ([ElementSetSpecs BitString]) -> t BG.BitGet [B.ByteString]
-bar mcs =
-   do cs <- mcs
-      undefined
-
-baz constraints = errorize (lSerialEffCons lBSConE top constraints)
-
-urk :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => [ElementSetSpecs BitString] -> t BG.BitGet [B.ByteString]
-urk constraints =
-   bla (errorize (lSerialEffCons lBSConE top constraints))
-
-bla :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => t BG.BitGet (ExtBS (ConType IntegerConstraint)) -> t BG.BitGet [B.ByteString]
-bla mx =
+decodeBitStringAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => t BG.BitGet (ExtBS (ConType IntegerConstraint)) -> t BG.BitGet [BitString]
+decodeBitStringAux mx =
    do x <- mx
       let rc = conType . getBSRC $ x
-      undefined
+      decodeLengthDeterminant rc chunkBy1 undefined
+      where 
+         chunkBy1 = let compose = (.).(.) in lift `compose` (flip (const (sequence . return . (liftM BitString) . getBits . fromIntegral)))
+
+getBits 0 =
+   return []
+getBits n =
+   do x <- BG.getBit
+      xs <- getBits (n-1)
+      return (fromEnum x:xs)
 
 \end{code}
 
