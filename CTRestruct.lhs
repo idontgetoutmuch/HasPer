@@ -2155,6 +2155,9 @@ is immaterial hence we use $\bottom$ as the type argument to
 {\em decodeLengthDeterminant}; the (function) argument to
 decode the individual components merely takes 1 bit at a time.
 
+The above may now be rubbish and the code below could well be
+highly inefficient.
+
 \begin{code}
 
 decodeBitString :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => [ElementSetSpecs BitString] -> t BG.BitGet BitString

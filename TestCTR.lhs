@@ -440,9 +440,28 @@ sequenceTest2 =
       assertEqual "SEQUENCE Test 2" vSequence1 tabSequence2
    )
 
-sequenceOfTest1 = myTAB'' incompleteSIBList (take 3 $ repeat (BitString [1,1,1,1,1,1,1,1]))
+vSequenceOf1 = take 3 $ repeat (BitString [1,1,1,1,1,1,1,1])
+tabSequenceOf1 = myTAB'' incompleteSIBList vSequenceOf1
 
-sequenceOfTest2 = myTAB'' (BT (SEQUENCEOF (BT INTEGER))) (take 127 $ repeat vInteger1)
+sequenceOfTest1 = 
+   TestCase (
+      assertEqual "SEQUENCE OF Test 1" vSequenceOf1 tabSequenceOf1
+   )
+
+vSequenceOf2 = take 127 $ repeat vInteger1
+tabSequenceOf2 = myTAB'' (BT (SEQUENCEOF (BT INTEGER))) vSequenceOf2
+
+sequenceOfTest2 =
+   TestCase (
+      assertEqual "SEQUENCE OF Test 2" vSequenceOf2 tabSequenceOf2
+   )
+
+tabSequenceOf3 = myTAB'' completeSIBList vSequenceOf1
+
+sequenceOfTest3 = 
+   TestCase (
+      assertEqual "SEQUENCE OF Test 3" vSequenceOf1 tabSequenceOf3
+   )
 
 tests =
    [ unConstrainedIntegerTest1
@@ -453,6 +472,9 @@ tests =
    , constrainedIntegerExtensionTest3
    , sequenceTest1
    , sequenceTest2
+   , sequenceOfTest1
+   , sequenceOfTest2
+   , sequenceOfTest3
    ]
 
 main =
