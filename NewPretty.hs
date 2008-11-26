@@ -5,7 +5,7 @@
 module NewPretty where
 
 import ASNTYPE
-import CTRestruct
+import PER
 import Language.ASN1 (
    TagPlicity (..),
    TagType (..)
@@ -15,12 +15,12 @@ import Text.PrettyPrint
 prettyType :: ASNType a -> Doc
 prettyType (BT bt) = prettyBuiltinType bt
 prettyType (ConsT (BT (SEQUENCEOF t)) e) =
-   text "SEQUENCE" <+> 
-   parens (prettyElementSetSpecs undefined e) <+> 
-   text "OF" <+> 
+   text "SEQUENCE" <+>
+   parens (prettyElementSetSpecs undefined e) <+>
+   text "OF" <+>
    prettyType t
-prettyType (ConsT t e) = 
-   prettyType t <+> 
+prettyType (ConsT t e) =
+   prettyType t <+>
    parens (prettyElementSetSpecs t e)
 
 prettySeq :: Sequence a -> Doc

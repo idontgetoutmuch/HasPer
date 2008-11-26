@@ -16,7 +16,7 @@ Testing encoding for UNALIGNED PER
 
 module TestCTR where
 
-import CTRestruct
+import PER
 import Text.PrettyPrint
 import NewPretty
 import qualified Data.ByteString as B
@@ -82,16 +82,16 @@ nameStringCon
                                     (ATOM (E (S (SV (VisibleString "-."))))))))))))))
 
 nameString
-    = ConsT (BT VISIBLESTRING) nameStringCon
+    = ConstrainedType  (BuiltinType VISIBLESTRING) nameStringCon
 
 
-name = BT (SEQUENCE nameSeq)
+name = BuiltinType (SEQUENCE nameSeq)
 
 
-nameSeq = Cons (CTMandatory (NamedType "givenName" nameString))
-                (Cons (CTMandatory (NamedType "initial" (ConsT nameString ns1)))
-                    (Cons (CTMandatory (NamedType "familyName"  nameString))
-                        (Extens Nil)))
+nameSeq = AddComponent (CTMandatory (NamedType "givenName" nameString))
+                (AddComponent (CTMandatory (NamedType "initial" (ConstrainedType  nameString ns1)))
+                    (AddComponent (CTMandatory (NamedType "familyName"  nameString))
+                        (ExtensionMarker Nil)))
 
 nameVal = VisibleString "John" :*: (VisibleString "P" :*: (VisibleString "Smith" :*: Empty))
 
@@ -119,13 +119,13 @@ applycon4 = lRootIntCons top [con32,con1]
 
 --Integer types
 
-t1 = ConsT (BT INTEGER) con1
-t2 = ConsT t1 con2
-t3 = ConsT (ConsT (BT INTEGER) con2) con1
-t4 = ConsT (BT INTEGER) con3
-t5 = ConsT (BT INTEGER) con4
-t6 = ConsT (BT INTEGER) con5
-t7 = ConsT (ConsT (BT INTEGER) con5) con1
+t1 = ConstrainedType  (BuiltinType INTEGER) con1
+t2 = ConstrainedType  t1 con2
+t3 = ConstrainedType  (ConstrainedType  (BuiltinType INTEGER) con2) con1
+t4 = ConstrainedType  (BuiltinType INTEGER) con3
+t5 = ConstrainedType  (BuiltinType INTEGER) con4
+t6 = ConstrainedType  (BuiltinType INTEGER) con5
+t7 = ConstrainedType  (ConstrainedType  (BuiltinType INTEGER) con5) con1
 
 test1 = perEncode t1 [] 253
 test2 = perEncode t2 [] 250
@@ -141,13 +141,13 @@ test10 = perEncode t7 [] 271
 -- String types
 
 --constrained
-st1 = ConsT (BT VISIBLESTRING) (RE pac2)
-st2 = ConsT (BT VISIBLESTRING) (RE pac4)
-st3 = ConsT (BT VISIBLESTRING) dateCon
-st4 = ConsT (BT VISIBLESTRING) nameStringCon
+st1 = ConstrainedType  (BuiltinType VISIBLESTRING) (RE pac2)
+st2 = ConstrainedType  (BuiltinType VISIBLESTRING) (RE pac4)
+st3 = ConstrainedType  (BuiltinType VISIBLESTRING) dateCon
+st4 = ConstrainedType  (BuiltinType VISIBLESTRING) nameStringCon
 
 --unconstrained
-ust1 = ConsT (BT NUMERICSTRING) (RE pac5)
+ust1 = ConstrainedType  (BuiltinType NUMERICSTRING) (RE pac5)
 
 testS1 = myTest st1 (VisibleString "19571111")
 testS2 = myTest st3 (VisibleString "19571111")
@@ -157,37 +157,36 @@ testS5 = myTest ust1 (NumericString "123")
 testS6 = myTest ust1 (NumericString "dan")
 
 -- BITSTRING
-pac41 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
-             (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
-st5 = ConsT (BT (BITSTRING [])) (RE pac41)
-st6 = ConsT (BT (BITSTRING [NB "A" 2, NB "B" 3])) (RE pac41)
+pac41 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5))))))))))))) (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
+st5 = ConstrainedType  (BuiltinType (BITSTRING [])) (RE pac41)
+st6 = ConstrainedType  (BuiltinType (BITSTRING [NB "A" 2, NB "B" 3])) (RE pac41)
 
 testBS1 = myTest st5 (BitString [1,1,0,0,0,0,0])
 testBS2 = myTest st6 (BitString [1,1,0,0,0,0,0,0,1,0,0,0])
 
 sibDataVariableType =
-   ConsT (BT (BITSTRING [])) (RE (UNION (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,214)))))))))))))))
+   ConstrainedType  (BuiltinType (BITSTRING [])) (RE (UNION (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,214)))))))))))))))
 
 sibDataVariableValue =
    BitString [1,1,1,1,1,1,1,1]
 
 sibTest = myTest' sibDataVariableType sibDataVariableValue
 
-incompleteSIBList = BT (SEQUENCEOF sibDataVariableType)
+incompleteSIBList = BuiltinType (SEQUENCEOF sibDataVariableType)
 
 completeSIBListConstraint :: Constr [BitString]
 completeSIBListConstraint = UNION (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,16)))))))))))))
 
-completeSIBList = ConsT (BT (SEQUENCEOF sibDataVariableType)) (RE completeSIBListConstraint)
+completeSIBList = ConstrainedType  (BuiltinType (SEQUENCEOF sibDataVariableType)) (RE completeSIBListConstraint)
 
 completeSIBListTest = lEncode completeSIBList [] (take 3 $ repeat (BitString [1,1,1,1,1,1,1,1]))
 
-seqOfTest1 = lEncode (BT (SEQUENCEOF (BT INTEGER))) [] (take 1 $ repeat (Val 1))
+seqOfTest1 = lEncode (BuiltinType (SEQUENCEOF (BuiltinType INTEGER))) [] (take 1 $ repeat (Val 1))
 
 -- OCTETSTRING
 os41 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
              (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
-os1 = ConsT (BT (OCTETSTRING)) (RE os41)
+os1 = ConstrainedType  (BuiltinType (OCTETSTRING)) (RE os41)
 
 testOS1 = myTest os1 (OctetString [20,140,5,16,23,87,10])
 
@@ -198,24 +197,24 @@ testSeq1 = myTest name nameVal
 
 -- CHOICE
 
-axSeq = Cons (CTMandatory (NamedType "a" (ConsT (BT INTEGER) con1)))
-                (Cons (CTMandatory (NamedType "b" (BT BOOLEAN)))
-                    (Cons (CTMandatory (NamedType "c" (BT (CHOICE choice1))))
-                        (Extens
-                          (EAG eag1
-                           (Extens (Cons (CTOptional (NamedType "i" (BT BMPSTRING)))
-                                (Cons (CTOptional (NamedType "j" (BT PRINTABLESTRING)))
+axSeq = AddComponent (CTMandatory (NamedType "a" (ConstrainedType  (BuiltinType INTEGER) con1)))
+                (AddComponent (CTMandatory (NamedType "b" (BuiltinType BOOLEAN)))
+                    (AddComponent (CTMandatory (NamedType "c" (BuiltinType (CHOICE choice1))))
+                        (ExtensionMarker
+                          (ExtensionAdditionGroup eag1
+                           (ExtensionMarker (AddComponent (CTOptional (NamedType "i" (BuiltinType BMPSTRING)))
+                                (AddComponent (CTOptional (NamedType "j" (BuiltinType PRINTABLESTRING)))
                                     Nil)))))))
 
-choice1 = ChoiceOption (NamedType "d" (BT INTEGER))
-            (ChoiceExt (ChoiceEAG
-                            (ChoiceOption (NamedType "e" (BT BOOLEAN))
-                                   (ChoiceOption (NamedType "f"  (BT IA5STRING))
-                                          (ChoiceEAG (ChoiceExt NoChoice))))))
+choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
+            (ChoiceExt (ChoiceExtensionAdditionGroup
+                            (ChoiceOption (NamedType "e" (BuiltinType BOOLEAN))
+                                   (ChoiceOption (NamedType "f"  (BuiltinType IA5STRING))
+                                          (ChoiceExtensionAdditionGroup (ChoiceExt NoChoice))))))
 
 
-eag1 = Cons (CTMandatory (NamedType "g" (ConsT (BT NUMERICSTRING) (RE pac5))))
-        (Cons (CTOptional (NamedType "h" (BT BOOLEAN))) Nil)
+eag1 = AddComponent (CTMandatory (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RE pac5))))
+        (AddComponent (CTOptional (NamedType "h" (BuiltinType BOOLEAN))) Nil)
 
 
 axVal = 253 :*:
@@ -225,7 +224,7 @@ axVal = 253 :*:
                         (Nothing :*: (Nothing :*: Empty)))))
 
 
-testChoice1 = myTest (BT (SEQUENCE axSeq)) axVal
+testChoice1 = myTest (BuiltinType (SEQUENCE axSeq)) axVal
 
 
 
@@ -247,9 +246,9 @@ blank = ATOM (E (S (SV (PrintableString " "))))
 
 morseChars = RE (UNION (UC (UC (IC dash) dot) blank))
 
-morseAlphabet = ConsT (BT PRINTABLESTRING) morseChars
+morseAlphabet = ConstrainedType  (BuiltinType PRINTABLESTRING) morseChars
 
-morse = ConsT (BT PRINTABLESTRING ) (RE (UNION (IC (ATOM ((E (P (FR morseChars))))))))
+morse = ConstrainedType  (BuiltinType PRINTABLESTRING ) (RE (UNION (IC (ATOM ((E (P (FR morseChars))))))))
 
 -- Note that the outer monad is BitGet and the inner monad is the Error
 
@@ -264,13 +263,13 @@ myCon3 = RE mySc1
 myCon4 = EXT mySc1
 myCon5 = EXTWITH mySc1 mySc2
 
-mt1 = ConsT (BT INTEGER) myCon1
-mt2 = ConsT mt1 myCon2
-mt3 = ConsT (ConsT (BT INTEGER) myCon2) myCon1
-mt4 = ConsT (BT INTEGER) myCon3
-mt5 = ConsT (BT INTEGER) myCon4
-mt6 = ConsT (BT INTEGER) myCon5
-mt7 = ConsT (ConsT (BT INTEGER) myCon5) myCon1
+mt1 = ConstrainedType  (BuiltinType INTEGER) myCon1
+mt2 = ConstrainedType  mt1 myCon2
+mt3 = ConstrainedType  (ConstrainedType  (BuiltinType INTEGER) myCon2) myCon1
+mt4 = ConstrainedType  (BuiltinType INTEGER) myCon3
+mt5 = ConstrainedType  (BuiltinType INTEGER) myCon4
+mt6 = ConstrainedType  (BuiltinType INTEGER) myCon5
+mt7 = ConstrainedType  (ConstrainedType  (BuiltinType INTEGER) myCon5) myCon1
 
 \end{code}
 
@@ -280,11 +279,11 @@ See Figure~\ref{sequenceTest1}.
 
 \begin{code}
 
-c1 = CTMandatory (NamedType "c1" (BT (TAGGED (Context,1,Explicit) (BT INTEGER))))
-c2 = CTMandatory (NamedType "c2" (BT (TAGGED (Context,2,Explicit) (BT INTEGER))))
+c1 = CTMandatory (NamedType "c1" (BuiltinType (TAGGED (Context,1,Explicit) (BuiltinType INTEGER))))
+c2 = CTMandatory (NamedType "c2" (BuiltinType (TAGGED (Context,2,Explicit) (BuiltinType INTEGER))))
 
-d1 = CTMandatory (NamedType "c1" (BT INTEGER))
-d2 = CTMandatory (NamedType "c2" (BT INTEGER))
+d1 = CTMandatory (NamedType "c1" (BuiltinType INTEGER))
+d2 = CTMandatory (NamedType "c2" (BuiltinType INTEGER))
 
 e1 = CTMandatory (NamedType "e1" tSequence1)
 e2 = CTMandatory (NamedType "e2" tSequence1)
@@ -299,12 +298,12 @@ SEQUENCE {c2 [2] EXPLICIT INTEGER,
 
 \begin{code}
 
-tSequence1 = BT (SEQUENCE (Cons c2 (Cons c1 Nil)))
+tSequence1 = BuiltinType (SEQUENCE (AddComponent c2 (AddComponent c1 Nil)))
 vSequence1 = (Val 3) :*: ((Val 5) :*: Empty)
 
-tSequence2 = BT (SEQUENCE (Cons d2 (Cons d1 Nil)))
+tSequence2 = BuiltinType (SEQUENCE (AddComponent d2 (AddComponent d1 Nil)))
 
-tSequence3 = BT (SEQUENCE (Cons e2 (Cons e1 Nil)))
+tSequence3 = BuiltinType (SEQUENCE (AddComponent e2 (AddComponent e1 Nil)))
 vSequence3 = ((Val 2) :*: (Val 3 :*: Nil)) :*: (((Val 5) :*: ((Val 7) :*: Nil)) :*: Nil)
 
 
@@ -370,7 +369,7 @@ prop_ValidConstraintAndInteger (ConstraintAndInteger c v) =
 \begin{code}
 
 vInteger1 = Val 4096
-tabInteger1 = myTAB'' (BT INTEGER) vInteger1
+tabInteger1 = myTAB'' (BuiltinType INTEGER) vInteger1
 
 unConstrainedIntegerTest1 =
    TestCase (
@@ -378,7 +377,7 @@ unConstrainedIntegerTest1 =
    )
 
 vInteger2 = Val 5002
-tabInteger2 = myTAB'' (BT INTEGER) vInteger2
+tabInteger2 = myTAB'' (BuiltinType INTEGER) vInteger2
 
 unConstrainedIntegerTest2 =
    TestCase (
@@ -386,7 +385,7 @@ unConstrainedIntegerTest2 =
    )
 
 cInteger9 = UNION (IC (ATOM (E (V (R (4000,4254))))))
-tInteger9 = ConsT (BT INTEGER) (RE cInteger9)
+tInteger9 = ConstrainedType  (BuiltinType INTEGER) (RE cInteger9)
 vInteger9'1 = Val 4002
 tabInteger9'1 = myTAB'' tInteger9 vInteger9'1
 
@@ -395,7 +394,7 @@ constrainedIntegerTest1 =
       assertEqual "Constrained INTEGER Test 1" vInteger9'1 tabInteger9'1
    )
 
-tInteger9Extension = ConsT (BT INTEGER) (EXT cInteger9)
+tInteger9Extension = ConstrainedType  (BuiltinType INTEGER) (EXT cInteger9)
 tabInteger9'1Extension = myTAB'' tInteger9Extension vInteger9'1
 
 -- INTEGER (4000..4254)
@@ -406,7 +405,7 @@ constrainedIntegerExtensionTest1 =
    )
 
 cInteger9'1 = UNION (IC (ATOM (E (V (R (5000,5254))))))
-tInteger9Extension1 = ConsT (BT INTEGER) (EXTWITH cInteger9 cInteger9'1)
+tInteger9Extension1 = ConstrainedType  (BuiltinType INTEGER) (EXTWITH cInteger9 cInteger9'1)
 tabInteger9'1Extension1 = myTAB'' tInteger9Extension1 vInteger9'1
 
 -- INTEGER (4000..4254, ..., 5000..5254)
@@ -443,13 +442,13 @@ sequenceTest2 =
 vSequenceOf1 = take 3 $ repeat (BitString [1,1,1,1,1,1,1,1])
 tabSequenceOf1 = myTAB'' incompleteSIBList vSequenceOf1
 
-sequenceOfTest1 = 
+sequenceOfTest1 =
    TestCase (
       assertEqual "SEQUENCE OF Test 1" vSequenceOf1 tabSequenceOf1
    )
 
 vSequenceOf2 = take 127 $ repeat vInteger1
-tabSequenceOf2 = myTAB'' (BT (SEQUENCEOF (BT INTEGER))) vSequenceOf2
+tabSequenceOf2 = myTAB'' (BuiltinType (SEQUENCEOF (BuiltinType INTEGER))) vSequenceOf2
 
 sequenceOfTest2 =
    TestCase (
@@ -458,7 +457,7 @@ sequenceOfTest2 =
 
 tabSequenceOf3 = myTAB'' completeSIBList vSequenceOf1
 
-sequenceOfTest3 = 
+sequenceOfTest3 =
    TestCase (
       assertEqual "SEQUENCE OF Test 3" vSequenceOf1 tabSequenceOf3
    )

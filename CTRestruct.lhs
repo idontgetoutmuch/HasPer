@@ -2119,8 +2119,8 @@ decodeSEQUENCE s =
 
 l :: Integral n => Sequence a -> n
 l Nil = 0
-l (Cons (CTMandatory _) ts) = l ts
-l (Cons (CTOptional  _) ts) = 1 + (l ts)
+l (AddComponent (CTMandatory _) ts) = l ts
+l (AddComponent (CTOptional  _) ts) = 1 + (l ts)
 
 bitMask n = sequence $ take n $ repeat $ BG.getBit
 
@@ -2128,7 +2128,7 @@ type BitMap = [Bool]
 
 decodeSEQUENCEAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => BitMap -> Sequence a -> t BG.BitGet a
 decodeSEQUENCEAux _ Nil = return Empty -- ignoring the bit map doesn't look right - it's probably an error if it's not empty
-decodeSEQUENCEAux bitmap (Cons (CTMandatory (NamedType _ t)) ts) =
+decodeSEQUENCEAux bitmap (AddComponent (CTMandatory (NamedType _ t)) ts) =
    do x <- decode4 t []
       xs <- decodeSEQUENCEAux bitmap ts
       return (x :*: xs)
@@ -2181,7 +2181,7 @@ decodeBitStringAux mx =
    do x <- mx
       let rc = conType . getBSRC $ x
       decodeLengthDeterminant rc chunkBy1 undefined
-      where 
+      where
          chunkBy1 = let compose = (.).(.) in lift `compose` (flip (const (sequence . return . (liftM BitString) . getBits . fromIntegral)))
 
 getBits 0 =

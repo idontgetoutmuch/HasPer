@@ -26,7 +26,7 @@ Generation of Integer constraints.
 \begin{code}
 
 lApplyExt :: (IC a, Eq a, Lattice a, Show a) =>
-             Either String a -> ESS InfInteger -> (Either String a, Bool)
+             Either String a -> SubtypeConstraint InfInteger -> (Either String a, Bool)
 lApplyExt rp (RE _)  = (bottom, False)
 lApplyExt rp (EXT _) = (bottom, True)
 lApplyExt rp (EXTWITH _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
@@ -66,12 +66,12 @@ lApplyExtWithRt a b = lSerialC a b
 -- is lega
 
 lRootIntCons :: (IC a, Lattice a, Eq a, Show a) =>
-                 Either String a -> [ESS InfInteger] -> Either String a
+                 Either String a -> [SubtypeConstraint InfInteger] -> Either String a
 lRootIntCons x [] = x
 lRootIntCons x (c:cs) = lRootIntCons (lEvalC c x) cs
 
 lEvalC ::  (IC a, Lattice a, Eq a, Show a) =>
-          ESS InfInteger -> Either String a -> Either String a
+          SubtypeConstraint InfInteger -> Either String a -> Either String a
 lEvalC (RE c) x       = lSerialC x (lCalcC c)
 lEvalC (EXT c) x      = lSerialC x (lCalcC c)
 lEvalC (EXTWITH c d) x = lSerialC x (lCalcC c)
@@ -139,9 +139,9 @@ lCalcE (V (R (l,u))) = return (makeIC l u)
 -- included type. Thus we use lRootIntCons on the included type.
 
 lProcessCT :: (IC a, Lattice a, Eq a, Show a) =>
-              ASNType InfInteger -> [ESS InfInteger] -> Either String a
-lProcessCT (BT INTEGER) cl = lRootIntCons top cl
-lProcessCT (ConsT t c) cl  = lProcessCT t (c:cl)
+              ASNType InfInteger -> [SubtypeConstraint InfInteger] -> Either String a
+lProcessCT (BuiltinType INTEGER) cl = lRootIntCons top cl
+lProcessCT (ConstrainedType t c) cl  = lProcessCT t (c:cl)
 
 \end{code}
 
@@ -183,7 +183,7 @@ lSerialEffCons :: (MonadError [Char] t,
                       Constraint b i,
                       Lattice (b i),
                       ExtConstraint a) =>
-                     (Elem t1 -> Bool -> t (a (b i))) -> t (a1 (b i)) -> [ESS t1] -> t (a1 (b i))
+                     (Elem t1 -> Bool -> t (a (b i))) -> t (a1 (b i)) -> [SubtypeConstraint t1] -> t (a1 (b i))
 lSerialEffCons fn m ls
     = do
         let foobar
@@ -203,7 +203,7 @@ lSerialApply :: (MonadError [Char] m,
                  Eq (b i),
                  ExtConstraint a2,
                  ExtConstraint a) =>
-                (Elem t -> Bool -> m (a1 (b i))) -> a (b i) -> ESS t -> m (a2 (b i))
+                (Elem t -> Bool -> m (a1 (b i))) -> a (b i) -> SubtypeConstraint t -> m (a2 (b i))
 lSerialApply fn ersc c = lEitherApply ersc (lEffCons fn c)
 
 \end{code}
@@ -238,7 +238,7 @@ lSerialApplyLast :: (MonadError [Char] t1,
                      Eq (b i),
                      ExtConstraint a,
                      ExtConstraint a2) =>
-                    (Elem t -> Bool -> t1 (a1 (b i))) -> a (b i) -> ESS t -> t1 (a2 (b i))
+                    (Elem t -> Bool -> t1 (a1 (b i))) -> a (b i) -> SubtypeConstraint t -> t1 (a2 (b i))
 lSerialApplyLast fn x c = lLastApply x (lEffCons fn c)
 
 
@@ -279,7 +279,7 @@ lEffCons :: (Eq (b i),
                 Lattice (b i),
                 ExtConstraint a,
                 MonadError [Char] t1) =>
-               (Elem t -> Bool -> t1 (a (b i))) -> ESS t -> t1 (a (b i))
+               (Elem t -> Bool -> t1 (a (b i))) -> SubtypeConstraint t -> t1 (a (b i))
 lEffCons fn (RE c)         = lCon fn c False
 lEffCons fn (EXT c)        = lCon fn c True
 lEffCons fn (EXTWITH c e)  = lExtendC (lCon fn c False) (lCon fn e False)
@@ -643,7 +643,7 @@ lEffSize :: (IC a1,
                 Constraint b a1,
                 Lattice (b a1),
                 ExtConstraint a) =>
-               ESS InfInteger -> Bool -> Either String (a (b a1))
+               SubtypeConstraint InfInteger -> Bool -> Either String (a (b a1))
 lEffSize (RE c) b
     = do ec <- lCalcC c
          return (makeEC (makeSC ec) top b)
@@ -662,9 +662,9 @@ lProcessCST :: (Lattice (t1 (a1 (b i))),
                 Eq (b i),
                 Constraint b i,
                 Lattice (b i)) =>
-               (Elem t -> Bool -> t1 (a1 (b i))) -> ASNType t -> [ESS t] -> t1 (a1 (b i))
-lProcessCST fn (BT _) cl = lRootStringCons fn top cl
-lProcessCST fn (ConsT t c) cl = lProcessCST fn t (c:cl)
+               (Elem t -> Bool -> t1 (a1 (b i))) -> ASNType t -> [SubtypeConstraint t] -> t1 (a1 (b i))
+lProcessCST fn (BuiltinType _) cl = lRootStringCons fn top cl
+lProcessCST fn (ConstrainedType t c) cl = lProcessCST fn t (c:cl)
 
 
 lRootStringCons :: (ExtConstraint a,
@@ -672,7 +672,7 @@ lRootStringCons :: (ExtConstraint a,
                     Constraint b i,
                     Eq (b i),
                     MonadError [Char] t1) =>
-                   (Elem t -> Bool -> t1 (a (b i))) -> t1 (a (b i)) -> [ESS t] -> t1 (a (b i))
+                   (Elem t -> Bool -> t1 (a (b i))) -> t1 (a (b i)) -> [SubtypeConstraint t] -> t1 (a (b i))
 lRootStringCons fn t cs
     = let m = lSerialEffCons fn t cs
       in do
