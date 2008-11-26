@@ -779,10 +779,10 @@ lEncExtBS nbs m n (BitString vs)
     = do
         vsc <- m
         ok  <- n
-        let ConType rc = getBSRC vsc
-            ConType (Valid okrc) = getBSRC ok
-            ConType ec = getBSEC vsc
-            ConType (Valid okec) = getBSEC ok
+        let rc = conType . getBSRC $ vsc
+            Valid okrc = conType . getBSRC $ ok
+            ec = conType . getBSEC $ vsc
+            Valid okec = conType . getBSEC $ ok
             emptyConstraint = rc == bottom && ec == bottom
             inSizeRange []      = False
             inSizeRange (x:rs)
@@ -828,8 +828,9 @@ bsCode nbs rc xs
 
 
 bsExtCode nbs rc ec xs
-    = let l  = lower rc
-          u  = upper rc
+    = let nc = rc `ljoin` ec
+          l  = lower nc
+          u  = upper nc
           exs = if (not.null) nbs then editBS l u xs
                      else return xs
       in
@@ -845,7 +846,7 @@ bsExtCode nbs rc ec xs
                      return (encodeBitsWithLength ls)
 
 
-editBS :: InfInteger -> InfInteger -> BitStream -> Either String BitStream
+editBS :: InfInteger -> InfInteger -> BitStream -> PerEncoding
 editBS l u xs
     = let lxs = genericLength xs
       in if lxs < l
@@ -855,11 +856,11 @@ editBS l u xs
              then rem0s (lxs-u) xs
              else return xs
 
-add0s :: InfInteger -> BitStream -> Either String BitStream
+add0s :: InfInteger -> BitStream -> PerEncoding
 add0s (Val n) xs = return (xs ++ take (fromInteger n) [0,0..])
 add0s _ _        = throwError "Invalid number input -- MIN or MAX."
 
-rem0s :: InfInteger -> BitStream -> Either String BitStream
+rem0s :: InfInteger -> BitStream -> PerEncoding
 rem0s (Val (n+1)) xs
     = if last xs == 0
            then rem0s (Val n) (init xs)
@@ -871,7 +872,7 @@ rem0s _ _  = throwError "Cannot remove a negative, MIN or MAX number of 0s."
 
 
 \begin{code}
-encodeBSNoSz :: NamedBits -> BitString -> Either String BitStream
+encodeBSNoSz :: NamedBits -> BitString -> PerEncoding
 encodeBSNoSz nbs (BitString [])
     = return ([])
 encodeBSNoSz nbs (BitString bs)
@@ -896,7 +897,7 @@ strip0s [] = []
 
 \begin{code}
 
-lEncodeOS :: [ESS OctetString] -> OctetString -> Either String BitStream
+lEncodeOS :: [SubtypeConstraint OctetString] -> OctetString -> PerEncoding
 lEncodeOS [] x = encodeOSNoSz x
 lEncodeOS cl x = encodeOSSz cl x
 
@@ -906,27 +907,27 @@ encodeOctS encodes an unconstrained SEQUENCEOF value.
 
 \begin{code}
 
-encodeOSNoSz :: OctetString -> Either String BitStream
+encodeOSNoSz :: OctetString -> PerEncoding
 encodeOSNoSz (OctetString xs)
     = let foo x = encodeNNBIntBits ((fromIntegral x),255)
       in
         return (encodeWithLength (concat . map foo) xs)
 
 
-encodeOSSz :: [ESS OctetString] -> OctetString -> Either String BitStream
+encodeOSSz :: [SubtypeConstraint OctetString] -> OctetString -> PerEncoding
 encodeOSSz cl xs = lEncValidOS (effOSCon cl) (validOSCon cl) xs
 
-effOSCon ::[ESS OctetString] -> Either String (ExtBS (ConType IntegerConstraint))
+effOSCon ::[SubtypeConstraint OctetString] -> Either String (ExtBS (ConType IntegerConstraint))
 effOSCon cs = lSerialEffCons lOSConE top cs
 
 
-validOSCon :: [ESS OctetString] -> Either String (ExtBS (ConType ValidIntegerConstraint))
+validOSCon :: [SubtypeConstraint OctetString] -> Either String (ExtBS (ConType ValidIntegerConstraint))
 validOSCon cs = lSerialEffCons lOSConE top cs
 
 
 lEncValidOS :: Either String (ExtBS (ConType IntegerConstraint))
                -> Either String (ExtBS (ConType ValidIntegerConstraint))
-               -> OctetString -> Either String BitStream
+               -> OctetString -> PerEncoding
 lEncValidOS m n v
     = do
         vsc <- m
@@ -938,13 +939,13 @@ lEncValidOS m n v
 lEncNonExtOS :: Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> OctetString
-                -> Either String BitStream
+                -> PerEncoding
 lEncNonExtOS m n (OctetString vs)
     = do
         vsc <- m
         ok  <- n
-        let ConType rc = getBSRC vsc
-            ConType (Valid okrc) = getBSRC ok
+        let rc = conType . getBSRC $ vsc
+            Valid okrc = conType . getBSRC $ ok
             emptyConstraint = rc == bottom
             inSizeRange []      = False
             inSizeRange (x:rs)
@@ -964,15 +965,15 @@ lEncNonExtOS m n (OctetString vs)
 lEncExtOS :: Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> OctetString
-                -> Either String BitStream
+                -> PerEncoding
 lEncExtOS m n (OctetString vs)
     = do
         vsc <- m
         ok  <- n
-        let ConType rc = getBSRC vsc
-            ConType (Valid okrc) = getBSRC ok
-            ConType ec = getBSEC vsc
-            ConType (Valid okec) = getBSEC ok
+        let rc = conType . getBSRC $ vsc
+            Valid okrc = conType . getBSRC $ ok
+            ec = conType . getBSEC $ vsc
+            Valid okec = conType . getBSEC $ ok
             emptyConstraint = rc == bottom && ec == bottom
             inSizeRange []      = False
             inSizeRange (x:rs)
@@ -993,7 +994,7 @@ lEncExtOS m n (OctetString vs)
                     = throwError "Value out of range"
         foobar
 
-osCode :: IntegerConstraint -> [Octet] -> Either String BitStream
+osCode :: IntegerConstraint -> [Octet] -> PerEncoding
 osCode rc xs
       =  let l  = lower rc
              u  = upper rc
@@ -1012,10 +1013,11 @@ osCode rc xs
                                      return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ octetsToBits xs)
                             else return (encodeWithLength octetsToBits xs)
 
-osExtCode :: IntegerConstraint -> IntegerConstraint -> [Octet] -> Either String BitStream
+osExtCode :: IntegerConstraint -> IntegerConstraint -> [Octet] -> PerEncoding
 osExtCode rc ec xs
-    = let l  = lower rc
-          u  = upper ec
+    = let nc = rc `ljoin` ec
+          l  = lower nc
+          u  = upper nc
           octetToBits x = encodeNNBIntBits ((fromIntegral x),255)
           octetsToBits  = (concat . map octetToBits)
       in if u <= 65536
@@ -1032,7 +1034,7 @@ osExtCode rc ec xs
 
 \begin{code}
 
-lEncodeSeq :: Sequence a -> a -> Either String BitStream
+lEncodeSeq :: Sequence a -> a -> PerEncoding
 lEncodeSeq s x
     =   do ((rp,rb),(ap,ab)) <- encodeSeqAux ([],[]) ([],[]) s x
            if null ap
@@ -1063,10 +1065,10 @@ encodeSeqAux is the auxillary function for encodeSeq. When
 encoding a sequence, one has to both encode each component and
 produce a preamble which indicates the presence or absence of an
 optional or default value. The first list in the result is the
-preamble. The constructor Extens indicates the sequence is
+preamble. The constructor ExtensionMarker indicates the sequence is
 extensible, and the coding responsibility is passed to
 encodeExtSeqAux (where the values are encoded as an open type).
-Note that if another Extens occurs then reponsibility returns
+Note that if another ExtensionMarker occurs then reponsibility returns
 to encodeSeqAux since this is the 2 extension marker case
 (and what follows is in the extension root).
 
@@ -1083,9 +1085,9 @@ encodeSeqAux (ap,ab) (rp,rb) Nil Empty
     = if ((not.null) (concat ab))
         then return (([1]:reverse rp,reverse rb),(reverse ap,reverse ab))
         else return ((reverse rp,reverse rb),(reverse ap, reverse ab))
-encodeSeqAux (ap,ab) (rp,rb) (Extens as) xs
+encodeSeqAux (ap,ab) (rp,rb) (ExtensionMarker as) xs
     = encodeExtSeqAux (ap,ab) (rp,rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTCompOf (SEQUENCE s)) as) (x:*:xs) -- typically a reference
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTCompOf (SEQUENCE s)) as) (x:*:xs) -- typically a reference
     = do (p,b) <- encodeCO ([],[]) s x
          encodeSeqAux (ap,ab) (p ++ rp,b ++ rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (Cons (CTCompOf _) as) (x:*:xs)
