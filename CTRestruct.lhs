@@ -128,7 +128,10 @@ first element in the list is the inner-most constraint.
 
 \begin{code}
 
-perEncode :: ASNType a -> [ESS a] -> a -> Either String BP.BitPut
+type PerEncoding = Either String BitStream
+type PEREncoding = Either String BP.BitPut
+
+perEncode :: ASNType a -> SerialSubtypeConstraints a -> a -> PEREncoding
 perEncode t cl v
     = do
         bts <- lEncode t cl v
@@ -137,10 +140,10 @@ perEncode t cl v
 bitPutify :: BitStream -> BP.BitPut
 bitPutify = mapM_ (BP.putNBits 1)
 
-lEncode :: ASNType a -> [ESS a] -> a -> Either String BitStream
-lEncode (BT t) cl v      = lToPer t v cl
-lEncode (RT r t) cl v    = lEncode t cl v
-lEncode (ConsT t c) cl v = lEncode t (c:cl) v
+lEncode :: ASNType a -> SerialSubtypeConstraints a -> a -> PerEncoding
+lEncode (BuiltinType t) cl v       = toPER t v cl
+lEncode (ReferencedType r t) cl v  = lEncode t cl v
+lEncode (ConstrainedType t c) cl v = lEncode t (c:cl) v
 
 \end{code}
 
@@ -149,25 +152,25 @@ generate effective root and effective extension here.
 
 \begin{code}
 
-lToPer :: ASNBuiltin a -> a -> [ESS a] -> Either String BitStream
-lToPer NULL _ _             = Right []
-lToPer INTEGER x cl         = lEncodeInt cl x
-lToPer VISIBLESTRING x cl   = lEncodeRCS cl x
-lToPer PRINTABLESTRING x cl = lEncodeRCS cl x
-lToPer NUMERICSTRING x cl   = lEncodeRCS cl x
-lToPer IA5STRING x cl       = lEncodeRCS cl x
-lToPer BMPSTRING x cl       = lEncodeRCS cl x
-lToPer UNIVERSALSTRING x cl = lEncodeRCS cl x
-lToPer BOOLEAN x cl         = lEncodeBool cl x
-lToPer (ENUMERATED e) x cl  = lEncodeEnum e x -- no PER-Visible constraints
-lToPer (BITSTRING nbs) x cl = lEncodeBS nbs cl x
-lToPer (OCTETSTRING) x cl   = lEncodeOS cl x
-lToPer (SEQUENCE s) x cl    = lEncodeSeq s x -- no PER-Visible constraints
-lToPer (SEQUENCEOF s) x cl  = lEncodeSeqOf cl s x
-lToPer (SET s) x cl         = lEncodeSet s x -- no PER-Visible constraints
-lToPer (CHOICE c) x cl      = lEncodeChoice c x -- no PER-visible constraints
-lToPer (SETOF s) x cl       = lEncodeSeqOf cl s x -- no PER-visible constraints
-lToPer (TAGGED tag t) x cl  = lEncode t cl x
+toPER :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> PerEncoding
+toPER NULL _ _             = Right []
+toPER INTEGER x cl         = lEncodeInt cl x
+toPER VISIBLESTRING x cl   = lEncodeRCS cl x
+toPER PRINTABLESTRING x cl = lEncodeRCS cl x
+toPER NUMERICSTRING x cl   = lEncodeRCS cl x
+toPER IA5STRING x cl       = lEncodeRCS cl x
+toPER BMPSTRING x cl       = lEncodeRCS cl x
+toPER UNIVERSALSTRING x cl = lEncodeRCS cl x
+toPER BOOLEAN x cl         = lEncodeBool cl x
+toPER (ENUMERATED e) x cl  = lEncodeEnum e x -- no PER-Visible constraints
+toPER (BITSTRING nbs) x cl = lEncodeBS nbs cl x
+toPER (OCTETSTRING) x cl   = lEncodeOS cl x
+toPER (SEQUENCE s) x cl    = lEncodeSeq s x -- no PER-Visible constraints
+toPER (SEQUENCEOF s) x cl  = lEncodeSeqOf cl s x
+toPER (SET s) x cl         = lEncodeSet s x -- no PER-Visible constraints
+toPER (CHOICE c) x cl      = lEncodeChoice c x -- no PER-visible constraints
+toPER (SETOF s) x cl       = lEncodeSeqOf cl s x -- no PER-visible constraints
+toPER (TAGGED tag t) x cl  = lEncode t cl x
 
 \end{code}
 
@@ -184,7 +187,7 @@ type open type sequence!)
 
 \begin{code}
 
-lEncodeOpen :: ASNType a -> a -> Either String BitStream
+lEncodeOpen :: ASNType a -> a -> PerEncoding
 lEncodeOpen t v
    = do enc <- lEncode t [] v
         pad <- padding enc
@@ -205,7 +208,7 @@ padding enc
 
 \begin{code}
 
-lEncodeBool :: [ESS Bool] -> Bool -> Either String BitStream
+lEncodeBool :: [SubtypeConstraint Bool] -> Bool -> PerEncoding
 lEncodeBool t True = return ( [1])
 lEncodeBool t _    = return ( [0])
 
@@ -232,7 +235,7 @@ lEncodeBool t _    = return ( [0])
 myEncodeUInt (Val x)
     = (encodeUInt . fromIntegral) x
 
-lEncodeInt :: [ESS InfInteger] -> InfInteger -> Either String BitStream
+lEncodeInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PerEncoding
 lEncodeInt [] v = return (myEncodeUInt v)
 lEncodeInt cs v =
    lEitherTest parentRoot validPR lc v
@@ -247,7 +250,7 @@ lEncodeInt cs v =
 
 
 lEitherTest :: Either String IntegerConstraint -> Either String ValidIntegerConstraint
-               -> ESS InfInteger -> InfInteger -> Either String BitStream
+               -> SubtypeConstraint InfInteger -> InfInteger -> PerEncoding
 lEitherTest pr vpr lc v =
    lEncConsInt realRoot realExt effRoot effExt b v
    where
@@ -268,7 +271,7 @@ lEncConsInt :: (Eq t, Lattice t) =>
                -> Either String t
                -> Bool
                -> InfInteger
-               -> Either String BitStream
+               -> PerEncoding
 lEncConsInt rootCon extCon effRootCon effExtCon extensible v
     = if (not extensible)
         then lEncNonExtConsInt rootCon effRootCon v
@@ -324,7 +327,7 @@ lEncExtConsInt :: (Eq t, Lattice t) =>
                   -> Either String IntegerConstraint
                   -> Either String t
                   -> InfInteger
-                  -> Either String BitStream
+                  -> PerEncoding
 lEncExtConsInt realRC realEC effRC effEC n@(Val v) =
    do
       Valid rrc <- realRC
@@ -367,7 +370,7 @@ lEncExtConsInt realRC realEC effRC effEC v = throwError "Cannot encode MAX or MI
 lEncNonExtConsInt :: Either String ValidIntegerConstraint
                      -> Either String IntegerConstraint
                      -> InfInteger
-                     -> Either String BitStream
+                     -> PerEncoding
 lEncNonExtConsInt realRC effRC n@(Val v) =
    do Valid rrc <- realRC
       erc <- effRC
@@ -639,7 +642,7 @@ encoding.
 
 \begin{code}
 
-lEncodeEnum :: Enumerate a -> a -> Either String BitStream
+lEncodeEnum :: Enumerate a -> a -> PerEncoding
 lEncodeEnum e x
     = let (b,inds) = assignIndex e
           no = genericLength inds
@@ -647,7 +650,7 @@ lEncodeEnum e x
         encodeEnumAux b no inds e x
 
 encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> a
-                 -> Either String BitStream
+                 -> PerEncoding
 encodeEnumAux b no (f:r) (EnumOption _ es) (Just n :*:rest)
     = if not b
         then return (encodeNNBIntBits (f, no-1))
@@ -660,7 +663,7 @@ encodeEnumAux b no inds (EnumExt ex) x
 encodeEnumAux _ _ _ _ _ = throwError "No enumerated value!"
 
 encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> a
-                    -> Either String BitStream
+                    -> PerEncoding
 encodeEnumExtAux i l (EnumOption _ es) (Just n :*:rest)
     = return (1:encodeNSNNInt i 0)
 encodeEnumExtAux i l (EnumOption _ es) (Nothing :*:rest)
@@ -715,25 +718,25 @@ findN i []
 
 \begin{code}
 
-lEncodeBS :: NamedBits -> [ESS BitString] -> BitString -> Either String BitStream
+lEncodeBS :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PerEncoding
 lEncodeBS nbs [] x = encodeBSNoSz nbs x
 lEncodeBS nbs cl x = encodeBSSz nbs cl x
 
 
-encodeBSSz :: NamedBits -> [ESS BitString] -> BitString -> Either String BitStream
+encodeBSSz :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PerEncoding
 encodeBSSz nbs cl xs = lEncValidBS nbs (effBSCon cl) (validBSCon cl) xs
 
-effBSCon ::[ESS BitString] -> Either String (ExtBS (ConType IntegerConstraint))
+effBSCon ::[SubtypeConstraint BitString] -> Either String (ExtBS (ConType IntegerConstraint))
 effBSCon cs = lSerialEffCons lBSConE top cs
 
 
-validBSCon :: [ESS BitString] -> Either String (ExtBS (ConType ValidIntegerConstraint))
+validBSCon :: [SubtypeConstraint BitString] -> Either String (ExtBS (ConType ValidIntegerConstraint))
 validBSCon cs = lSerialEffCons lBSConE top cs
 
 
 lEncValidBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
                -> Either String (ExtBS (ConType ValidIntegerConstraint))
-               -> BitString -> Either String BitStream
+               -> BitString -> PerEncoding
 lEncValidBS nbs m n v
     = do
         vsc <- m
@@ -745,13 +748,13 @@ lEncValidBS nbs m n v
 lEncNonExtBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> BitString
-                -> Either String BitStream
+                -> PerEncoding
 lEncNonExtBS nbs m n (BitString vs)
     = do
         vsc <- m
         ok  <- n
-        let ConType rc = getBSRC vsc
-            ConType (Valid okrc) = getBSRC ok
+        let rc = conType . getBSRC $ vsc
+            Valid okrc = conType . getBSRC $ ok
             emptyConstraint = rc == bottom
             inSizeRange []      = False
             inSizeRange (x:rs)
@@ -771,7 +774,7 @@ lEncNonExtBS nbs m n (BitString vs)
 lEncExtBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> BitString
-                -> Either String BitStream
+                -> PerEncoding
 lEncExtBS nbs m n (BitString vs)
     = do
         vsc <- m
