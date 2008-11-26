@@ -5,7 +5,7 @@
 module NewPretty where
 
 import ASNTYPE
-import PER
+import CTRestruct
 import Language.ASN1 (
    TagPlicity (..),
    TagType (..)
@@ -13,22 +13,22 @@ import Language.ASN1 (
 import Text.PrettyPrint
 
 prettyType :: ASNType a -> Doc
-prettyType (BT bt) = prettyBuiltinType bt
-prettyType (ConsT (BT (SEQUENCEOF t)) e) =
+prettyType (BuiltinType bt) = prettyBuiltinType  bt
+prettyType (ConstrainedType  (BuiltinType (SEQUENCEOF t)) e) =
    text "SEQUENCE" <+>
    parens (prettyElementSetSpecs undefined e) <+>
    text "OF" <+>
    prettyType t
-prettyType (ConsT t e) =
+prettyType (ConstrainedType  t e) =
    prettyType t <+>
    parens (prettyElementSetSpecs t e)
 
 prettySeq :: Sequence a -> Doc
 prettySeq Nil =
    empty
-prettySeq (Cons x Nil) =
+prettySeq (AddComponent x Nil) =
    prettyComponentType x
-prettySeq (Cons x xs) =
+prettySeq (AddComponent x xs) =
    vcat [prettyComponentType x <> comma, prettySeq xs]
 
 prettyComponentType :: ComponentType a -> Doc
@@ -64,7 +64,7 @@ prettyChoice (ChoiceOption nt xs) =
    vcat [prettyNamedType nt <> comma, prettyChoice xs]
 
 prettyNamedType :: NamedType a -> Doc
-prettyNamedType (NamedType n (BT (TAGGED (tt,tv,tp) t))) =
+prettyNamedType (NamedType n (BuiltinType (TAGGED (tt,tv,tp) t))) =
          case tt of
             Context ->
                text n <+> brackets (text (show tv)) <+> prettyPlicity tp <+> prettyType t
@@ -105,23 +105,23 @@ prettyElem t (SZ s) = prettySizedElem t s
 prettyElem t (IT i) = error "IT"
 
 prettySizedElem :: ASNType a -> Sz a -> Doc
-prettySizedElem t (SC x) = text "SIZE" <+> parens (prettyElementSetSpecs (BT INTEGER) x)
+prettySizedElem t (SC x) = text "SIZE" <+> parens (prettyElementSetSpecs (BuiltinType INTEGER) x)
 
 prettyPermittedAlphabet :: ASNType a -> PA a -> Doc
 prettyPermittedAlphabet t (FR a) = text "FROM" <+> parens (prettyElementSetSpecs t a)
 
 prettyValueRange :: ASNType a -> VR a -> Doc
-prettyValueRange (BT INTEGER) (R (x,y)) = pretty x <> text ".." <> pretty y
-prettyValueRange (BT IA5STRING) (R (x,y)) = text (iA5String x) <> text ".." <> text (iA5String y)
-prettyValueRange (BT PRINTABLESTRING) (R (x,y)) = text (printableString x) <> text ".." <> text (printableString y)
-prettyValueRange (BT NUMERICSTRING) (R (x,y)) = text (numericString x) <> text ".." <> text (numericString y)
-prettyValueRange (BT (BITSTRING _)) (R (x,y)) = text (show x) <> text ".." <> text (show y)
+prettyValueRange (BuiltinType INTEGER) (R (x,y)) = pretty x <> text ".." <> pretty y
+prettyValueRange (BuiltinType IA5STRING) (R (x,y)) = text (iA5String x) <> text ".." <> text (iA5String y)
+prettyValueRange (BuiltinType PRINTABLESTRING) (R (x,y)) = text (printableString x) <> text ".." <> text (printableString y)
+prettyValueRange (BuiltinType NUMERICSTRING) (R (x,y)) = text (numericString x) <> text ".." <> text (numericString y)
+prettyValueRange (BuiltinType (BITSTRING _)) (R (x,y)) = text (show x) <> text ".." <> text (show y)
 
 prettySingleValue :: ASNType a -> SV a -> Doc
-prettySingleValue (BT INTEGER) (SV e) = text (show e)
-prettySingleValue (BT (BITSTRING _)) (SV e) = prettyBitString e
-prettySingleValue (BT IA5STRING) (SV e) = text (show e)
-prettySingleValue (BT PRINTABLESTRING) (SV e) = doubleQuotes (text (printableString e))
+prettySingleValue (BuiltinType INTEGER) (SV e) = text (show e)
+prettySingleValue (BuiltinType (BITSTRING _)) (SV e) = prettyBitString e
+prettySingleValue (BuiltinType IA5STRING) (SV e) = text (show e)
+prettySingleValue (BuiltinType PRINTABLESTRING) (SV e) = doubleQuotes (text (printableString e))
 
 prettyBitString = (<> text "B") . (quotes . text . concat . map show .  bitString)
 
@@ -134,7 +134,7 @@ instance Pretty InfInteger where
    pretty (Val x)  = text (show x)
 
 prettyTypeVal :: ASNType a -> a -> Doc
-prettyTypeVal (BT INTEGER) x = pretty x
+prettyTypeVal (BuiltinType INTEGER) x = pretty x
 
 
 prettyElementTypeVal :: ComponentType a -> a -> Doc
