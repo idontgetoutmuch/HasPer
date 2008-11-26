@@ -1194,9 +1194,9 @@ encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (
 encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Just x:*:xs)
     = do bts <- lEncodeOpen a x
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:xs)
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Just x:*:xs)
    = do bts <- lEncodeOpen a x
         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) _ _
@@ -1215,7 +1215,7 @@ fragmentation into 64K blocks).
 
 \begin{code}
 
-lEncodeSeqOf :: [ESS [a]] -> ASNType a -> [a] -> Either String BitStream
+lEncodeSeqOf :: [SubtypeConstraint [a]] -> ASNType a -> [a] -> PerEncoding
 lEncodeSeqOf [] t x = lEncodeUncSeqOf t x
 lEncodeSeqOf cl t x = lEncodeConSeqOf t cl x
 
@@ -1226,18 +1226,18 @@ lEncodeUncSeqOf encodes an unconstrained SEQUENCEOF value.
 
 \begin{code}
 
-lEncodeUncSeqOf :: ASNType a -> [a] -> Either String BitStream
+lEncodeUncSeqOf :: ASNType a -> [a] -> PerEncoding
 lEncodeUncSeqOf t xs = mEncodeWithLength (encodeList t) xs
 
 
---mEncodeWithLength :: ([t] -> Either String BitStream) -> [t] -> Either String BitStream
+--mEncodeWithLength :: ([t] -> PerEncoding) -> [t] -> PerEncoding
 mEncodeWithLength fun xs
     = do
            ls <- return ((groupBy 4 . groupBy (16*(2^10))) xs)
            mAddUncLen fun ls
 
 
---mAddUncLen :: ([b] -> Either String BitStream) -> [[[b]]] -> Either String BitStream
+--mAddUncLen :: ([b] -> PerEncoding) -> [[[b]]] -> PerEncoding
 mAddUncLen encFun [] = return (lastLen k16 0)
 mAddUncLen encFun (x:xs)
     | l == 4 && last16 == k16
@@ -1273,20 +1273,20 @@ mAddUncLen encFun (x:xs)
 
 \begin{code}
 
-lEncodeConSeqOf :: ASNType a -> [ESS [a]] -> [a] -> Either String BitStream
+lEncodeConSeqOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> PerEncoding
 lEncodeConSeqOf t cl xs = lEncValidSeqOf t (effSeqOfCon cl) (validSeqOfCon cl) xs
 
-effSeqOfCon ::[ESS [a]] -> Either String (ExtBS (ConType IntegerConstraint))
+effSeqOfCon ::[SubtypeConstraint [a]] -> Either String (ExtBS (ConType IntegerConstraint))
 effSeqOfCon cs = lSerialEffCons lSeqOfConE top cs
 
 
-validSeqOfCon :: [ESS [a]] -> Either String (ExtBS (ConType ValidIntegerConstraint))
+validSeqOfCon :: [SubtypeConstraint [a]] -> Either String (ExtBS (ConType ValidIntegerConstraint))
 validSeqOfCon cs = lSerialEffCons lSeqOfConE top cs
 
 
 lEncValidSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
                -> Either String (ExtBS (ConType ValidIntegerConstraint))
-               -> [a] -> Either String BitStream
+               -> [a] -> PerEncoding
 lEncValidSeqOf t m n v
     = do
         vsc <- m
@@ -1297,13 +1297,13 @@ lEncValidSeqOf t m n v
 lEncNonExtSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> [a]
-                -> Either String BitStream
+                -> PerEncoding
 lEncNonExtSeqOf t m n vs
     = do
         vsc <- m
         ok  <- n
-        let ConType rc = getBSRC vsc
-            ConType (Valid okrc) = getBSRC ok
+        let rc = conType . getBSRC $ vsc
+            Valid okrc = conType . getBSRC $ ok
             emptyConstraint = rc == bottom
             inSizeRange []      = False
             inSizeRange (x:rs)
@@ -1340,8 +1340,9 @@ soCode rc t xs
 
 
 soExtCode rc ec t xs
-      =  let l  = lower rc
-             u  = upper ec
+      =  let nc = rc `ljoin` ec
+             l  = lower nc
+             u  = upper nc
          in
             if u <= 65536
                             then let Val ub = u
@@ -1373,15 +1374,15 @@ encodeAll t [] = return []
 lEncExtSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> [a]
-                -> Either String BitStream
+                -> PerEncoding
 lEncExtSeqOf t m n vs
     = do
         vsc <- m
         ok  <- n
-        let ConType rc = getBSRC vsc
-            ConType (Valid okrc) = getBSRC ok
-            ConType ec = getBSEC vsc
-            ConType (Valid okec) = getBSEC ok
+        let rc = conType . getBSRC $ vsc
+            Valid okrc = conType . getBSRC $ ok
+            ec = conType . getBSEC $ vsc
+            Valid okec = conType . getBSEC $ ok
             emptyConstraint = rc == bottom && ec == bottom
             inSizeRange []      = False
             inSizeRange (x:rs)
@@ -1415,7 +1416,7 @@ components.
 
 \begin{code}
 
-lEncodeSet :: Sequence a -> a -> Either String BitStream
+lEncodeSet :: Sequence a -> a -> PerEncoding
 lEncodeSet s x
     =   do
             ((rp,rb),(ap,ab)) <- encodeSeqAux ([],[]) ([],[]) s x
@@ -1444,17 +1445,17 @@ tagOrder x y = getTI x < getTI y
 
 getTags :: Sequence a -> [TagInfo]
 getTags Nil               = []
-getTags (Extens xs)       = getTags' xs
-getTags (Cons a xs)       = getCTI a : getTags xs
-getTags (EAG _ _)         = error "Impossible case for a root component."
+getTags (ExtensionMarker xs)       = getTags' xs
+getTags (AddComponent a xs)       = getCTI a : getTags xs
+getTags (ExtensionAdditionGroup _ _)         = error "Impossible case for a root component."
 
 
 
 getTags' :: Sequence a -> [TagInfo]
 getTags' Nil         = []
-getTags' (Extens xs) = getTags xs
-getTags' (Cons a xs) = getTags' xs
-getTags' (EAG s t)   = getTags' t
+getTags' (ExtensionMarker xs) = getTags xs
+getTags' (AddComponent a xs) = getTags' xs
+getTags' (ExtensionAdditionGroup s t)   = getTags' t
 
 \end{code}
 
@@ -1473,7 +1474,7 @@ that only one choice value is encoded.
 
 \begin{code}
 
-lEncodeChoice :: Choice a -> HL a (S Z) -> Either String BitStream
+lEncodeChoice :: Choice a -> HL a (S Z) -> PerEncoding
 lEncodeChoice c x
     =   do ts  <- return (getCTags c)
            (ea, ec) <- (encodeChoiceAux [] [] c x)
@@ -1540,6 +1541,8 @@ encodeChoiceAux ext body (ChoiceOption (NamedType t a) as) (ValueC x xs)
     = do
         bts <- lEncode a [] x
         encodeChoiceAux' ext (bts:body) as xs
+encodeChoiceAux _ _ (ChoiceExtensionAdditionGroup _) _
+    = throwError "Impossible case: EXTENSION ADDITON GROUP only appears in an extension."
 
 
 encodeChoiceAux' :: [Int] -> [BitStream] -> Choice a -> HL a n -> Either String ([Int], [BitStream])
@@ -1550,13 +1553,15 @@ encodeChoiceAux' ext body (ChoiceOption a as) (NoValueC x xs) =
    encodeChoiceAux' ext ([]:body) as xs
 encodeChoiceAux' ext body (ChoiceOption a as) (ValueC x xs) =
    encodeChoiceAux' ext ([]:body) as xs
+encodeChoiceAux' _ _ (ChoiceExtensionAdditionGroup _) _
+    = throwError "Impossible case: EXTENSION ADDITON GROUP only appears in an extension."
 
 
 encodeChoiceExtAux :: [Int] -> [BitStream] -> Choice a -> HL a n -> Either String ([Int], [BitStream])
 encodeChoiceExtAux ext body NoChoice _ = return (ext,reverse body)
 encodeChoiceExtAux ext body (ChoiceExt as) xs =
    encodeChoiceAux ext body as xs
-encodeChoiceExtAux ext body (ChoiceEAG as) xs =
+encodeChoiceExtAux ext body (ChoiceExtensionAdditionGroup as) xs =
    encodeChoiceExtAux ext body as xs
 encodeChoiceExtAux ext body (ChoiceOption a as) (NoValueC x xs) =
    encodeChoiceExtAux ext ([]:body) as xs
@@ -1568,7 +1573,7 @@ encodeChoiceExtAux' :: [Int] -> [BitStream] -> Choice a -> HL a n -> Either Stri
 encodeChoiceExtAux' ext body NoChoice _ = return (ext, reverse body)
 encodeChoiceExtAux' ext body (ChoiceExt as) xs =
    encodeChoiceAux' ext body as xs
-encodeChoiceExtAux' ext body (ChoiceEAG as) xs =
+encodeChoiceExtAux' ext body (ChoiceExtensionAdditionGroup as) xs =
    encodeChoiceAux' ext body as xs
 encodeChoiceExtAux' ext body (ChoiceOption a as) (NoValueC x xs) =
    encodeChoiceExtAux' ext body as xs
@@ -1594,7 +1599,7 @@ before any encoding.
 \begin{code}
 
 lEncodeRCS :: (Eq a, RS a, Lattice a)
-              => [ESS a] -> a -> Either String BitStream
+              => SerialSubtypeConstraints a -> a -> PerEncoding
 lEncodeRCS [] vs
         | rcsMatch vs top
             = return (encodeResString vs)
@@ -1608,11 +1613,11 @@ lEncodeRCS cs vs
 
 
 effCon :: (RS a, Lattice a, Eq a)
-          => [ESS a] -> Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
+          => SerialSubtypeConstraints a -> Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
 effCon cs = lSerialEffCons lResConE top cs
 
 validCon :: (RS a, Lattice a, Eq a)
-            => [ESS a] -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
+            => SerialSubtypeConstraints a -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
 validCon cs = lSerialEffCons lResConE top cs
 
 -- The first case of encVS deals with non-per visible constraint.
@@ -1631,7 +1636,7 @@ stringMatch (f:r) s = elem f s && stringMatch r s
 lEncValidRCS :: (RS a, Eq a, Lattice a) =>
                  Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
                  -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
-                 -> a -> Either String BitStream
+                 -> a -> PerEncoding
 lEncValidRCS m n v
     = do
         vsc <- m
@@ -1652,7 +1657,7 @@ lEncNonExtRCS :: (RS a, Eq a, Lattice a) =>
                 Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
                 -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
                 -> a
-                -> Either String BitStream
+                -> PerEncoding
 lEncNonExtRCS m n vs
     = do
         vsc <- m
@@ -1689,7 +1694,7 @@ lEncExtRCS :: (RS a, Eq a, Lattice a) =>
               Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
               -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
               -> a
-              -> Either String BitStream
+              -> PerEncoding
 lEncExtRCS m n vs
     = do
         vsc <- m
@@ -1877,10 +1882,10 @@ findV m (a:rs)
 
 \begin{code}
 
-type ElementSetSpecs a = ESS a
+type ElementSetSpecs a = SubtypeConstraint a
 
-decode4 (BT t) cl = fromPer3 t cl
-decode4 (ConsT t c) cl = decode4 t (c:cl)
+decode4 (BuiltinType t) cl = fromPer3 t cl
+decode4 (ConstrainedType t c) cl = decode4 t (c:cl)
 
 fromPer3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
             ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
@@ -1901,17 +1906,18 @@ Note that it assumes that the ASN.1 type makes semantic sense.
 For example, if the upper bound of the size constraint ("ub") is 0 and the
 lower bound ("lb") is negative, then the result is undefined.
 
+
 \begin{code}
 
 decodeLengthDeterminant ::
    (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
    IntegerConstraint -> (Integer -> ASNType a -> t BG.BitGet [b]) -> ASNType a -> t BG.BitGet [b]
 decodeLengthDeterminant c f t
-   | ub /= maxBound && 
-     ub == lb && 
+   | ub /= maxBound &&
+     ub == lb &&
      v <= 64*(2^10) = f v t
    | ub == maxBound = decodeLargeLengthDeterminant3' f t
-   | v <= 64*(2^10) = do k <- decode4 (ConsT (BT INTEGER) (rangeConstraint (lb,ub))) []
+   | v <= 64*(2^10) = do k <- decode4 (ConstrainedType (BuiltinType INTEGER) (rangeConstraint (lb,ub))) []
                          let (Val l) = k
                          f l t
    | otherwise      = decodeLargeLengthDeterminant3' f t
@@ -1920,7 +1926,7 @@ decodeLengthDeterminant c f t
       lb = lower c
       (Val v) = ub
       rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
-      rangeConstraint =  RE . UNION . IC . ATOM . E . V . R 
+      rangeConstraint =  RE . UNION . IC . ATOM . E . V . R
 
 \end{code}
 
