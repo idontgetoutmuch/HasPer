@@ -5,7 +5,7 @@
 module NewPretty where
 
 import ASNTYPE
-import CTRestruct
+import PER
 import Language.ASN1 (
    TagPlicity (..),
    TagType (..)

@@ -82,7 +82,7 @@ The encoding is for UNALIGNED PER
 
 \begin{code}
 
-module CTRestruct where
+module PER where
 
 import ASNTYPE
 import Data.List hiding (groupBy)
