@@ -1090,64 +1090,64 @@ encodeSeqAux (ap,ab) (rp,rb) (ExtensionMarker as) xs
 encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTCompOf (SEQUENCE s)) as) (x:*:xs) -- typically a reference
     = do (p,b) <- encodeCO ([],[]) s x
          encodeSeqAux (ap,ab) (p ++ rp,b ++ rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTCompOf _) as) (x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTCompOf _) as) (x:*:xs)
     = throwError "COMPONENTS OF can only be applied to a SEQUENCE."
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTMandatory (NamedType t a)) as) (x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTMandatory (NamedType t a)) as) (x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Just x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Just x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (EAG _ _) _
+encodeSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ _) _
     = throwError "Impossible case: Extension Addition Groups only appear within an extension"
 
 encodeCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
 encodeCO (rp,rb) Nil _
     = return (rp,rb)
-encodeCO (rp,rb) (Extens as) xs
+encodeCO (rp,rb) (ExtensionMarker as) xs
     = encodeExtCO (rp,rb) as xs
-encodeCO (rp,rb) (Cons (CTCompOf (SEQUENCE s)) as) (x:*:xs)
+encodeCO (rp,rb) (AddComponent (CTCompOf (SEQUENCE s)) as) (x:*:xs)
     = do (p,b) <- encodeCO ([],[]) s x
          encodeCO (p ++ rp,b ++ rb) as xs
-encodeCO (rp,rb) (Cons (CTCompOf _) as) (x:*:xs)
+encodeCO (rp,rb) (AddComponent (CTCompOf _) as) (x:*:xs)
     = throwError "COMPONENTS OF can only be applied to a SEQUENCE"
-encodeCO (rp,rb) (Cons (CTMandatory (NamedType t a)) as) (x:*:xs)
+encodeCO (rp,rb) (AddComponent (CTMandatory (NamedType t a)) as) (x:*:xs)
     = do bts <- lEncode a [] x
          encodeCO ([]:rp,bts:rb) as xs
-encodeCO (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
+encodeCO (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
    encodeCO ([]:rp,[]:rb) as xs
-encodeCO (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Just x:*:xs)
+encodeCO (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Just x:*:xs)
     = do bts <- lEncode a [] x
          encodeCO ([]:rp,bts:rb) as xs
-encodeCO (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
+encodeCO (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
    encodeCO ([0]:rp,[]:rb) as xs
-encodeCO (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Just x:*:xs)
+encodeCO (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeCO ([1]:rp,bts:rb) as xs
-encodeCO (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
+encodeCO (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
    encodeCO ([0]:rp,[]:rb) as xs
-encodeCO (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Just x:*:xs)
+encodeCO (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeCO ([1]:rp,bts:rb) as xs
-encodeCO (rp,rb) (EAG _ _) _
+encodeCO (rp,rb) (ExtensionAdditionGroup _ _) _
     = throwError "Impossible case: Extension Addition Groups only appear in an extension."
 
 
@@ -1155,11 +1155,11 @@ encodeCO (rp,rb) (EAG _ _) _
 encodeExtCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
 encodeExtCO (rp,rb) Nil _
     = return (rp,rb)
-encodeExtCO (rp,rb) (Extens as) xs
+encodeExtCO (rp,rb) (ExtensionMarker as) xs
     = encodeCO (rp,rb) as xs
-encodeExtCO (rp,rb) (Cons _ as) (_:*:xs)
+encodeExtCO (rp,rb) (AddComponent _ as) (_:*:xs)
     = encodeExtCO (rp,rb) as xs
-encodeExtCO (rp,rb) (EAG _ as) (x:*:xs)
+encodeExtCO (rp,rb) (ExtensionAdditionGroup _ as) (x:*:xs)
     = encodeExtCO (rp,rb) as xs
 \end{code}
 
@@ -1177,21 +1177,21 @@ encodeExtSeqAux (ap,ab) (rp,rb) Nil _
     = if (length . filter (==[1])) ap > 0
                 then  return (([1]:reverse rp,reverse rb),(reverse ap,reverse ab))
                 else  return (([0]:reverse rp,reverse rb),(reverse ap,reverse ab))
-encodeExtSeqAux extAdds extRoot (Extens as) xs =
+encodeExtSeqAux extAdds extRoot (ExtensionMarker as) xs =
    encodeSeqAux extAdds extRoot as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (EAG a as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup a as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (EAG a as) (Just x:*:xs)
-    = do bts <- lEncodeOpen (BT (SEQUENCE a)) x
+encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup a as) (Just x:*:xs)
+    = do bts <- lEncodeOpen (BuiltinType (SEQUENCE a)) x
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTExtMand (NamedType t a)) as) (Just x:*:xs)
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Just x:*:xs)
     = do bts <- lEncodeOpen a x
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTOptional (NamedType t a)) as) (Just x:*:xs)
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Just x:*:xs)
     = do bts <- lEncodeOpen a x
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) (Cons (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
