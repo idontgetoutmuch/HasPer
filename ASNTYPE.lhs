@@ -85,7 +85,7 @@ have described our type {\tt ASNBuiltin} which represents the ASN.1 builtin type
 
 {\tt ASNBuiltin} in common with {\tt ASNType} is an algebraic type, since its values take on different forms,
 however in this case we also want its values to have different types. The reason for this will become clear
-when we describe the top level PER encoding function which is dependent on the type of the value being encoded. #
+when we describe the top level PER encoding function which is dependent on the type of the value being encoded.
 To achieve this we use a {\em generalised algebraic data type} (GADT) which allows us to specify appropriate
 return types for each class of values of the type, rather than requiring each to have the same
 type, as was the case for {\tt ASNType}. The GADT {\tt ASNBuiltin} closely resembles the

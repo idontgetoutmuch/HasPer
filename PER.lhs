@@ -2156,6 +2156,18 @@ nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
 decodeSequenceOf :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
                     ASNType a -> [ElementSetSpecs [a]] -> t BG.BitGet [a]
 decodeSequenceOf t [] = decodeLargeLengthDeterminant3' (flip nSequenceOfElements []) t
+decodeSequenceOf t cs = decodeSequenceOfAux t (errorize (effSeqOfCon cs)) (errorize (validSeqOfCon cs))
+
+decodeSequenceOfAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
+                       ASNType a -> 
+                       t BG.BitGet (ExtBS (ConType IntegerConstraint)) ->
+                       t BG.BitGet (ExtBS (ConType ValidIntegerConstraint)) ->
+                       t BG.BitGet [a]
+decodeSequenceOfAux t me mv =
+   do e <- me
+      v <- mv
+      let rc = conType . getBSRC $ e
+      decodeLengthDeterminant rc (flip nSequenceOfElements []) t
 
 \end{code}
 
