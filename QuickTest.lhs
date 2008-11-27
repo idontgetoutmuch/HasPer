@@ -7,6 +7,12 @@
 \section{The Code}
 
 \begin{code}
+{-# 
+   OPTIONS_GHC
+   -XExistentialQuantification
+   -fwarn-incomplete-patterns
+#-}
+
 module QuickTest(
    main,
    genModule,

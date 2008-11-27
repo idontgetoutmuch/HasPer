@@ -91,7 +91,7 @@ import Control.Monad.Error
 import Control.Monad.Identity
 import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitGet as BG
-import qualified Data.Binary.Strict.BitPut as BP
+import qualified Data.Binary.BitPut as BP
 import Language.ASN1.PER.Integer
    ( fromNonNegativeBinaryInteger'
    , from2sComplement'
@@ -1925,6 +1925,7 @@ decodeLengthDeterminant c f t
       ub = upper c
       lb = lower c
       (Val v) = ub
+
       rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
       rangeConstraint =  RE . UNION . IC . ATOM . E . V . R
 

@@ -1,4 +1,8 @@
-{-# OPTIONS_GHC -XMultiParamTypeClasses -XFlexibleInstances -fwarn-incomplete-patterns #-}
+{-# OPTIONS_GHC 
+    -XMultiParamTypeClasses 
+    -XFlexibleInstances 
+    -XScopedTypeVariables
+    -fwarn-incomplete-patterns #-}
 
 module Pretty(
    prettyType,
@@ -32,8 +36,10 @@ instance PrettyVal (ASNType a) a where
 prettyType :: ASNType a -> Doc
 prettyType (TYPEASS tr _ t) =
    text tr <+> text "::=" <+> prettyType t
+{-
 prettyType (BITSTRING []) =
    text "BIT STRING"
+-}
 prettyType INTEGER =
    text "INTEGER"
 prettyType BOOLEAN =

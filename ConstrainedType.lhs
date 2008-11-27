@@ -23,7 +23,7 @@ import Control.Monad.State
 import Control.Monad.Error
 -- import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString as B
-import qualified Data.Binary.Strict.BitPut as BP
+import qualified Data.Binary.BitPut as BP
 import qualified Data.Binary.Strict.BitGet as BG
 -- import Data.Binary.Strict.BitUtil (rightShift)
 import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String, ComponentType(Default), NamedType, OctetString)

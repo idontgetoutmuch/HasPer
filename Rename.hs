@@ -1,3 +1,8 @@
+{-# OPTIONS_GHC
+    -XGADTs 
+    -XTypeOperators
+    -fwarn-incomplete-patterns #-}
+
 module Rename (shadow, unShadow, rename, update) where
 
 import Prelude hiding (mapM)
@@ -11,7 +16,7 @@ import ConstrainedType
 import Language.ASN1 hiding (NamedType, BitString, ComponentType)
 import Pretty
 
-data Shadow :: * -> * -> * where
+data Shadow a b where
    STYPEASS   :: TypeRef -> Maybe TagInfo -> Shadow a b -> Shadow a b
    SBOOLEAN   :: Shadow Bool b
    SINTEGER   :: Shadow Integer b
@@ -20,18 +25,18 @@ data Shadow :: * -> * -> * where
    SCHOICE    :: SChoice a b -> Shadow (HL a (S Z)) b
    SSIZE      :: Shadow a b -> Constraint -> EM -> Shadow a b
 
-data SSequence :: * -> * -> * where
+data SSequence a b where
    SNil     :: SSequence Nil b
    SCons    :: SElementType a b -> SSequence l b -> SSequence (a:*:l) b
 
-data SChoice :: * -> * -> * where
+data SChoice a b where
     SNoChoice     :: SChoice Nil b
     SChoiceOption :: SNamedType a b -> SChoice l b -> SChoice (a:*:l) b
 
-data SElementType :: * -> * -> * where
+data SElementType a b where
    SETMandatory :: SNamedType a b -> SElementType a b
 
-data SNamedType :: * -> * -> * where
+data SNamedType a b where
    SNamedType :: SName b -> Maybe TagInfo -> Shadow a b -> SNamedType a b
 
 data STagInfo b = STagInfo TagType b TagPlicity
