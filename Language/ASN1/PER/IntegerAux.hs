@@ -30,7 +30,7 @@ import Data.Word
 import Data.List
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
-import Data.Binary.BitPut
+import Data.Binary.Strict.BitPut
 import Control.Monad.State
 
 nnbIterator :: (Integer, Integer) -> Maybe (Integer, (Integer, Integer))
@@ -57,9 +57,9 @@ to2sComplementReverse n
 
 l n = genericLength ((flip (curry (unfoldr nnbIterator)) 7) (-n-1)) + 1
 
-to2sComplementUsingReverse :: Integer -> BL.ByteString
+to2sComplementUsingReverse :: Integer -> B.ByteString
 to2sComplementUsingReverse n =
-   BL.reverse (BL.map reverseBits (runBitPut (to2sComplementReverse n)))
+   B.reverse (B.map reverseBits (runBitPut (to2sComplementReverse n)))
 
 -- h'' :: Integer -> StateT Word8 BitPut' ()
 h'' 0 =

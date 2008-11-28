@@ -19,7 +19,7 @@ module Language.ASN1.PER.Integer
    ) where
 
 import qualified Language.ASN1.PER.IntegerAux as I
-import Data.Binary.BitPut
+import Data.Binary.Strict.BitPut
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString as B
 
