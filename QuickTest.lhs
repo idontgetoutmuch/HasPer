@@ -10,6 +10,8 @@
 {-# 
    OPTIONS_GHC
    -XExistentialQuantification
+   -XFlexibleContexts
+   -XPatternSignatures
    -fwarn-incomplete-patterns
 #-}
 
@@ -237,7 +239,7 @@ instance Show RepSeqVal where
 arbitrarySeq :: Sequence a -> Gen RepSeqVal
 arbitrarySeq Nil =
    return (RepSeqVal Nil Empty)
-arbitrarySeq (Cons (CTMandatory (NamedType n i t)) ts) =
+arbitrarySeq ((Cons (CTMandatory (NamedType n i t)) ts) :: Sequence a) =
    do u <- arbitraryType t
       us <- arbitrarySeq ts
       case u of

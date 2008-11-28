@@ -36,10 +36,8 @@ instance PrettyVal (ASNType a) a where
 prettyType :: ASNType a -> Doc
 prettyType (TYPEASS tr _ t) =
    text tr <+> text "::=" <+> prettyType t
-{-
 prettyType (BITSTRING []) =
    text "BIT STRING"
--}
 prettyType INTEGER =
    text "INTEGER"
 prettyType BOOLEAN =

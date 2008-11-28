@@ -1,3 +1,7 @@
+{-# OPTIONS_GHC 
+    -XScopedTypeVariables
+#-}
+
 module Asn1cTest where
 
 import Text.PrettyPrint
@@ -145,7 +149,7 @@ newChoice ns (ChoiceOption nt@(NamedType n _ ct) cts) (ValueC v _) =
       ms = reverse ns
 
 newTypeValC :: [Name] -> ASNType a -> a -> Doc
-newTypeValC ns a@INTEGER x        = lhs ns <> text " = " <> text (show x) <> semi
+newTypeValC ns a@(INTEGER :: ASNType a) x        = lhs ns <> text " = " <> text (show x) <> semi
 newTypeValC ns a@(CHOICE c) x     = newChoice ns c x
 newTypeValC ns a@(SEQUENCE s) x   = newSequence ns s x
 newTypeValC ns a@(RANGE t l u) x  = newTypeValC ns t x
