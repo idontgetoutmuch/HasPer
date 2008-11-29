@@ -91,7 +91,7 @@ test genFile ty@(TYPEASS name _ _) val =
                       ((executable genFile) ++ " " ++ (genFile <.> "per"), "Failure executing")
                       ]
                    readGen (genFile <.> "per") ty)
-               (\e -> hPutStrLn stderr ("Problem with generating / compiling\n" ++ show e))
+               (\e -> hPutStrLn stderr ("Problem with generating / compiling\n" ++ show (e :: CE.IOException)))
       setCurrentDirectory d
    where
       cFiles' excls suffix =
