@@ -14,7 +14,7 @@ Testing encoding for UNALIGNED PER
 
 \begin{code}
 
-module TestCTR where
+module Main where
 
 import PER
 import Text.PrettyPrint
@@ -325,11 +325,6 @@ myTAB'' t x =
                       Right z -> case z of
                                     Left e -> error ("Third " ++ (show e))
                                     Right v -> v
-
-myTAB1 t x =
-    case lEncode t [] x of
-        Left s  -> error ("First " ++ s)
-        Right y -> B.unpack (BP.runBitPut (bitPutify y))
 
 instance Arbitrary InfInteger where
    arbitrary =
