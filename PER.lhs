@@ -59,8 +59,6 @@ FooBar {1 2 3 4 5 6} DEFINITIONS ::=
   END
 \end{asn1}
 
-\section{Housekeeping}
-
 %include ASNTYPE.lhs
 
 \section{Encoding and Decoding}
@@ -1087,30 +1085,30 @@ encodeSeqAux (ap,ab) (rp,rb) Nil Empty
         else return ((reverse rp,reverse rb),(reverse ap, reverse ab))
 encodeSeqAux (ap,ab) (rp,rb) (ExtensionMarker as) xs
     = encodeExtSeqAux (ap,ab) (rp,rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTCompOf (SEQUENCE s)) as) (x:*:xs) -- typically a reference
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf (SEQUENCE s)) as) (x:*:xs) -- typically a reference
     = do (p,b) <- encodeCO ([],[]) s x
          encodeSeqAux (ap,ab) (p ++ rp,b ++ rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTCompOf _) as) (x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf _) as) (x:*:xs)
     = throwError "COMPONENTS OF can only be applied to a SEQUENCE."
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTMandatory (NamedType t a)) as) (x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Just x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Just x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Just x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
@@ -1122,28 +1120,28 @@ encodeCO (rp,rb) Nil _
     = return (rp,rb)
 encodeCO (rp,rb) (ExtensionMarker as) xs
     = encodeExtCO (rp,rb) as xs
-encodeCO (rp,rb) (AddComponent (CTCompOf (SEQUENCE s)) as) (x:*:xs)
+encodeCO (rp,rb) (AddComponent (ComponentsOf (SEQUENCE s)) as) (x:*:xs)
     = do (p,b) <- encodeCO ([],[]) s x
          encodeCO (p ++ rp,b ++ rb) as xs
-encodeCO (rp,rb) (AddComponent (CTCompOf _) as) (x:*:xs)
+encodeCO (rp,rb) (AddComponent (ComponentsOf _) as) (x:*:xs)
     = throwError "COMPONENTS OF can only be applied to a SEQUENCE"
-encodeCO (rp,rb) (AddComponent (CTMandatory (NamedType t a)) as) (x:*:xs)
+encodeCO (rp,rb) (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
     = do bts <- lEncode a [] x
          encodeCO ([]:rp,bts:rb) as xs
-encodeCO (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
+encodeCO (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeCO ([]:rp,[]:rb) as xs
-encodeCO (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Just x:*:xs)
+encodeCO (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
     = do bts <- lEncode a [] x
          encodeCO ([]:rp,bts:rb) as xs
-encodeCO (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
+encodeCO (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeCO ([0]:rp,[]:rb) as xs
-encodeCO (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Just x:*:xs)
+encodeCO (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeCO ([1]:rp,bts:rb) as xs
-encodeCO (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
+encodeCO (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs) =
    encodeCO ([0]:rp,[]:rb) as xs
-encodeCO (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Just x:*:xs)
+encodeCO (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
     = do
         bts <- lEncode a [] x
         encodeCO ([1]:rp,bts:rb) as xs
@@ -1184,19 +1182,19 @@ encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup a as) (Nothing:*:xs) =
 encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup a as) (Just x:*:xs)
     = do bts <- lEncodeOpen (BuiltinType (SEQUENCE a)) x
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTExtMand (NamedType t a)) as) (Just x:*:xs)
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
     = do bts <- lEncodeOpen a x
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTOptional (NamedType t a)) as) (Just x:*:xs)
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
     = do bts <- lEncodeOpen a x
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (CTDefault (NamedType t a) d) as) (Just x:*:xs)
+encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
    = do bts <- lEncodeOpen a x
         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) _ _
@@ -1474,7 +1472,7 @@ that only one choice value is encoded.
 
 \begin{code}
 
-lEncodeChoice :: Choice a -> HL a (S Z) -> PerEncoding
+lEncodeChoice :: Choice a -> ExactlyOne a (S Z) -> PerEncoding
 lEncodeChoice c x
     =   do ts  <- return (getCTags c)
            (ea, ec) <- (encodeChoiceAux [] [] c x)
@@ -1531,7 +1529,7 @@ choicePred :: (TagInfo, BitStream) -> (TagInfo, BitStream) -> Bool
 choicePred (t1,_) (t2,_) = t1 <= t2
 
 
-encodeChoiceAux :: [Int] -> [BitStream] -> Choice a -> HL a n ->  Either String ([Int], [BitStream])
+encodeChoiceAux :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n ->  Either String ([Int], [BitStream])
 encodeChoiceAux ext body NoChoice _ = return (ext, reverse body)
 encodeChoiceAux ext body (ChoiceExt as) xs =
    encodeChoiceExtAux [0] body as xs
@@ -1545,7 +1543,7 @@ encodeChoiceAux _ _ (ChoiceExtensionAdditionGroup _) _
     = throwError "Impossible case: EXTENSION ADDITON GROUP only appears in an extension."
 
 
-encodeChoiceAux' :: [Int] -> [BitStream] -> Choice a -> HL a n -> Either String ([Int], [BitStream])
+encodeChoiceAux' :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n -> Either String ([Int], [BitStream])
 encodeChoiceAux' ext body NoChoice _ = return (ext, reverse body)
 encodeChoiceAux' ext body (ChoiceExt as) xs =
    encodeChoiceExtAux' ext body as xs
@@ -1557,7 +1555,7 @@ encodeChoiceAux' _ _ (ChoiceExtensionAdditionGroup _) _
     = throwError "Impossible case: EXTENSION ADDITON GROUP only appears in an extension."
 
 
-encodeChoiceExtAux :: [Int] -> [BitStream] -> Choice a -> HL a n -> Either String ([Int], [BitStream])
+encodeChoiceExtAux :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n -> Either String ([Int], [BitStream])
 encodeChoiceExtAux ext body NoChoice _ = return (ext,reverse body)
 encodeChoiceExtAux ext body (ChoiceExt as) xs =
    encodeChoiceAux ext body as xs
@@ -1569,7 +1567,7 @@ encodeChoiceExtAux ext body (ChoiceOption (NamedType t a) as) (ValueC x xs)
     = do bts <- lEncodeOpen a x
          encodeChoiceExtAux' [1](bts:body) as xs
 
-encodeChoiceExtAux' :: [Int] -> [BitStream] -> Choice a -> HL a n -> Either String ([Int], [BitStream])
+encodeChoiceExtAux' :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n -> Either String ([Int], [BitStream])
 encodeChoiceExtAux' ext body NoChoice _ = return (ext, reverse body)
 encodeChoiceExtAux' ext body (ChoiceExt as) xs =
    encodeChoiceAux' ext body as xs
@@ -2120,8 +2118,8 @@ decodeSEQUENCE s =
 
 l :: Integral n => Sequence a -> n
 l Nil = 0
-l (AddComponent (CTMandatory _) ts) = l ts
-l (AddComponent (CTOptional  _) ts) = 1 + (l ts)
+l (AddComponent (MandatoryComponent _) ts) = l ts
+l (AddComponent (OptionalComponent  _) ts) = 1 + (l ts)
 
 bitMask n = sequence $ take n $ repeat $ BG.getBit
 
@@ -2129,7 +2127,7 @@ type BitMap = [Bool]
 
 decodeSEQUENCEAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => BitMap -> Sequence a -> t BG.BitGet a
 decodeSEQUENCEAux _ Nil = return Empty -- ignoring the bit map doesn't look right - it's probably an error if it's not empty
-decodeSEQUENCEAux bitmap (AddComponent (CTMandatory (NamedType _ t)) ts) =
+decodeSEQUENCEAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) =
    do x <- decode4 t []
       xs <- decodeSEQUENCEAux bitmap ts
       return (x :*: xs)
@@ -2160,7 +2158,7 @@ decodeSequenceOf t [] = decodeLargeLengthDeterminant3' (flip nSequenceOfElements
 decodeSequenceOf t cs = decodeSequenceOfAux t (errorize (effSeqOfCon cs)) (errorize (validSeqOfCon cs))
 
 decodeSequenceOfAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
-                       ASNType a -> 
+                       ASNType a ->
                        t BG.BitGet (ExtBS (ConType IntegerConstraint)) ->
                        t BG.BitGet (ExtBS (ConType ValidIntegerConstraint)) ->
                        t BG.BitGet [a]

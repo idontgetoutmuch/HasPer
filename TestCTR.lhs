@@ -88,9 +88,9 @@ nameString
 name = BuiltinType (SEQUENCE nameSeq)
 
 
-nameSeq = AddComponent (CTMandatory (NamedType "givenName" nameString))
-                (AddComponent (CTMandatory (NamedType "initial" (ConstrainedType  nameString ns1)))
-                    (AddComponent (CTMandatory (NamedType "familyName"  nameString))
+nameSeq = AddComponent (MandatoryComponent (NamedType "givenName" nameString))
+                (AddComponent (MandatoryComponent (NamedType "initial" (ConstrainedType  nameString ns1)))
+                    (AddComponent (MandatoryComponent (NamedType "familyName"  nameString))
                         (ExtensionMarker Nil)))
 
 nameVal = VisibleString "John" :*: (VisibleString "P" :*: (VisibleString "Smith" :*: Empty))
@@ -197,13 +197,13 @@ testSeq1 = myTest name nameVal
 
 -- CHOICE
 
-axSeq = AddComponent (CTMandatory (NamedType "a" (ConstrainedType  (BuiltinType INTEGER) con1)))
-                (AddComponent (CTMandatory (NamedType "b" (BuiltinType BOOLEAN)))
-                    (AddComponent (CTMandatory (NamedType "c" (BuiltinType (CHOICE choice1))))
+axSeq = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (BuiltinType INTEGER) con1)))
+                (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN)))
+                    (AddComponent (MandatoryComponent (NamedType "c" (BuiltinType (CHOICE choice1))))
                         (ExtensionMarker
                           (ExtensionAdditionGroup eag1
-                           (ExtensionMarker (AddComponent (CTOptional (NamedType "i" (BuiltinType BMPSTRING)))
-                                (AddComponent (CTOptional (NamedType "j" (BuiltinType PRINTABLESTRING)))
+                           (ExtensionMarker (AddComponent (OptionalComponent (NamedType "i" (BuiltinType BMPSTRING)))
+                                (AddComponent (OptionalComponent (NamedType "j" (BuiltinType PRINTABLESTRING)))
                                     Nil)))))))
 
 choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
@@ -213,13 +213,13 @@ choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
                                           (ChoiceExtensionAdditionGroup (ChoiceExt NoChoice))))))
 
 
-eag1 = AddComponent (CTMandatory (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RE pac5))))
-        (AddComponent (CTOptional (NamedType "h" (BuiltinType BOOLEAN))) Nil)
+eag1 = AddComponent (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RE pac5))))
+        (AddComponent (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) Nil)
 
 
 axVal = 253 :*:
         (True :*:
-            ((NoValueC NoValue (ValueC True (NoValueC NoValue EmptyHL))) :*:
+            ((NoValueC NoValue (ValueC True (NoValueC NoValue EmptyExactlyOne))) :*:
                     ((Just ((NumericString "123") :*: (Just True :*: Empty))) :*:
                         (Nothing :*: (Nothing :*: Empty)))))
 
@@ -279,14 +279,14 @@ See Figure~\ref{sequenceTest1}.
 
 \begin{code}
 
-c1 = CTMandatory (NamedType "c1" (BuiltinType (TAGGED (Context,1,Explicit) (BuiltinType INTEGER))))
-c2 = CTMandatory (NamedType "c2" (BuiltinType (TAGGED (Context,2,Explicit) (BuiltinType INTEGER))))
+c1 = MandatoryComponent (NamedType "c1" (BuiltinType (TAGGED (Context,1,Explicit) (BuiltinType INTEGER))))
+c2 = MandatoryComponent (NamedType "c2" (BuiltinType (TAGGED (Context,2,Explicit) (BuiltinType INTEGER))))
 
-d1 = CTMandatory (NamedType "c1" (BuiltinType INTEGER))
-d2 = CTMandatory (NamedType "c2" (BuiltinType INTEGER))
+d1 = MandatoryComponent (NamedType "c1" (BuiltinType INTEGER))
+d2 = MandatoryComponent (NamedType "c2" (BuiltinType INTEGER))
 
-e1 = CTMandatory (NamedType "e1" tSequence1)
-e2 = CTMandatory (NamedType "e2" tSequence1)
+e1 = MandatoryComponent (NamedType "e1" tSequence1)
+e2 = MandatoryComponent (NamedType "e2" tSequence1)
 
 
 \end{code}

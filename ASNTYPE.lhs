@@ -1,4 +1,3 @@
-%if False
 \section{Abstract Syntax Tree}
 In this section we present our Haskell representation of the Abstract Syntax Notation One (ASN.1) \cite{ASN1}.
 We assume that the reader is familiar with ASN.1 and has also had some experience with
@@ -6,7 +5,7 @@ programming languages. No prior knowledge of Haskell is required. We do not prov
 overview of Haskell, but, where necessary, include some commentary to aid the reading of the
 enbedded code.
 
-
+%if False
 \begin{code}
 
 {-# OPTIONS_GHC -XTypeOperators -XGADTs -XEmptyDataDecls
@@ -35,9 +34,10 @@ ASN.1 values. These type references are then used to specify other types enablin
 of potentially complex ASN.1 types. We describe how ASN.1 types can be created using our Haskell
 representation. We do not describe here the creation of ASN.1 values and thus do not represent
 ASN.1 value assignments. However, our representation of ASN.1 values are made explicit when
-describing and illustration the PER encoding of such values.
+describing and illustrating the PER encoding of such values.
 
 \subsection{ASN.1 Type}
+\label{asntype}
 
 ASN.1 types are categorised as follows:
 \begin{itemize}
@@ -51,8 +51,7 @@ a constrained type -- a type with a constraint.
 \end{itemize}
 
 We represent ASN.1 types using Haskell's algebraic data type mechanism which enables the
-classification alluded to above to be described using a single type. Thus {\tt ASNType} is
-defined as
+classification alluded to above to be described using a single Haskell type which we call {\tt ASNType}.
 \begin{code}
 
 data ASNType a where
@@ -62,8 +61,9 @@ data ASNType a where
 
 \end{code}
 
-where the keyword {\tt data} introduces a new type identifier, and the various forms that
-values of the type can take are listed below. Thus an {\tt ASNType} value can be
+{\tt ASNType} is a parameterised type so that we can distinguish between the various ASN.1
+builtin types. The keyword {\tt data} introduces a new type identifier with the various forms that
+values of the type can take listed below it. Thus an {\tt ASNType} value can be
 \begin{itemize}
 \item
 a builtin type which we call {\tt ASNBuiltin} prefixed by the constructor {\tt BuiltinType};
@@ -76,20 +76,39 @@ the constructor {\tt ConstrainedType}. The constraint is called {\tt SubtypeCons
 we will explain later in this document.
 \end{itemize}
 
-This type is parameterised by various Haskell types. It is a recursive type
-since both a referenced type and a constrained type is itself built from an {\tt ASNType} value.
-We will illustrate how we create various ASN.1 types using our Haskell representation once we
-have described our type {\tt ASNBuiltin} which represents the ASN.1 builtin types.
+We present here some example ASN.1 types with their Haskell representations and types.
+\begin{itemize}
+\item
+{\tt BOOLEAN} is represented as {\tt BuiltinType BOOLEAN} where {\tt BOOLEAN} is a value
+of type {\tt ASNBuiltin Bool} (which is fully described in section \ref{asnbuiltin}) and has
+the type {\tt ASNType Bool}. {\tt Bool} is the Haskell boolean type.
+\item
+{\tt INTEGER} is represented as {\tt BuiltinType INTEGER} and has the type {\tt ASNType
+InfInteger}. {\tt InfInteger} is an integer type with named maximum and minimum values.
+\item
+{\tt INTEGER (1..4)} is represented as {\tt ConstrainedType (BuiltinType INTEGER)
+intConstraint} where {\tt intConstraint} is an integer value range constraint. The
+representation of constraints is described later in this paper. The type of this entity is
+{\tt ASNType Integer}.
+\end{itemize}
+
+Note that {\tt ASNType} is a recursive type
+since both a referenced type and a constrained type are built from an existing {\tt ASNType} value.
 
 \subsection{ASN.1 BuiltinType}
+\label{asnbuiltin}
 
-{\tt ASNBuiltin} in common with {\tt ASNType} is an algebraic type, since its values take on different forms,
-however in this case we also want its values to have different types. The reason for this will become clear
-when we describe the top level PER encoding function which is dependent on the type of the value being encoded.
-To achieve this we use a {\em generalised algebraic data type} (GADT) which allows us to specify appropriate
-return types for each class of values of the type, rather than requiring each to have the same
-type, as was the case for {\tt ASNType}. The GADT {\tt ASNBuiltin} closely resembles the
-production listed in section 16.2 of X.680. Note that:
+{\tt ASNBuiltin} in common with {\tt ASNType} is a parameterised algebraic type. However in this case we also
+want to be able to assign an appropriate type to any of its constructors. In section \ref{asntype} we
+presented examples which used the {\tt ASNBuiltin} values {\tt BOOLEAN} and {\tt INTEGER}. These have
+different types that directly influenced the type of the {\tt ASNType} value which used them
+in their construction. This type-based distinction is essential when encoding ASN.1 values as
+first described in section \ref{sequence}.
+
+To achieve this constructor-specific type we need to use a {\em generalised algebraic data type} (GADT)
+which assigns a (potentially different) type for each of the type's constructors, rather than
+requiring each to have the same type. The GADT {\tt ASNBuiltin} closely
+resembles the production listed in section 16.2 of X.680. Note that:
 \begin{itemize}
 \item
 the character string types are represented individually without the need for another type
@@ -119,39 +138,43 @@ data ASNBuiltin a where
    SEQUENCEOF      :: ASNType a -> ASNBuiltin [a]
    SET             :: Sequence a -> ASNBuiltin a
    SETOF           :: ASNType a -> ASNBuiltin [a]
-   CHOICE          :: Choice a -> ASNBuiltin (HL a (S Z))
+   CHOICE          :: Choice a -> ASNBuiltin (ExactlyOne a (S Z))
    TAGGED          :: TagInfo -> ASNType a -> ASNBuiltin a
 
 \end{code}
 
-The {\tt ASNBuiltin type} includes:
+The {\tt ASNBuiltin} type includes:
 \begin{itemize}
 \item
 the constructors {\tt NULL}, {\tt BOOLEAN}, {\tt INTEGER}, {\tt OCTETSTRING} and the various
-character string constructors which directly represent their associated ASN.1 builtin type;
+character string constructors which directly represent their associated ASN.1 builtin type. Each has a
+different type which uses either the Haskell builtin equivalent of the ASN.1 type or, in the case of the
+string types, new Haskell types to represent these types. Note that we have not included the possibility of
+associating a named number list with an integer type since to quote X.680 section 18.3 states that it is
+{\em not significant in the definition of a type};
 \item
 the constructor {\tt BITSTRING} requires the (possibly empty) collection of named bits to
 construct a value of the bitstring type;
 \item
 the constructors {\tt SEQUENCE} and {\tt SET} which require a {\tt Sequence} input to specify the
-particular type of sequence being represented. That is, the sequence input describes the particular
-sequence being used since, for example, a sequence constructed from an integer and a boolean value, has a
+particular type of sequence being represented. That is, different sequences may have differenct types.
+For example, a sequence constructed from an integer and a boolean value, has a
 different type from one constructed from a couple of visible strings and another sequence of
-booleans;
+booleans. We describe the type {\tt Sequence} in section \ref{sequence};
 \item
-the constructor {\tt ENUMERATE} also requires an input which represents the particular
+the constructor {\tt ENUMERATE} which requires an input which represents the particular
 enumeration;
 \item
 the {\tt SEQUENCEOF} and {\tt SETOF} constructors which require the type of the individual
 components to be provided as input. These could be any of the ASN.1 types (or any named type).
 The return type for
-{\tt SEQUENCEOF} and {\tt SETOF} is a list type (denoted {\tt [a]}) since values of these
-types may include zero or more component values;
+{\tt SEQUENCEOF} and {\tt SETOF} is a list type (denoted {\tt [a]}), which is Haskell's builtin
+type for representing zero or more values of the same type;
 \item
 the {\tt CHOICE} constructor which, because of the similarities of a choice type to a sequence type,
 also requires an input that specifies the particular choices that are available. However, the
 return type needs to emphasise that only one value may actually be used. This is achieved by using
-a new type {\tt HL} which we describe later in this paper; and
+a new type {\tt ExactlyOne} which we describe later in this paper; and
 \item
 the {\tt TAGGED} constructor whcih creates a tagged value from a tag and builtin type value.
 \end{itemize}
@@ -166,9 +189,9 @@ SEQUENCE {a INTEGER, b BOOLEAN}
 is represented as
 \begin{verbatim}
 BuiltinType
-    (SEQUENCE
-        (AddComponent (CTMandatory (NamedType "a" BuiltinType INTEGER))
-                (AddComponent (CTMandatory (NamedType "b" (BuiltinType BOOLEAN))) Nil)))
+ (SEQUENCE
+    (AddComponent (MandatoryComponent (NamedType "a" (BuiltinType INTEGER)))
+       (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN))) Nil)))
 \end{verbatim}
 
 The last example uses a value of the {\tt Sequence} type which requires some explanation. This
@@ -176,13 +199,76 @@ will be followed by an explanation of our representation of the ASN.1 {\tt Choic
 {\tt SequenceOfType}
 
 \subsection{ASN.1 SequenceType}
+\label{sequence}
 
 A sequence is a (possibly heterogeneous) collection of component types. The normal approach in Haskell when
 representing a collection of values is to use the builtin list type. However, each value of a list must be of
-the same type and thus is inappropriate for a sequence. We thus introduced a new GADT {\tt Sequence} which is
-presented below. It has four constructors {\tt Nil}, {\tt ExtensionMarker}, {\tt ExtensionAdditionGroup} and
+the same Haskell type and thus is inappropriate for a sequence. Instead we use a new GADT {\tt Sequence}
+which is presented below. It has four constructors {\tt Nil}, {\tt ExtensionMarker}, {\tt ExtensionAdditionGroup} and
 {\tt AddComponent} to represent the empty sequence, an extension marker, the addition of an extension
 addition group and the addition of a non-extension addition group component respectively.
+
+\begin{code}
+data Sequence a where
+   Nil                      :: Sequence Nil
+   ExtensionMarker          :: Sequence l -> Sequence l
+   ExtensionAdditionGroup   :: Sequence a -> Sequence l -> Sequence (Maybe a :*: l)
+   AddComponent             :: ComponentType a -> Sequence l -> Sequence (a:*:l)
+\end{code}
+
+Here are some illustrative example sequences and their types.
+\begin{itemize}
+\item
+{\tt AddComponent} ...component of type {\tt Integer} {\tt Nil} has
+type {\tt Sequence (Integer :*: Nil)}. We will refer to this sequence as {\tt sequence1}.
+\item
+{\tt AddComponent} ...component of type {\tt Bool} (AddComponent ...component of type {\tt
+String} {\tt Nil} has type {\tt Sequence (Bool :*: String :*: Nil)}. We will refer to this
+sequence as {\tt sequence2}.
+\item
+{\tt AddComponent} ...component of type {\tt (Integer :*: Nil)} {\tt (ExtensionMarker
+(ExtensionAdditionGroup} ...component of type {\tt Integer} {\tt Nil))} has type
+{\tt Sequence ((Integer :*: Nil) :*: (Maybe Integer) :*: Nil}. We will refer to this
+sequence as {\tt sequence3}.
+\end{itemize}
+
+Note that we have created our own heterogeneous list type using the following algebraic types.
+\begin{code}
+data Nil = Empty
+data a:*:l = a:*:l
+
+instance Show Nil where
+   show _ = "Empty"
+
+instance (Show a, Show l) => Show (a:*:l) where
+   show (x:*:xs) = show x ++ ":*:" ++ show xs
+\end{code}
+
+
+Thus the type of the sequence depends on the number and type of components. This explicit type
+information is required because the encoding of a sequence (and for that matter any value)
+depends on its actual type. That is, the function that
+encodes a value of a builtin type {\tt toPER} takes a {\tt ASNBuiltin} type and a value of this type
+(as well as some constraint information) and calls the appropriate encoding function which is determined
+by the input type. The type of this function (which is defined in the module {\tt PER}) is
+
+\begin{verbatim}
+toPer :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> PerEncoding
+\end{verbatim}
+
+Now continuing with the illustrative examples provided above we can create two
+{\tt ASNBuiltin} values as follows.
+
+\begin{itemize}
+\item
+{\tt SEQUENCE sequence1} has type {\tt Integer :*: Nil}.
+\item
+{\tt SEQUENCE sequence2} has type {\tt Bool :*: Integer :*: Nil}.
+\item
+{\tt SEQUENCE sequence3} has type {\tt ((Integer :*: Nil) :*: Maybe Integer :*: Nil}.
+\end{itemize}
+
+
 
 \begin{itemize}
 \item
@@ -199,51 +285,26 @@ of its associated sequence; and
 a sequence with an extra value of type provided by the component type.
 \end{itemize}
 
-We require a GADT since we need this type to mimic the type of a sequence value. That is, the function that
-encodes a value of a builtin type {\tt toPER} takes a {\tt ASNBuiltin} type and a value of this type
-(as well as some constraint information) and calls the appropriate encoding function which is determined
-by the input type. The type of this function (which is defined in the module {\tt PER}) is
 
-\begin{verbatim}
-toPer :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> PerEncoding
-\end{verbatim}
-
-\begin{code}
-data Sequence a where
-   Nil                      :: Sequence Nil
-   ExtensionMarker          :: Sequence l -> Sequence l
-   ExtensionAdditionGroup   :: Sequence a -> Sequence l -> Sequence (Maybe a :*: l)
-   AddComponent             :: ComponentType a -> Sequence l -> Sequence (a:*:l)
-\end{code}
-\begin{code}
-data Nil = Empty
-data a:*:l = a:*:l
-
-instance Show Nil where
-   show _ = "Empty"
-
-instance (Show a, Show l) => Show (a:*:l) where
-   show (x:*:xs) = show x ++ ":*:" ++ show xs
-\end{code}
 
 A component type is either mandatory, optional, default or indicates
 that the components of another sequence are being used.
-The second constructor CTExtMand deals with an extension
+The second constructor ExtensionComponent deals with an extension
 addition which is neither optional nor default. It returns a Maybe
 value since a mandatory extension value may not be present in a
 sequence value.
 
-Each constructor (except CTCompOf) takes a named type value which
+Each constructor (except {\tt ComponentsOf}) takes a named type value which
 associates a name and possibly a tag with a type.
 
 \begin{code}
 
 data ComponentType a where
-   CTMandatory :: NamedType a -> ComponentType a
-   CTExtMand   :: NamedType a -> ComponentType (Maybe a)
-   CTOptional  :: NamedType a -> ComponentType (Maybe a)
-   CTDefault   :: NamedType a -> a -> ComponentType (Maybe a)
-   CTCompOf    :: ASNBuiltin a   -> ComponentType a -- these will typically be referenced
+   MandatoryComponent   :: NamedType a -> ComponentType a
+   ExtensionComponent   :: NamedType a -> ComponentType (Maybe a)
+   OptionalComponent    :: NamedType a -> ComponentType (Maybe a)
+   DefaultComponent     :: NamedType a -> a -> ComponentType (Maybe a)
+   ComponentsOf         :: ASNBuiltin a   -> ComponentType a -- these will typically be referenced
                                                     -- types
 
 data NamedType a where
@@ -465,15 +526,15 @@ extension markers and extension addition groups respectively.
 
 In order to enforce one and only one value for a choice the ASNBuiltin
 constructor CHOICE returns a value of the type
-ASNBuiltin (HL a (S Z)).
+ASNBuiltin (ExactlyOne a (S Z)).
 
-HL is a type for heterogeneous lists (similar
+ExactlyOne is a type for heterogeneous lists (similar
 to Sequence) except that it takes a second input which indicates
 the number of actual values in the list. The empty list is
-represented by EmptyHL of the type HL Nil Z where Z is a type
+represented by EmptyExactlyOne of the type ExactlyOne Nil Z where Z is a type
 indicating no values. The constructor ValueC takes a value
 and a list with no values and adds the value to the list.
-Its return type is HL (a:*:l) (S Z) indicating that the list now
+Its return type is ExactlyOne (a:*:l) (S Z) indicating that the list now
 has one value (S for successor). Finally the constructor
 NoValueC takes no value (of the appropriate type -- hence the use
 of the phantom type Phantom a) and a list and returns the list
@@ -488,10 +549,10 @@ data Choice a where
     ChoiceExtensionAdditionGroup    :: Choice l -> Choice l
     ChoiceOption :: NamedType a -> Choice l -> Choice (a:*:l)
 
-data HL a l where
-    EmptyHL  :: HL Nil Z
-    ValueC   :: a -> HL l Z -> HL (a:*:l) (S Z)
-    NoValueC :: Phantom a -> HL l n -> HL (a:*:l) n
+data ExactlyOne a l where
+    EmptyExactlyOne  :: ExactlyOne Nil Z
+    ValueC   :: a -> ExactlyOne l Z -> ExactlyOne (a:*:l) (S Z)
+    NoValueC :: Phantom a -> ExactlyOne l n -> ExactlyOne (a:*:l) n
 
 data Z
 
@@ -499,10 +560,10 @@ data S n
 
 data Phantom a = NoValue
 
-instance Show (HL Nil n) where
-   show _ = "EmptyHL"
+instance Show (ExactlyOne Nil n) where
+   show _ = "EmptyExactlyOne"
 
-instance (Show a, Show (HL l n)) => Show (HL (a:*:l) n) where
+instance (Show a, Show (ExactlyOne l n)) => Show (ExactlyOne (a:*:l) n) where
    show (ValueC x _ ) = show x
    show (NoValueC _ xs) = show xs
 
@@ -513,10 +574,10 @@ instance (Eq a, Eq b) => Eq (a:*:b) where
    x:*:xs == y:*:ys =
       x == y && xs == ys
 
-instance Eq (HL Nil (S Z)) where
+instance Eq (ExactlyOne Nil (S Z)) where
    _ == _ = True
 
-instance (Eq a, Eq (HL l (S Z))) => Eq (HL (a:*:l) (S Z)) where
+instance (Eq a, Eq (ExactlyOne l (S Z))) => Eq (ExactlyOne (a:*:l) (S Z)) where
    ValueC   _ _ == NoValueC _ _ = False
    NoValueC _ _ == ValueC _ _   = False
    NoValueC _ xs == NoValueC _ ys = xs == ys
@@ -638,14 +699,14 @@ data ExtResStringConstraint a = ExtResStringConstraint a a Bool
 -- UNIVERSAL TAG FUNCTIONS
 
 getCTI :: ComponentType a -> TagInfo
-getCTI (CTMandatory (NamedType _  (BuiltinType (TAGGED t ct)))) = t
-getCTI (CTMandatory (NamedType _  t))             = getTI t
-getCTI (CTExtMand (NamedType _  (BuiltinType (TAGGED t ct))))   = t
-getCTI (CTExtMand (NamedType _ t))                = getTI t
-getCTI (CTOptional (NamedType _  (BuiltinType (TAGGED t ct))))  = t
-getCTI (CTOptional (NamedType _  t))              = getTI t
-getCTI (CTDefault (NamedType _  (BuiltinType (TAGGED t ct))) d) = t
-getCTI (CTDefault (NamedType _  t) d)             = getTI t
+getCTI (MandatoryComponent (NamedType _  (BuiltinType (TAGGED t ct)))) = t
+getCTI (MandatoryComponent (NamedType _  t))             = getTI t
+getCTI (ExtensionComponent (NamedType _  (BuiltinType (TAGGED t ct))))   = t
+getCTI (ExtensionComponent (NamedType _ t))                = getTI t
+getCTI (OptionalComponent (NamedType _  (BuiltinType (TAGGED t ct))))  = t
+getCTI (OptionalComponent (NamedType _  t))              = getTI t
+getCTI (DefaultComponent (NamedType _  (BuiltinType (TAGGED t ct))) d) = t
+getCTI (DefaultComponent (NamedType _  t) d)             = getTI t
 
 getTI :: ASNType a -> TagInfo
 getTI (BuiltinType t) = getBuiltinTI t
