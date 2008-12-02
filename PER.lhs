@@ -1085,9 +1085,13 @@ encodeSeqAux (ap,ab) (rp,rb) Nil Empty
         else return ((reverse rp,reverse rb),(reverse ap, reverse ab))
 encodeSeqAux (ap,ab) (rp,rb) (ExtensionMarker as) xs
     = encodeExtSeqAux (ap,ab) (rp,rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf (SEQUENCE s)) as) (x:*:xs) -- typically a reference
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs) -- typically a reference
     = do (p,b) <- encodeCO ([],[]) s x
          encodeSeqAux (ap,ab) (p ++ rp,b ++ rb) as xs
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf (ReferencedType n t)) as) (x:*:xs) -- typically a reference
+    = encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf t) as) (x:*:xs)
+encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf (ConstrainedType t c)) as) (x:*:xs) -- typically a reference
+    = encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf t) as) (x:*:xs)
 encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf _) as) (x:*:xs)
     = throwError "COMPONENTS OF can only be applied to a SEQUENCE."
 encodeSeqAux (ap,ab) (rp,rb) (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
@@ -1120,7 +1124,7 @@ encodeCO (rp,rb) Nil _
     = return (rp,rb)
 encodeCO (rp,rb) (ExtensionMarker as) xs
     = encodeExtCO (rp,rb) as xs
-encodeCO (rp,rb) (AddComponent (ComponentsOf (SEQUENCE s)) as) (x:*:xs)
+encodeCO (rp,rb) (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
     = do (p,b) <- encodeCO ([],[]) s x
          encodeCO (p ++ rp,b ++ rb) as xs
 encodeCO (rp,rb) (AddComponent (ComponentsOf _) as) (x:*:xs)

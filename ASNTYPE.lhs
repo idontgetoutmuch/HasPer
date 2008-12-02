@@ -201,12 +201,25 @@ will be followed by an explanation of our representation of the ASN.1 {\tt Choic
 \subsection{ASN.1 SequenceType}
 \label{sequence}
 
-A sequence is a (possibly heterogeneous) collection of component types. The normal approach in Haskell when
-representing a collection of values is to use the builtin list type. However, each value of a list must be of
-the same Haskell type and thus is inappropriate for a sequence. Instead we use a new GADT {\tt Sequence}
-which is presented below. It has four constructors {\tt Nil}, {\tt ExtensionMarker}, {\tt ExtensionAdditionGroup} and
-{\tt AddComponent} to represent the empty sequence, an extension marker, the addition of an extension
-addition group and the addition of a non-extension addition group component respectively.
+A sequence type is a (possibly heterogeneous) collection of component types. The normal approach in Haskell
+when representing a collection of items is to use the builtin list type. However, each item of a list must be
+of the same Haskell type and thus is inappropriate for a sequence. Instead we use a new GADT {\tt Sequence}
+which is presented below. It has four constructors for building sequence types.
+\begin{itemize}
+\item
+{\tt Nil} which is the empty sequence;
+\item
+{\tt ExtensionMarker} which represents an extension marker and does not change the type of the sequence
+since no new component types are added;
+\item
+{\tt ExtensionAdditionGroup} which takes an extension addition group (represented as a sequence type) and the
+current sequence and returns the new sequence with the extension addition group {\em possibly} at the front.
+An extension addition group is optional and thus we need to provide for the inclusion or not of this
+component. This is achieved by using the Haskell type {\tt Maybe};
+\item
+{\tt AddComponent} which creates a new sequence type by adding a component type to the front of an
+existing sequence type.
+\end{itemize}
 
 \begin{code}
 data Sequence a where
@@ -214,6 +227,19 @@ data Sequence a where
    ExtensionMarker          :: Sequence l -> Sequence l
    ExtensionAdditionGroup   :: Sequence a -> Sequence l -> Sequence (Maybe a :*: l)
    AddComponent             :: ComponentType a -> Sequence l -> Sequence (a:*:l)
+\end{code}
+
+Note that we have created our own heterogeneous list type using the following algebraic types.
+
+\begin{code}
+data Nil = Empty
+data a:*:l = a:*:l
+
+instance Show Nil where
+   show _ = "Empty"
+
+instance (Show a, Show l) => Show (a:*:l) where
+   show (x:*:xs) = show x ++ ":*:" ++ show xs
 \end{code}
 
 Here are some illustrative example sequences and their types.
@@ -232,20 +258,9 @@ sequence as {\tt sequence2}.
 sequence as {\tt sequence3}.
 \end{itemize}
 
-Note that we have created our own heterogeneous list type using the following algebraic types.
-\begin{code}
-data Nil = Empty
-data a:*:l = a:*:l
-
-instance Show Nil where
-   show _ = "Empty"
-
-instance (Show a, Show l) => Show (a:*:l) where
-   show (x:*:xs) = show x ++ ":*:" ++ show xs
-\end{code}
 
 
-Thus the type of the sequence depends on the number and type of components. This explicit type
+Thus the type of a sequence depends on the number and type of components. This explicit type
 information is required because the encoding of a sequence (and for that matter any value)
 depends on its actual type. That is, the function that
 encodes a value of a builtin type {\tt toPER} takes a {\tt ASNBuiltin} type and a value of this type
@@ -270,42 +285,35 @@ Now continuing with the illustrative examples provided above we can create two
 
 
 
+The component types of a sequence are represented by the GADT {\tt ComponentType}. There are
+four forms of component type.
 \begin{itemize}
 \item
-an empty sequence will have type {\tt Sequence Nil} and its only value will be {\tt Empty};
+a mandatory named type component created by {\tt MandatoryComponent};
 \item
-a sequence with one integer component and boolean component will have type
-{\tt Sequence (Integer :*: Bool :*: Nil)} and values of this type could be {\tt 1 :*: True :*:
-Empty} or {\tt 56 :*: False :*: Empty};
+an optional named type component created by {\tt OptionalComponent}. Note that once agin we
+have used the builtin Haskell type {\tt Maybe} to represent that something is optional;
 \item
-{\tt ExtensionMarker} simply indicates an extension marker and thus does not change the type
-of its associated sequence; and
+a default named type component created by {\tt DefaultComponent}. Here one also has to supply
+the default value of this component if one is not provided with the sequence;
 \item
-{\tt AddComponent} adds a component of type {\tt ComponentType} to a sequence. This results in
-a sequence with an extra value of type provided by the component type.
+components of an existing sequence type. This is created by {\tt ComponentsOf}.
 \end{itemize}
 
-
-
-A component type is either mandatory, optional, default or indicates
-that the components of another sequence are being used.
-The second constructor ExtensionComponent deals with an extension
-addition which is neither optional nor default. It returns a Maybe
+Note that we have added an extra constructor {\tt ExtensionComponent} which deals with an extension
+addition which is neither optional nor default. It returns a {\tt Maybe}
 value since a mandatory extension value may not be present in a
 sequence value.
-
-Each constructor (except {\tt ComponentsOf}) takes a named type value which
-associates a name and possibly a tag with a type.
 
 \begin{code}
 
 data ComponentType a where
    MandatoryComponent   :: NamedType a -> ComponentType a
-   ExtensionComponent   :: NamedType a -> ComponentType (Maybe a)
    OptionalComponent    :: NamedType a -> ComponentType (Maybe a)
    DefaultComponent     :: NamedType a -> a -> ComponentType (Maybe a)
-   ComponentsOf         :: ASNBuiltin a   -> ComponentType a -- these will typically be referenced
+   ComponentsOf         :: ASNType a   -> ComponentType a -- these will typically be referenced
                                                     -- types
+   ExtensionComponent   :: NamedType a -> ComponentType (Maybe a)
 
 data NamedType a where
    NamedType :: Name -> ASNType a -> NamedType a
