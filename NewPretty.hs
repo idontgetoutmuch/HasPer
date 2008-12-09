@@ -24,9 +24,9 @@ prettyType (ConstrainedType  t e) =
    parens (prettyElementSetSpecs t e)
 
 prettySeq :: Sequence a -> Doc
-prettySeq Nil =
+prettySeq EmptySequence =
    empty
-prettySeq (AddComponent x Nil) =
+prettySeq (AddComponent x EmptySequence) =
    prettyComponentType x
 prettySeq (AddComponent x xs) =
    vcat [prettyComponentType x <> comma, prettySeq xs]
@@ -56,9 +56,9 @@ prettyBuiltinType (SEQUENCEOF t) =
    text "SEQUENCE OF" <+> prettyType t
 
 prettyChoice :: Choice a -> Doc
-prettyChoice NoChoice =
+prettyChoice EmptyChoice =
    empty
-prettyChoice (ChoiceOption nt NoChoice) =
+prettyChoice (ChoiceOption nt EmptyChoice) =
    prettyNamedType nt
 prettyChoice (ChoiceOption nt xs) =
    vcat [prettyNamedType nt <> comma, prettyChoice xs]

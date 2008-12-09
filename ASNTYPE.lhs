@@ -69,7 +69,8 @@ values of the type can take listed below it. Thus an {\tt ASNType} value can be
 a builtin type which we call {\tt ASNBuiltin} prefixed by the constructor {\tt BuiltinType};
 \item
 a type reference {\tt TypeReference} and an {\tt ASNType} prefixed by the constructor
-{\tt ReferencedType}; or
+{\tt ReferencedType}. Note that a referenced type has various incarnations which we discuss
+later in this paper; or
 \item
 a constrained type which is an {\tt ASNType} value associated with a constraint prefixed by
 the constructor {\tt ConstrainedType}. The constraint is called {\tt SubtypeConstraint} which
@@ -138,7 +139,7 @@ data ASNBuiltin a where
    SEQUENCEOF      :: ASNType a -> ASNBuiltin [a]
    SET             :: Sequence a -> ASNBuiltin a
    SETOF           :: ASNType a -> ASNBuiltin [a]
-   CHOICE          :: Choice a -> ASNBuiltin (ExactlyOne a (S Z))
+   CHOICE          :: Choice a -> ASNBuiltin (ExactlyOne a OneValue)
    TAGGED          :: TagInfo -> ASNType a -> ASNBuiltin a
 
 \end{code}
@@ -194,7 +195,18 @@ BuiltinType
        (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN))) Nil)))
 \end{verbatim}
 
-The last example uses a value of the {\tt Sequence} type which requires some explanation. This
+We will leave illustrative examples of constrained types until we have described our
+representation of ASN.1 constraints. An ASN.1 referenced type is typically simply the type
+reference component of a type assignment. However, since we require the compile-time type
+checker to raise any type errors, we need to associate any type reference with its type. Thus
+
+\begin{verbatim}
+ReferencedType (TypeRef "T") (BuiltinType INTEGER)
+\end{verbatim}
+represents a reference to the ASN.1 type {\tt IntegerType}. Although this appears simply to
+add unnecessary complexity to the code, it allows us to faithfully pretty print ASN.1 types.
+
+The last builtin type example uses a value of the {\tt Sequence} type which requires some explanation. This
 will be followed by an explanation of our representation of the ASN.1 {\tt ChoiceType} and
 {\tt SequenceOfType}
 
@@ -207,13 +219,14 @@ of the same Haskell type and thus is inappropriate for a sequence. Instead we us
 which is presented below. It has four constructors for building sequence types.
 \begin{itemize}
 \item
-{\tt Nil} which is the empty sequence;
+{\tt EmptySequence} which is the empty sequence;
 \item
 {\tt ExtensionMarker} which represents an extension marker and does not change the type of the sequence
 since no new component types are added;
 \item
-{\tt ExtensionAdditionGroup} which takes an extension addition group (represented as a sequence type) and the
-current sequence and returns the new sequence with the extension addition group {\em possibly} at the front.
+{\tt ExtensionAdditionGroup} which takes a (possibly empty) version number, an extension addition group
+(represented as a sequence type) and the current sequence and returns the new sequence with the extension
+addition group {\em possibly} at the front.
 An extension addition group is optional and thus we need to provide for the inclusion or not of this
 component. This is achieved by using the Haskell type {\tt Maybe};
 \item
@@ -223,10 +236,12 @@ existing sequence type.
 
 \begin{code}
 data Sequence a where
-   Nil                      :: Sequence Nil
+   EmptySequence            :: Sequence Nil
    ExtensionMarker          :: Sequence l -> Sequence l
-   ExtensionAdditionGroup   :: Sequence a -> Sequence l -> Sequence (Maybe a :*: l)
+   ExtensionAdditionGroup   :: VersionNumber -> Sequence a -> Sequence l -> Sequence (Maybe a :*: l)
    AddComponent             :: ComponentType a -> Sequence l -> Sequence (a:*:l)
+
+data VersionNumber = NoVersionNumber | Version Int
 \end{code}
 
 Note that we have created our own heterogeneous list type using the following algebraic types.
@@ -283,8 +298,6 @@ Now continuing with the illustrative examples provided above we can create two
 {\tt SEQUENCE sequence3} has type {\tt ((Integer :*: Nil) :*: Maybe Integer :*: Nil}.
 \end{itemize}
 
-
-
 The component types of a sequence are represented by the GADT {\tt ComponentType}. There are
 four forms of component type.
 \begin{itemize}
@@ -301,9 +314,8 @@ components of an existing sequence type. This is created by {\tt ComponentsOf}.
 \end{itemize}
 
 Note that we have added an extra constructor {\tt ExtensionComponent} which deals with an extension
-addition which is neither optional nor default. It returns a {\tt Maybe}
-value since a mandatory extension value may not be present in a
-sequence value.
+addition which is neither optional nor default. It returns a {\tt Maybe} value since an
+extension item may not be present in a sequence.
 
 \begin{code}
 
@@ -320,20 +332,105 @@ data NamedType a where
 
 \end{code}
 
+\subsection{ASN.1 ChoiceType}
+\label{sequence}
 
-We will leave illustrative examples of constrained types until we have described our
-representation of ASN.1 constraints. An ASN.1 referenced type is typically simply the type
-reference component of a type assignment. However, since we require the compile-time type
-checker to raise any type errors, we need to associate any type reference with its type. Thus
+The ASN.1 {\tt ChoiceType} has similarities to the {\tt SequenceType}. In effect it is a
+sequence of optional components where exactly one must be used for any incarnation. We
+therefore have chosen a Haskell representation which has significant similarities to our
+representation of the {\tt SequenceType}.
 
-\begin{verbatim}
-ReferencedType (TypeRef "T") (BuiltinType INTEGER)
-\end{verbatim}
-represents a reference to the ASN.1 type {\tt IntegerType}. Although this appears simply to
-add unnecessary complexity to the code, it allows us to faithfully pretty print ASN.1 types.
-\begin{verbatim}
+We use a new GADT {\tt Choice} which is presented below. It has four constructors for building choice types.
+\begin{itemize}
+\item
+{\tt EmptyChoice} which is the empty choice;
+\item
+{\tt ChoiceExtensionMarker} which represents an extension marker and does not change the type of the sequence
+since no new component types are added. Note that Haskell requires a different name for this constructor than
+the one used for a sequence in order to avoid type ambiguity when the constructors are used;
+\item
+{\tt ChoiceExtensionAdditionGroup} whose semantics are different from the sequence {\tt
+ExtensionAdditionGroup} constructor. Here we are adding a collection of potential new choices
+but only one may ever be used for a particular incarnation. Thus we are simply indicating the
+presence of an extension addition group to aid pretty printing and version identification;
+\item
+{\tt ChoiceOption} which adds a new choice option to the current collection of choices.
+\end{itemize}
 
-\end{verbatim}
+\begin{code}
+data Choice a where
+    EmptyChoice                     :: Choice Nil
+    ChoiceExtensionMarker           :: Choice l -> Choice l
+    ChoiceExtensionAdditionGroup    :: VersionNumber -> Choice l -> Choice l
+    ChoiceOption                    :: NamedType a -> Choice l -> Choice (a:*:l)
+\end{code}
+
+
+In order to enforce one and only one value for a choice the ASNBuiltin
+constructor CHOICE returns a value of the type {\tt ASNBuiltin (ExactlyOne a (S Z))}.
+
+{\tt ExactlyOne} is a type for heterogeneous lists (similar
+to {\tt Sequence}) except that it takes a second input which indicates
+the number of actual values in the list. It has the following constructors:
+\begin{itemize}
+\item
+{\tt EmptyList} is the base case for this type - the empty list. It has the type
+{\tt ExactlyOne Nil ZeroValues} where {\tt ZeroValues} is a type indicating no values.
+\item
+{\tt AddAValue} which adds a value to a list.
+Its return type is {\tt ExactlyOne (a:*:l) OneValue)} indicating that the list now
+has one value; and
+\item
+{\tt NoAddAValue} which adds no value (of the appropriate type -- hence the use
+of the phantom type {\tt Phantom a}) to a list. In this case the number of values in the
+list is not incremented.
+\end{itemize}
+
+It is important to have the constructors {\tt AddAValue} and {\tt AddNoValue} so that there is
+a match between the choice value and the choice type. That is, the overall choice value has the
+appropriate type, and the particulat choice of value has the required type.
+
+
+\begin{code}
+
+data ExactlyOne a l where
+    EmptyList      :: ExactlyOne Nil ZeroValues
+    AddAValue      :: a -> ExactlyOne l ZeroValues -> ExactlyOne (a:*:l) OneValue
+    AddNoValue     :: Phantom a -> ExactlyOne l n -> ExactlyOne (a:*:l) n
+
+data ZeroValues
+
+data Increment n
+
+type OneValue = Increment ZeroValues
+
+data Phantom a = NoValue
+
+instance Show (ExactlyOne Nil n) where
+   show _ = "EmptyExactlyOne"
+
+instance (Show a, Show (ExactlyOne l n)) => Show (ExactlyOne (a:*:l) n) where
+   show (AddAValue x _ ) = show x
+   show (AddNoValue _ xs) = show xs
+
+instance Eq Nil where
+  _ == _ = True
+
+instance (Eq a, Eq b) => Eq (a:*:b) where
+   x:*:xs == y:*:ys =
+      x == y && xs == ys
+
+instance Eq (ExactlyOne Nil OneValue) where
+   _ == _ = True
+
+instance (Eq a, Eq (ExactlyOne l OneValue)) => Eq (ExactlyOne (a:*:l) OneValue) where
+   AddAValue   _ _ == AddNoValue _ _ = False
+   AddNoValue _ _ == AddAValue _ _   = False
+   AddNoValue _ xs == AddNoValue _ ys = xs == ys
+   AddAValue x _ == AddAValue y _ = x == y
+
+\end{code}
+
 
 A {\tt ReferencedType} is:
 \begin{itemize}
@@ -523,75 +620,7 @@ instance InnerType [a]
 
 
 
-X.680 Section 28. Choice type
 
-A choice is a collection of named types. The Choice type
-is similar to a Sequence except that each value
-is optional and only one value can exist at a time. Note
-that the Choice type has no PER-visible constraints.
-The constructors ChoiceExt and ChoiceEAG deal with
-extension markers and extension addition groups respectively.
-
-In order to enforce one and only one value for a choice the ASNBuiltin
-constructor CHOICE returns a value of the type
-ASNBuiltin (ExactlyOne a (S Z)).
-
-ExactlyOne is a type for heterogeneous lists (similar
-to Sequence) except that it takes a second input which indicates
-the number of actual values in the list. The empty list is
-represented by EmptyExactlyOne of the type ExactlyOne Nil Z where Z is a type
-indicating no values. The constructor ValueC takes a value
-and a list with no values and adds the value to the list.
-Its return type is ExactlyOne (a:*:l) (S Z) indicating that the list now
-has one value (S for successor). Finally the constructor
-NoValueC takes no value (of the appropriate type -- hence the use
-of the phantom type Phantom a) and a list and returns the list
-with the non-value added. In this case the number of values in the
-list is not incremented.
-
-\begin{code}
-
-data Choice a where
-    NoChoice     :: Choice Nil
-    ChoiceExt    :: Choice l -> Choice l
-    ChoiceExtensionAdditionGroup    :: Choice l -> Choice l
-    ChoiceOption :: NamedType a -> Choice l -> Choice (a:*:l)
-
-data ExactlyOne a l where
-    EmptyExactlyOne  :: ExactlyOne Nil Z
-    ValueC   :: a -> ExactlyOne l Z -> ExactlyOne (a:*:l) (S Z)
-    NoValueC :: Phantom a -> ExactlyOne l n -> ExactlyOne (a:*:l) n
-
-data Z
-
-data S n
-
-data Phantom a = NoValue
-
-instance Show (ExactlyOne Nil n) where
-   show _ = "EmptyExactlyOne"
-
-instance (Show a, Show (ExactlyOne l n)) => Show (ExactlyOne (a:*:l) n) where
-   show (ValueC x _ ) = show x
-   show (NoValueC _ xs) = show xs
-
-instance Eq Nil where
-  _ == _ = True
-
-instance (Eq a, Eq b) => Eq (a:*:b) where
-   x:*:xs == y:*:ys =
-      x == y && xs == ys
-
-instance Eq (ExactlyOne Nil (S Z)) where
-   _ == _ = True
-
-instance (Eq a, Eq (ExactlyOne l (S Z))) => Eq (ExactlyOne (a:*:l) (S Z)) where
-   ValueC   _ _ == NoValueC _ _ = False
-   NoValueC _ _ == ValueC _ _   = False
-   NoValueC _ xs == NoValueC _ ys = xs == ys
-   ValueC x _ == ValueC y _ = x == y
-
-\end{code}
 
 X.680 Section 19. Enumerated type
 
@@ -740,9 +769,9 @@ getBuiltinTI (SETOF s)          = (Universal, 17, Explicit)
 getBuiltinTI (CHOICE c)         = (minimum . getCTags) c
 
 getCTags :: Choice a -> [TagInfo]
-getCTags NoChoice                     = []
-getCTags (ChoiceExt xs)               = getCTags xs
-getCTags (ChoiceExtensionAdditionGroup xs)               = getCTags xs
+getCTags EmptyChoice                            = []
+getCTags (ChoiceExtensionMarker xs)             = getCTags xs
+getCTags (ChoiceExtensionAdditionGroup vn xs)   = getCTags xs
 getCTags (ChoiceOption (NamedType n (BuiltinType (TAGGED t a))) xs)
         = t : getCTags xs
 getCTags (ChoiceOption (NamedType n a) xs)

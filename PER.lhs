@@ -1079,7 +1079,7 @@ if components of this sequence.
 
 encodeSeqAux :: ([BitStream],[BitStream]) -> ([BitStream],[BitStream]) -> Sequence a -> a ->
       Either String (([BitStream],[BitStream]),([BitStream],[BitStream]))
-encodeSeqAux (ap,ab) (rp,rb) Nil Empty
+encodeSeqAux (ap,ab) (rp,rb) EmptySequence Empty
     = if ((not.null) (concat ab))
         then return (([1]:reverse rp,reverse rb),(reverse ap,reverse ab))
         else return ((reverse rp,reverse rb),(reverse ap, reverse ab))
@@ -1116,11 +1116,11 @@ encodeSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) 
     = do
         bts <- lEncode a [] x
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ _) _
+encodeSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ _ _) _
     = throwError "Impossible case: Extension Addition Groups only appear within an extension"
 
 encodeCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
-encodeCO (rp,rb) Nil _
+encodeCO (rp,rb) EmptySequence _
     = return (rp,rb)
 encodeCO (rp,rb) (ExtensionMarker as) xs
     = encodeExtCO (rp,rb) as xs
@@ -1149,19 +1149,19 @@ encodeCO (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:
     = do
         bts <- lEncode a [] x
         encodeCO ([1]:rp,bts:rb) as xs
-encodeCO (rp,rb) (ExtensionAdditionGroup _ _) _
+encodeCO (rp,rb) (ExtensionAdditionGroup _ _ _) _
     = throwError "Impossible case: Extension Addition Groups only appear in an extension."
 
 
 -- Only the root component list of the COMPONENTS OF type is inlcuded.
 encodeExtCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
-encodeExtCO (rp,rb) Nil _
+encodeExtCO (rp,rb) EmptySequence _
     = return (rp,rb)
 encodeExtCO (rp,rb) (ExtensionMarker as) xs
     = encodeCO (rp,rb) as xs
 encodeExtCO (rp,rb) (AddComponent _ as) (_:*:xs)
     = encodeExtCO (rp,rb) as xs
-encodeExtCO (rp,rb) (ExtensionAdditionGroup _ as) (x:*:xs)
+encodeExtCO (rp,rb) (ExtensionAdditionGroup _ _ as) (x:*:xs)
     = encodeExtCO (rp,rb) as xs
 \end{code}
 
@@ -1175,15 +1175,15 @@ open type (using lEncodeOpen). If an addition is not present then a
 
 encodeExtSeqAux :: ([BitStream],[BitStream]) -> ([BitStream], [BitStream]) -> Sequence a -> a ->
     Either String (([BitStream],[BitStream]),([BitStream],[BitStream]))
-encodeExtSeqAux (ap,ab) (rp,rb) Nil _
+encodeExtSeqAux (ap,ab) (rp,rb) EmptySequence _
     = if (length . filter (==[1])) ap > 0
                 then  return (([1]:reverse rp,reverse rb),(reverse ap,reverse ab))
                 else  return (([0]:reverse rp,reverse rb),(reverse ap,reverse ab))
 encodeExtSeqAux extAdds extRoot (ExtensionMarker as) xs =
    encodeSeqAux extAdds extRoot as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup a as) (Nothing:*:xs) =
+encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ a as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup a as) (Just x:*:xs)
+encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ a as) (Just x:*:xs)
     = do bts <- lEncodeOpen (BuiltinType (SEQUENCE a)) x
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs) =
@@ -1446,18 +1446,18 @@ tagOrder x y = getTI x < getTI y
 
 
 getTags :: Sequence a -> [TagInfo]
-getTags Nil               = []
+getTags EmptySequence               = []
 getTags (ExtensionMarker xs)       = getTags' xs
 getTags (AddComponent a xs)       = getCTI a : getTags xs
-getTags (ExtensionAdditionGroup _ _)         = error "Impossible case for a root component."
+getTags (ExtensionAdditionGroup _ _ _)         = error "Impossible case for a root component."
 
 
 
 getTags' :: Sequence a -> [TagInfo]
-getTags' Nil         = []
+getTags' EmptySequence         = []
 getTags' (ExtensionMarker xs) = getTags xs
 getTags' (AddComponent a xs) = getTags' xs
-getTags' (ExtensionAdditionGroup s t)   = getTags' t
+getTags' (ExtensionAdditionGroup _ s t)   = getTags' t
 
 \end{code}
 
@@ -1476,7 +1476,7 @@ that only one choice value is encoded.
 
 \begin{code}
 
-lEncodeChoice :: Choice a -> ExactlyOne a (S Z) -> PerEncoding
+lEncodeChoice :: Choice a -> ExactlyOne a OneValue -> PerEncoding
 lEncodeChoice c x
     =   do ts  <- return (getCTags c)
            (ea, ec) <- (encodeChoiceAux [] [] c x)
@@ -1534,52 +1534,52 @@ choicePred (t1,_) (t2,_) = t1 <= t2
 
 
 encodeChoiceAux :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n ->  Either String ([Int], [BitStream])
-encodeChoiceAux ext body NoChoice _ = return (ext, reverse body)
-encodeChoiceAux ext body (ChoiceExt as) xs =
+encodeChoiceAux ext body EmptyChoice _ = return (ext, reverse body)
+encodeChoiceAux ext body (ChoiceExtensionMarker as) xs =
    encodeChoiceExtAux [0] body as xs
-encodeChoiceAux ext body (ChoiceOption a as) (NoValueC x xs) =
+encodeChoiceAux ext body (ChoiceOption a as) (AddNoValue x xs) =
    encodeChoiceAux ext ([]:body) as xs
-encodeChoiceAux ext body (ChoiceOption (NamedType t a) as) (ValueC x xs)
+encodeChoiceAux ext body (ChoiceOption (NamedType t a) as) (AddAValue x xs)
     = do
         bts <- lEncode a [] x
         encodeChoiceAux' ext (bts:body) as xs
-encodeChoiceAux _ _ (ChoiceExtensionAdditionGroup _) _
+encodeChoiceAux _ _ (ChoiceExtensionAdditionGroup _ _) _
     = throwError "Impossible case: EXTENSION ADDITON GROUP only appears in an extension."
 
 
 encodeChoiceAux' :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n -> Either String ([Int], [BitStream])
-encodeChoiceAux' ext body NoChoice _ = return (ext, reverse body)
-encodeChoiceAux' ext body (ChoiceExt as) xs =
+encodeChoiceAux' ext body EmptyChoice _ = return (ext, reverse body)
+encodeChoiceAux' ext body (ChoiceExtensionMarker as) xs =
    encodeChoiceExtAux' ext body as xs
-encodeChoiceAux' ext body (ChoiceOption a as) (NoValueC x xs) =
+encodeChoiceAux' ext body (ChoiceOption a as) (AddNoValue x xs) =
    encodeChoiceAux' ext ([]:body) as xs
-encodeChoiceAux' ext body (ChoiceOption a as) (ValueC x xs) =
+encodeChoiceAux' ext body (ChoiceOption a as) (AddAValue x xs) =
    encodeChoiceAux' ext ([]:body) as xs
-encodeChoiceAux' _ _ (ChoiceExtensionAdditionGroup _) _
+encodeChoiceAux' _ _ (ChoiceExtensionAdditionGroup _ _) _
     = throwError "Impossible case: EXTENSION ADDITON GROUP only appears in an extension."
 
 
 encodeChoiceExtAux :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n -> Either String ([Int], [BitStream])
-encodeChoiceExtAux ext body NoChoice _ = return (ext,reverse body)
-encodeChoiceExtAux ext body (ChoiceExt as) xs =
+encodeChoiceExtAux ext body EmptyChoice _ = return (ext,reverse body)
+encodeChoiceExtAux ext body (ChoiceExtensionMarker as) xs =
    encodeChoiceAux ext body as xs
-encodeChoiceExtAux ext body (ChoiceExtensionAdditionGroup as) xs =
+encodeChoiceExtAux ext body (ChoiceExtensionAdditionGroup _ as) xs =
    encodeChoiceExtAux ext body as xs
-encodeChoiceExtAux ext body (ChoiceOption a as) (NoValueC x xs) =
+encodeChoiceExtAux ext body (ChoiceOption a as) (AddNoValue x xs) =
    encodeChoiceExtAux ext ([]:body) as xs
-encodeChoiceExtAux ext body (ChoiceOption (NamedType t a) as) (ValueC x xs)
+encodeChoiceExtAux ext body (ChoiceOption (NamedType t a) as) (AddAValue x xs)
     = do bts <- lEncodeOpen a x
          encodeChoiceExtAux' [1](bts:body) as xs
 
 encodeChoiceExtAux' :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n -> Either String ([Int], [BitStream])
-encodeChoiceExtAux' ext body NoChoice _ = return (ext, reverse body)
-encodeChoiceExtAux' ext body (ChoiceExt as) xs =
+encodeChoiceExtAux' ext body EmptyChoice _ = return (ext, reverse body)
+encodeChoiceExtAux' ext body (ChoiceExtensionMarker as) xs =
    encodeChoiceAux' ext body as xs
-encodeChoiceExtAux' ext body (ChoiceExtensionAdditionGroup as) xs =
+encodeChoiceExtAux' ext body (ChoiceExtensionAdditionGroup _ as) xs =
    encodeChoiceAux' ext body as xs
-encodeChoiceExtAux' ext body (ChoiceOption a as) (NoValueC x xs) =
+encodeChoiceExtAux' ext body (ChoiceOption a as) (AddNoValue x xs) =
    encodeChoiceExtAux' ext body as xs
-encodeChoiceExtAux' ext body (ChoiceOption a as) (ValueC x xs) =
+encodeChoiceExtAux' ext body (ChoiceOption a as) (AddAValue x xs) =
    encodeChoiceExtAux' ext body as xs
 
 
@@ -2121,7 +2121,7 @@ decodeSEQUENCE s =
       decodeSEQUENCEAux ps s
 
 l :: Integral n => Sequence a -> n
-l Nil = 0
+l EmptySequence = 0
 l (AddComponent (MandatoryComponent _) ts) = l ts
 l (AddComponent (OptionalComponent  _) ts) = 1 + (l ts)
 
@@ -2130,7 +2130,7 @@ bitMask n = sequence $ take n $ repeat $ BG.getBit
 type BitMap = [Bool]
 
 decodeSEQUENCEAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => BitMap -> Sequence a -> t BG.BitGet a
-decodeSEQUENCEAux _ Nil = return Empty -- ignoring the bit map doesn't look right - it's probably an error if it's not empty
+decodeSEQUENCEAux _ EmptySequence = return Empty -- ignoring the bit map doesn't look right - it's probably an error if it's not empty
 decodeSEQUENCEAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) =
    do x <- decode4 t []
       xs <- decodeSEQUENCEAux bitmap ts

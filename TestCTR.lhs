@@ -91,7 +91,7 @@ name = BuiltinType (SEQUENCE nameSeq)
 nameSeq = AddComponent (MandatoryComponent (NamedType "givenName" nameString))
                 (AddComponent (MandatoryComponent (NamedType "initial" (ConstrainedType  nameString ns1)))
                     (AddComponent (MandatoryComponent (NamedType "familyName"  nameString))
-                        (ExtensionMarker Nil)))
+                        (ExtensionMarker EmptySequence)))
 
 nameVal = VisibleString "John" :*: (VisibleString "P" :*: (VisibleString "Smith" :*: Empty))
 
@@ -201,25 +201,25 @@ axSeq = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (Built
                 (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN)))
                     (AddComponent (MandatoryComponent (NamedType "c" (BuiltinType (CHOICE choice1))))
                         (ExtensionMarker
-                          (ExtensionAdditionGroup eag1
+                          (ExtensionAdditionGroup NoVersionNumber eag1
                            (ExtensionMarker (AddComponent (OptionalComponent (NamedType "i" (BuiltinType BMPSTRING)))
                                 (AddComponent (OptionalComponent (NamedType "j" (BuiltinType PRINTABLESTRING)))
-                                    Nil)))))))
+                                    EmptySequence)))))))
 
 choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
-            (ChoiceExt (ChoiceExtensionAdditionGroup
+            (ChoiceExtensionMarker (ChoiceExtensionAdditionGroup NoVersionNumber
                             (ChoiceOption (NamedType "e" (BuiltinType BOOLEAN))
                                    (ChoiceOption (NamedType "f"  (BuiltinType IA5STRING))
-                                          (ChoiceExtensionAdditionGroup (ChoiceExt NoChoice))))))
+                                          (ChoiceExtensionAdditionGroup NoVersionNumber (ChoiceExtensionMarker EmptyChoice))))))
 
 
 eag1 = AddComponent (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RE pac5))))
-        (AddComponent (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) Nil)
+        (AddComponent (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) EmptySequence)
 
 
 axVal = 253 :*:
         (True :*:
-            ((NoValueC NoValue (ValueC True (NoValueC NoValue EmptyExactlyOne))) :*:
+            ((AddNoValue NoValue (AddAValue True (AddNoValue NoValue EmptyList))) :*:
                     ((Just ((NumericString "123") :*: (Just True :*: Empty))) :*:
                         (Nothing :*: (Nothing :*: Empty)))))
 
@@ -298,13 +298,13 @@ SEQUENCE {c2 [2] EXPLICIT INTEGER,
 
 \begin{code}
 
-tSequence1 = BuiltinType (SEQUENCE (AddComponent c2 (AddComponent c1 Nil)))
+tSequence1 = BuiltinType (SEQUENCE (AddComponent c2 (AddComponent c1 EmptySequence)))
 vSequence1 = (Val 3) :*: ((Val 5) :*: Empty)
 
-tSequence2 = BuiltinType (SEQUENCE (AddComponent d2 (AddComponent d1 Nil)))
+tSequence2 = BuiltinType (SEQUENCE (AddComponent d2 (AddComponent d1 EmptySequence)))
 
-tSequence3 = BuiltinType (SEQUENCE (AddComponent e2 (AddComponent e1 Nil)))
-vSequence3 = ((Val 2) :*: (Val 3 :*: Nil)) :*: (((Val 5) :*: ((Val 7) :*: Nil)) :*: Nil)
+tSequence3 = BuiltinType (SEQUENCE (AddComponent e2 (AddComponent e1 EmptySequence)))
+vSequence3 = ((Val 2) :*: (Val 3 :*: Empty)) :*: (((Val 5) :*: ((Val 7) :*: Empty)) :*: Empty)
 
 
 myTest t x =
