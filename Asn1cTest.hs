@@ -8,7 +8,6 @@ import Text.PrettyPrint
 import Data.Char
 import ConstrainedType
 import Pretty
-import qualified Data.Set as S
 import Data.Word
 import Data.List
 import Language.ASN1 hiding (BitString, NamedType, ComponentType)

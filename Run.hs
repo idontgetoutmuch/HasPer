@@ -18,11 +18,10 @@ import TestData
 import System.FilePath
 import System.Info
 
--- Uncomment the line below for Windows
--- skeletons = "c:\\Users\\Dom\\asn1c-0.9.21\\skeletons"
-
--- Comment the line below for Windows
-skeletons = "/usr/local/share/asn1c"
+skeletons = 
+   case os of
+      "mingw32" -> "c:\\Users\\Dom\\asn1c-0.9.21\\skeletons"
+      _         -> "/usr/local/share/asn1c"
 
 asn1c = "asn1c"
 asn1cOptions = "-gen-PER -fnative-types -S"
