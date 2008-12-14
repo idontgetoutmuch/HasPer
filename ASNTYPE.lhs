@@ -201,7 +201,7 @@ reference component of a type assignment. However, since we require the compile-
 checker to raise any type errors, we need to associate any type reference with its type. Thus
 
 \begin{verbatim}
-ReferencedType (TypeRef "T") (BuiltinType INTEGER)
+ReferencedType (Ref "T") (BuiltinType INTEGER)
 \end{verbatim}
 represents a reference to the ASN.1 type {\tt IntegerType}. Although this appears simply to
 add unnecessary complexity to the code, it allows us to faithfully pretty print ASN.1 types.
@@ -512,7 +512,7 @@ X.680 16.1
 
 \begin{code}
 
-data TypeReference = Ref TypeRef
+newtype TypeReference = Ref {ref :: String}
 
 data Null = Null
     deriving Show
@@ -543,7 +543,6 @@ instance Num InfInteger where
 \begin{code}
 
 type TagInfo    = (TagType, TagValue, TagPlicity)
-type TypeRef    = String
 type Name       = String
 
 \end{code}
