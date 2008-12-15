@@ -59,6 +59,11 @@ FooBar {1 2 3 4 5 6} DEFINITIONS ::=
   END
 \end{asn1}
 
+In this paper we will present ASN.1 types and values using {\tt teletext} font and Haskell
+code and expressions using {\em italic} font. The paper includes the actual Haskell
+implementation of PER. Any code segments are separated from the main text of the paper by a
+newline.
+
 %include ASNTYPE.lhs
 
 \section{Encoding and Decoding}
@@ -613,7 +618,7 @@ There are three cases to deal with:
 \item
 There is no extension marker. The enumerations are indexed
 based on their (explicit or implicit) values. Thus each
-enumeration without an explcit value, is given a value that is not
+enumeration without an explicit value, is given a value that is not
 already explcitly assigned (assignNumber) on a first come/first
 serve basis. The indexes are then assigned in ascending
 order where the first index is 0 (assignIndex). The total number of
@@ -640,31 +645,31 @@ encoding.
 
 \begin{code}
 
-lEncodeEnum :: Enumerate a -> a -> PerEncoding
+lEncodeEnum :: Enumerate a -> ExactlyOne a OneValue -> PerEncoding
 lEncodeEnum e x
     = let (b,inds) = assignIndex e
           no = genericLength inds
       in
         encodeEnumAux b no inds e x
 
-encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> a
+encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> ExactlyOne a n
                  -> PerEncoding
-encodeEnumAux b no (f:r) (EnumOption _ es) (Just n :*:rest)
+encodeEnumAux b no (f:r) (AddEnumeration  _ es) (AddAValue a rest)
     = if not b
         then return (encodeNNBIntBits (f, no-1))
         else return (0: encodeNNBIntBits (f, no-1))
-encodeEnumAux b no (f:r) (EnumOption _ es) (Nothing :*: rest)
+encodeEnumAux b no (f:r) (AddEnumeration  _ es) (AddNoValue a rest)
     = encodeEnumAux b no r es rest
-encodeEnumAux b no inds (EnumExt ex) x
+encodeEnumAux b no inds (EnumerationExtensionMarker   ex) x
     = let el = noEnums ex
       in encodeEnumExtAux 0 el ex x
 encodeEnumAux _ _ _ _ _ = throwError "No enumerated value!"
 
-encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> a
+encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> ExactlyOne a n
                     -> PerEncoding
-encodeEnumExtAux i l (EnumOption _ es) (Just n :*:rest)
+encodeEnumExtAux i l (AddEnumeration  _ es) (AddAValue a rest)
     = return (1:encodeNSNNInt i 0)
-encodeEnumExtAux i l (EnumOption _ es) (Nothing :*:rest)
+encodeEnumExtAux i l (AddEnumeration  _ es) (AddNoValue a rest)
     = encodeEnumExtAux (i+1) l es rest
 encodeEnumExtAux i l _ _ = throwError "No enumerated extension value!"
 
@@ -682,23 +687,23 @@ assignNumber en b ls
         assignN ([0..] \\ nn) en b ls
 
 assignN :: [Integer] -> Enumerate a -> Bool -> [Integer] -> (Bool, [Integer])
-assignN (f:xs) NoEnum b ls = (b,reverse ls)
-assignN (f:xs) (EnumOption (NamedNumber _ i) r)b ls = assignN (f:xs) r b (i:ls)
-assignN (f:xs) (EnumOption _ r) b ls = assignN xs r b (f:ls)
-assignN (f:xs) (EnumExt r) b ls = (True, reverse ls)
+assignN (f:xs) EmptyEnumeration b ls = (b,reverse ls)
+assignN (f:xs) (AddEnumeration  (NamedNumber _ i) r)b ls = assignN (f:xs) r b (i:ls)
+assignN (f:xs) (AddEnumeration  _ r) b ls = assignN xs r b (f:ls)
+assignN (f:xs) (EnumerationExtensionMarker   r) b ls = (True, reverse ls)
 assignN [] _ _ _ = error "No numbers to assign"
 
 
 getNamedNumbers :: Enumerate a -> [Integer]
-getNamedNumbers NoEnum = []
-getNamedNumbers (EnumOption (NamedNumber _ i) r) = i:getNamedNumbers r
-getNamedNumbers (EnumOption _ r) = getNamedNumbers r
-getNamedNumbers (EnumExt r)  = []
+getNamedNumbers EmptyEnumeration = []
+getNamedNumbers (AddEnumeration  (NamedNumber _ i) r) = i:getNamedNumbers r
+getNamedNumbers (AddEnumeration  _ r) = getNamedNumbers r
+getNamedNumbers (EnumerationExtensionMarker   r)  = []
 
 noEnums :: Enumerate a -> Integer
-noEnums NoEnum = 0
-noEnums (EnumOption _ r) = 1 + noEnums r
-noEnums (EnumExt r)  = 0
+noEnums EmptyEnumeration = 0
+noEnums (AddEnumeration  _ r) = 1 + noEnums r
+noEnums (EnumerationExtensionMarker   r)  = 0
 
 positions [] sls = []
 positions (f:r) sls
