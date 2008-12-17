@@ -197,7 +197,7 @@ We present in table \ref{ASN1Builtin} some examples of how we represent ASN.1 bu
 {\tt BooleanType} & {\em BOOLEAN}\\
 {\tt IntegerType} & {\em INTEGER}\\
 {\tt SEQUENCE {}} & {\em SEQUENCE Nil}\\
-{\tt SEQUENCE {a INTEGER, b BOOLEAN} & {\em SEQUENCE }\\
+{\tt SEQUENCE \{a INTEGER, b BOOLEAN\} & {\em SEQUENCE }\\
 & \hspace{0.2cm}{\em (AddComponent aComponent}\\
 & \hspace{0.4cm}{\em (AddComponent bComponent Nil))}
 \end{tabular}
@@ -214,23 +214,22 @@ presented in section \ref{sequence}.
 We will leave illustrative examples of constrained types until we have described our
 representation of ASN.1 constraints. An ASN.1 referenced type is typically simply the type
 reference component of a type assignment. However, since we require the compile-time type
-checker to raise any type errors, we need to associate any type reference with its type. Thus
-
-\begin{verbatim}
-ReferencedType (Ref "T") (BuiltinType INTEGER)
-\end{verbatim}
+checker to raise any type errors, we need to associate any type reference with its type.
+Thus\\
+{\em ReferencedType (Ref "T") (BuiltinType INTEGER)}\\
 represents a reference to the ASN.1 type {\tt IntegerType}. Although this appears simply to
 add unnecessary complexity to the code, it allows us to faithfully pretty print ASN.1 types.
 
 The last builtin type example uses a value of the {\em Sequence} type which requires some explanation. This
-will be followed by an explanation of our representation of the ASN.1 {\tt ChoiceType} and
-{\tt SequenceOfType}
+will be followed by an explanation of our representation of the ASN.1 {\tt ChoiceType},
+{\tt EnumeratedType} and {\tt SequenceOfType}
 
 \subsection{ASN.1 SequenceType}
 \label{sequence}
 
 A sequence type is a (possibly heterogeneous) collection of component types. The normal approach in Haskell
-when representing a collection of items is to use the builtin list type. However, each item of a list must be
+when representing a collection of items is to use the builtin list type. However, each item of a
+list {\em must} be
 of the same Haskell type and thus is inappropriate for a sequence. Instead we use a new GADT {\em Sequence}
 which is presented below. It has four constructors for building sequence types.
 \begin{itemize}
@@ -254,8 +253,10 @@ existing sequence type.
 data Sequence a where
    EmptySequence            :: Sequence Nil
    ExtensionMarker          :: Sequence l -> Sequence l
-   ExtensionAdditionGroup   :: VersionNumber -> Sequence a -> Sequence l -> Sequence (Maybe a :*: l)
-   AddComponent             :: ComponentType a -> Sequence l -> Sequence (a:*:l)
+   ExtensionAdditionGroup   :: VersionNumber -> Sequence a -> Sequence l
+                                                -> Sequence (Maybe a :*: l)
+   AddComponent             :: ComponentType a -> Sequence l
+                                                -> Sequence (a:*:l)
 
 data VersionNumber = NoVersionNumber | Version Int
 \end{code}
@@ -273,37 +274,39 @@ instance (Show a, Show l) => Show (a:*:l) where
    show (x:*:xs) = show x ++ ":*:" ++ show xs
 \end{code}
 
-Here are some illustrative example sequences and their types.
-\begin{itemize}
-\item
-{\em AddComponent} ...component of type {\em Integer} {\em Nil} has
-type {\em Sequence (Integer :*: Nil)}. We will refer to this sequence as {\em sequence1}.
-\item
-{\em AddComponent} ...component of type {\em Bool} (AddComponent ...component of type {\em
-String} {\em Nil} has type {\em Sequence (Bool :*: String :*: Nil)}. We will refer to this
-sequence as {\em sequence2}.
-\item
-{\em AddComponent} ...component of type {\em (Integer :*: Nil)} {\em (ExtensionMarker
-(ExtensionAdditionGroup} ...component of type {\em Integer} {\em Nil))} has type
-{\em Sequence ((Integer :*: Nil) :*: (Maybe Integer) :*: Nil}. We will refer to this
-sequence as {\em sequence3}.
-\end{itemize}
+In table \ref{sequenceEqs} we present some illustrative example sequences and their types.
 
+\begin{table}[h]
+\caption{Example Sequences}
+\label{sequenceEqs}
+\begin{tabular}{ll}
+{\bf Sequence} & {\bf Haskell Type}  \\
+{\em AddComponent integerComponent Nil} & {\em Sequence (Integer :*: Nil)}\\
+{\em AddComponent boolComponent} & \\
+\hspace{1cm} {\em (AddComponent stringComponent Nil)} & {\em Sequence (Bool :*: String :*: Nil)}\\
+{\em AddComponent integerComponent} & \\
+\hspace{1cm} {\em (ExtensionMarker (ExtensionAdditionGroup} & \\
+\hspace{2cm} {\em integerComponent Nil))} & {\em Sequence (Integer :*: Maybe Integer :*: Nil}
+\end{tabular}
+\end{table}
+To avoid providing full a representation of sequence components we have given them the names
+such as {\em integerComponent}. We will later refer to the examples in table \ref{sequenceEqs}
+as {\em sequence1}, {\em sequence2} and {\em sequence3} respectively.
 
 
 Thus the type of a sequence depends on the number and type of components. This explicit type
 information is required because the encoding of a sequence (and for that matter any value)
 depends on its actual type. That is, the function that
-encodes a value of a builtin type {\em toPER} takes a {\em ASNBuiltin} type and a value of this type
+encodes a value of a builtin type, {\em toPER}, takes a {\em ASNBuiltin} type and a value of this type
 (as well as some constraint information) and calls the appropriate encoding function which is determined
-by the input type. The type of this function (which is defined in the module {\em PER}) is
+by the {\em ASNBuiltin} type. The type of this function (which is defined in the module {\em PER}) is
 
 \begin{verbatim}
 toPer :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> PerEncoding
 \end{verbatim}
 
-Now continuing with the illustrative examples provided above we can create two
-{\em ASNBuiltin} values as follows.
+Now continuing with the illustrative examples provided in table \ref{sequenceEqs} we can create
+the following {\em ASNBuiltin} types.
 
 \begin{itemize}
 \item
@@ -486,6 +489,7 @@ data Enumerate a where
 
 \end{code}
 
+\subsection{SequenceOfType}
 
 
 A {\tt ReferencedType} is:
