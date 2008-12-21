@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fwarn-unused-imports -fwarn-incomplete-patterns
+                -XScopedTypeVariables
 #-}
 
 -----------------------------------------------------------------------------
@@ -47,15 +48,24 @@ referenceTypeAndVal (ConstrainedType _ _) _ =
 referenceTypeAndVal (BuiltinType b) v =
    error "I don't know how to create C for a BuiltinType"
 
-referenceTypeAndValAux1 :: [Name] -> ASNType a -> a -> Doc
+referenceTypeAndValAux1 :: Prefix -> ASNType a -> a -> Doc
 referenceTypeAndValAux1 ns (BuiltinType b) v =
    referenceTypeAndValAux2 ns b v
 
-referenceTypeAndValAux2 :: [Name] -> ASNBuiltin a -> a -> Doc
+referenceTypeAndValAux2 :: Prefix -> ASNBuiltin a -> a -> Doc
 referenceTypeAndValAux2 ns INTEGER      x = lhs ns <> text " = " <> text (show x) <> semi
 referenceTypeAndValAux2 ns (SEQUENCE s) x = cSEQUENCE ns s x
 
-cSEQUENCE = undefined
+cSEQUENCE :: Prefix -> Sequence a -> a -> Doc
+cSEQUENCE _ EmptySequence _ = 
+   empty
+cSEQUENCE ns (AddComponent t ts) (x:*:xs) =
+   cComponent (".":ns) t x $$
+   cSEQUENCE ns ts xs
+
+cComponent :: Prefix -> ComponentType a -> a -> Doc
+cComponent ns (MandatoryComponent (NamedType n t)) x =
+   referenceTypeAndValAux1 (n:ns) t x
 
 type Prefix = [Name]
 
@@ -68,3 +78,25 @@ lhs ns =
       components = hcat (map text xs)
 
 
+eg1 = referenceTypeAndVal (ReferencedType (Ref "MyType") (BuiltinType INTEGER)) (Val 3)
+
+eg2 = 
+   referenceTypeAndVal
+      (ReferencedType (Ref "Type2") (BuiltinType (SEQUENCE (AddComponent mc2 (AddComponent mc1 EmptySequence)))))
+      ((Val 5) :*: ((Val 3) :*: Empty))      
+   where 
+      mc1 = MandatoryComponent (NamedType "component1" (BuiltinType INTEGER))
+      mc2 = MandatoryComponent (NamedType "component2" (BuiltinType INTEGER))
+
+eg3 = 
+   referenceTypeAndVal
+      (ReferencedType (Ref "Type3") (BuiltinType (SEQUENCE (AddComponent mc3 (AddComponent mc4 EmptySequence))))) y
+   where 
+      mc1 = MandatoryComponent (NamedType "component1" (BuiltinType INTEGER))
+      mc2 = MandatoryComponent (NamedType "component2" (BuiltinType INTEGER))
+      mc3 = MandatoryComponent (NamedType "component3" s1)
+      mc4 = MandatoryComponent (NamedType "component4" s1)
+      s1  = BuiltinType (SEQUENCE (AddComponent mc1 (AddComponent mc2 EmptySequence)))
+      x   = (Val 5) :*: ((Val 3) :*: Empty)
+      y   = x :*: ( x :*: Empty)
+       
