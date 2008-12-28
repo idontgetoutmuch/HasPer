@@ -4,7 +4,7 @@
 
 -----------------------------------------------------------------------------
 -- |
--- Module      : Language.ASN1.PER.Integer
+-- Module      : Language.ASN1.PER.GenerateC
 -- Copyright   : Dominic Steinitz
 -- License     : BSD3-style (see LICENSE)
 --
@@ -21,8 +21,57 @@ module GenerateC
 
 import Text.PrettyPrint
 import Data.Char
+import Data.Time
 
 import ASNTYPE
+
+cMain :: ASNType a -> a -> IO Doc
+cMain t x =
+   do zt <- getZonedTime       
+      return (creationData zt $$ includeFiles t $$ fileFunction)
+   
+
+-- | Display date and time of file creation
+creationData :: ZonedTime -> Doc
+creationData zt =
+   text "/*" $$
+   text "*" $$
+   text "* Created by the Haskell ASN.1 Test Framework" <+> text (show zt) $$
+   text "*" $$
+   text "*/" $$
+   space
+
+-- | Include the relevant .h files
+includeFiles :: ASNType a -> Doc
+includeFiles (ReferencedType r _) =
+   text "#include <stdio.h>   /* for stdout */" $$
+   text "#include  <stdlib.h> /* for malloc () */" $$
+   text "#include  <assert.h> /* for run-time control */" $$
+   text "#include \"" <> text name <> text ".h\"" <> space <> text "/* " <> text name <> text " ASN.1 type */" $$
+   space
+   where
+      name = ref r
+
+-- | A function to write to file
+fileFunction = 
+   vcat [
+      text "/*",
+      text " * This is a custom function which writes the",
+      text " * encoded output into some FILE stream.",
+      text " */",
+      space,
+      text "static int",
+      text "write_out(const void *buffer, size_t size, void *app_key) {",
+      nest 5 (
+         vcat [
+            text "FILE *out_fp = app_key;",
+            text "size_t wrote;",
+            text "wrote = fwrite(buffer, 1, size, out_fp);",
+            text "return (wrote == size) ? 0 : -1;"
+            ]
+         ),
+      text "}"
+      ]
 
 -- | Allocate memory for a variable
 allocPointer :: String -> Doc
@@ -89,14 +138,19 @@ eg2 =
       mc2 = MandatoryComponent (NamedType "component2" (BuiltinType INTEGER))
 
 eg3 = 
-   referenceTypeAndVal
-      (ReferencedType (Ref "Type3") (BuiltinType (SEQUENCE (AddComponent mc3 (AddComponent mc4 EmptySequence))))) y
+   referenceTypeAndVal rt3 y
+   where
+      x   = (Val 5) :*: ((Val 3) :*: Empty)
+      y   = x :*: ( x :*: Empty)
+
+
+rt3 =
+   (ReferencedType (Ref "Type3") (BuiltinType (SEQUENCE (AddComponent mc3 (AddComponent mc4 EmptySequence)))))
    where 
       mc1 = MandatoryComponent (NamedType "component1" (BuiltinType INTEGER))
       mc2 = MandatoryComponent (NamedType "component2" (BuiltinType INTEGER))
       mc3 = MandatoryComponent (NamedType "component3" s1)
       mc4 = MandatoryComponent (NamedType "component4" s1)
       s1  = BuiltinType (SEQUENCE (AddComponent mc1 (AddComponent mc2 EmptySequence)))
-      x   = (Val 5) :*: ((Val 3) :*: Empty)
-      y   = x :*: ( x :*: Empty)
-       
+
+
