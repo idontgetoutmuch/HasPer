@@ -24,11 +24,12 @@ import Data.Char
 import Data.Time
 
 import ASNTYPE
+import NewTestData
 
 cMain :: ASNType a -> a -> IO Doc
 cMain t x =
    do zt <- getZonedTime       
-      return (creationData zt $$ includeFiles t $$ fileFunction)
+      return (creationData zt $$ includeFiles t $$ fileFunction $$ referenceTypeAndVal t x)
    
 
 -- | Display date and time of file creation
@@ -142,15 +143,3 @@ eg3 =
    where
       x   = (Val 5) :*: ((Val 3) :*: Empty)
       y   = x :*: ( x :*: Empty)
-
-
-rt3 =
-   (ReferencedType (Ref "Type3") (BuiltinType (SEQUENCE (AddComponent mc3 (AddComponent mc4 EmptySequence)))))
-   where 
-      mc1 = MandatoryComponent (NamedType "component1" (BuiltinType INTEGER))
-      mc2 = MandatoryComponent (NamedType "component2" (BuiltinType INTEGER))
-      mc3 = MandatoryComponent (NamedType "component3" s1)
-      mc4 = MandatoryComponent (NamedType "component4" s1)
-      s1  = BuiltinType (SEQUENCE (AddComponent mc1 (AddComponent mc2 EmptySequence)))
-
-

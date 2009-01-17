@@ -12,6 +12,9 @@ import Language.ASN1 (
    )
 import Text.PrettyPrint
 
+import NewTestData -- FIXME: For temporary testing - testing should
+                   -- really be done outside of the module being tested
+
 prettyType :: ASNType a -> Doc
 prettyType (BuiltinType bt) = prettyBuiltinType  bt
 prettyType (ConstrainedType  (BuiltinType (SEQUENCEOF t)) e) =
