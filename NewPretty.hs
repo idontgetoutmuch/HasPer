@@ -16,6 +16,7 @@ import NewTestData -- FIXME: For temporary testing - testing should
                    -- really be done outside of the module being tested
 
 prettyType :: ASNType a -> Doc
+prettyType (ReferencedType r t) = prettyReferencedType r t
 prettyType (BuiltinType bt) = prettyBuiltinType  bt
 prettyType (ConstrainedType  (BuiltinType (SEQUENCEOF t)) e) =
    text "SEQUENCE" <+>
@@ -57,6 +58,8 @@ prettyBuiltinType (SET s) =
    text "SET" <> space <> braces (prettySeq s)
 prettyBuiltinType (SEQUENCEOF t) =
    text "SEQUENCE OF" <+> prettyType t
+
+prettyReferencedType r t = text (ref r) <+> text "::=" <+> prettyType t
 
 prettyChoice :: Choice a -> Doc
 prettyChoice EmptyChoice =
@@ -138,7 +141,6 @@ instance Pretty InfInteger where
 
 prettyTypeVal :: ASNType a -> a -> Doc
 prettyTypeVal (BuiltinType INTEGER) x = pretty x
-
 
 prettyElementTypeVal :: ComponentType a -> a -> Doc
 prettyElementTypeVal (MandatoryComponent (NamedType n t)) x =
