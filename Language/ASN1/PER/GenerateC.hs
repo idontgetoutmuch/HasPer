@@ -14,10 +14,12 @@
 -- TBD
 -----------------------------------------------------------------------------
 
-module GenerateC
+module Language.ASN1.PER.GenerateC where
+{-
    (
      allocPointer
    ) where
+-}
 
 import Text.PrettyPrint
 import Data.Char
@@ -30,7 +32,77 @@ cMain :: ASNType a -> a -> IO Doc
 cMain t x =
    do zt <- getZonedTime       
       return (creationData zt $$ includeFiles t $$ fileFunction $$ referenceTypeAndVal t x)
-   
+
+cComment :: Doc -> Doc
+cComment x = text "/*" <+> x <+> text "*/"
+
+-- mainC :: NamedType a -> a -> Doc
+mainC (ReferencedType r ct) v = 
+   foldr ($+$) empty [
+      text "int main(int ac, char **av) {",
+      nest 2 (
+         vcat [
+              space
+            , cComment (text "Declare a pointer to a" <+> text name <+> text "type")
+            , cType <+> text "*" <> cPtr <> semi
+            , space
+            , cComment (text "Encoder return value")
+            , text "asn_enc_rval_t ec;"
+            , space
+            , text "/* Allocate an instance of " <+> text name <+> text "*/"
+            , cPtr <> text " = calloc(1, sizeof(" <> cType <> text ")); /* not malloc! */"
+            , text "assert(" <> cPtr <> text "); /* Assume infinite memory */"
+            , space
+            , text "/* Initialize" <+> text name <+> text "*/"
+{-
+            newTopLevelNamedTypeValC nt v, -- sequenceC cPtr ntSeq v,
+            space,
+            text "if(ac < 2) {",
+            nest 5 (text "fprintf(stderr,\"Specify filename for PER output\\n\");"),
+            text "} else {",
+            nest 5 (
+               vcat [
+                  text "const char *filename = av[1];",
+                  text "FILE *fp = fopen(filename,\"wb\");    /* for PER output */",
+                  text "if(!fp) {",
+                  nest 5 (
+                     vcat [
+                        text "perror(filename);",
+                        text "exit(71); /* better, EX_OSERR */"
+                        ]
+                     ),
+                  text "}",
+                  text "/* Encode " <> text name <> text " as PER */",
+                  text "ec = uper_encode(&asn_DEF_" <> text name <> text "," <> cPtr <> text ",write_out,fp);",
+                  text "fclose(fp);",
+                  text "if(ec.encoded == -1) {",
+                  nest 5 (
+                     vcat [
+                        text "fprintf(stderr,\"Could not encode " <> text name <> text " (at %s)\\n\",",
+                        text "ec.failed_type ? ec.failed_type->name : \"unknown\");"
+                        ]
+                     ),
+                  text "exit(65); /* better, EX_DATAERR */",
+                  text "} else {",
+                  text "fprintf(stderr,\"Created %s with PER encoded " <> text name <> text "\\n\",filename);",
+                  text "}"
+                  ]
+               ),
+               text "}",
+               text "/* Also print the constructed " <> text name <> text " XER encoded (XML) */",
+               text "xer_fprint(stdout,&asn_DEF_" <> text name <> text "," <> cPtr <> text ");",
+               text "return 0; /* Encoding finished successfully */"
+-}
+            ]
+         ),
+         text "}\n"
+      ]
+   where
+      cPtr = text (lowerFirst name)
+      cType = text name <> text "_t"
+      name = ref r
+--       (NamedType _ _ ntType) = nt
+--       (SEQUENCE ntSeq) = ntType
 
 -- | Display date and time of file creation
 creationData :: ZonedTime -> Doc

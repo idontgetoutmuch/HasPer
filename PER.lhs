@@ -1891,6 +1891,8 @@ findV m (a:rs)
 
 type ElementSetSpecs a = SubtypeConstraint a
 
+fromPER x = decode4 x []
+
 decode4 (BuiltinType t) cl = fromPer3 t cl
 decode4 (ConstrainedType t c) cl = decode4 t (c:cl)
 
