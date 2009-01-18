@@ -70,15 +70,7 @@ prettyChoice (ChoiceOption nt xs) =
    vcat [prettyNamedType nt <> comma, prettyChoice xs]
 
 prettyNamedType :: NamedType a -> Doc
-prettyNamedType (NamedType n (BuiltinType (TAGGED (tt,tv,tp) t))) =
-         case tt of
-            Context ->
-               text n <+> brackets (text (show tv)) <+> prettyPlicity tp <+> prettyType t
-            _ ->
-               text n <+> brackets (text (show tt) <+> text (show tv)) <+> prettyPlicity tp <+> prettyType t
-prettyNamedType (NamedType n ct) = prettyType ct
-
-
+prettyNamedType (NamedType n ct) = text n <+> prettyType ct
 
 prettyPlicity Implicit = text "IMPLICIT"
 prettyPlicity Explicit = text "EXPLICIT"

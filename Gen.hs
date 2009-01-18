@@ -5,7 +5,6 @@ import NewPretty
 import NewTestData
 import ASNTYPE
 import Text.PrettyPrint
-import Control.Arrow hiding ((<+>))
 
 -- FIXME: For the time being we only allow one defintion in a module.
 -- We probably used existential types in QuickTest. We could either
