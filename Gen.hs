@@ -1,32 +1,25 @@
-import Rename
-import Relabel
-import Pretty
-import TestData
-import Asn1cTest
-import ConstrainedType
+-- FIXME: NewPretty and NewTestData should really be Pretty and
+-- TestData.
+
+import NewPretty
+import NewTestData
+import ASNTYPE
 import Text.PrettyPrint
 import Control.Arrow hiding ((<+>))
 
-prettyModuleWithVals :: [ASNType a] -> [a] -> Doc
-prettyModuleWithVals xs ys =
+-- FIXME: For the time being we only allow one defintion in a module.
+-- We probably used existential types in QuickTest. We could either
+-- do this e.g. with a class that has a pretty function or maybe by
+-- anoter tupling function / combinator like (:*:).
+prettyModule :: ASNType a -> Doc
+prettyModule xs =
    text "FooBar {1 2 3 4 5 6} DEFINITIONS ::="
    $$
    nest 2 (text "BEGIN")
    $$
-   nest 4 (prettyModuleValsBody xs ys)
+   nest 4 (prettyModuleBody xs)
    $$
    nest 2 (text "END")
 
-genAss :: [ASNType a] -> [ASNType a]
-genAss ts = zipWith ($) (map (\t -> \n -> TYPEASS ("Type" ++ (show n)) Nothing t) ts) [1..]
-
-prettyModuleValsBody xs ys = 
-   vcat (map (uncurry ($$)) (prefixPairs (map valueTypeName prefixes) tsvs))
-   where 
-      tsvs = map (\(x,y) -> (prettyType x, prettyTypeVal x y)) (zipWith (,) (genAss xs) ys)
-      typeNames = const empty 
-      valueNames = (text "value" <>) . text 
-      prefixes = map ((typeNames &&& valueNames) . show) [1..]
-      valueTypeName (t,v) = (t, v <+> t)
-      prefixPairs ps xs = zipWith (\(p1,p2) (t,v) -> ((p1 <+> t), (p2 <+> v))) ps tsvs
-
+prettyModuleBody xs = 
+   prettyType xs
