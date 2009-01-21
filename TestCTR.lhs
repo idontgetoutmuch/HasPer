@@ -21,7 +21,7 @@ import Text.PrettyPrint
 import NewPretty
 import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitGet as BG
-import qualified Data.Binary.Strict.BitPut as BP
+import qualified Data.Binary.BitPut as BP
 import Control.Monad.Error
 
 import LatticeMod
