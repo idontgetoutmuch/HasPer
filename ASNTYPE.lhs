@@ -134,7 +134,7 @@ data ASNBuiltin a where
    BITSTRING       :: NamedBits -> ASNBuiltin BitString
    BOOLEAN         :: ASNBuiltin Bool
    INTEGER         :: ASNBuiltin InfInteger
-   ENUMERATED      :: Enumerate a -> ASNBuiltin (ExactlyOne a OneValue)
+   ENUMERATED      :: Enumerate a -> ASNBuiltin (ExactlyOne a SelectionMade)
    OCTETSTRING     :: ASNBuiltin OctetString
    PRINTABLESTRING :: ASNBuiltin PrintableString
    IA5STRING       :: ASNBuiltin IA5String
@@ -147,7 +147,7 @@ data ASNBuiltin a where
    SEQUENCEOF      :: ASNType a -> ASNBuiltin [a]
    SET             :: Sequence a -> ASNBuiltin a
    SETOF           :: ASNType a -> ASNBuiltin [a]
-   CHOICE          :: Choice a -> ASNBuiltin (ExactlyOne a OneValue)
+   CHOICE          :: Choice a -> ASNBuiltin (ExactlyOne a SelectionMade)
    TAGGED          :: TagInfo -> ASNType a -> ASNBuiltin a
 
 \end{code}
@@ -216,7 +216,7 @@ The last built-in type example uses a value of the {\em Sequence} type which is 
 section \ref{sequence}. This is followed by descriptions of our represenations of the ASN.1 {\tt
 ChoiceType}, {\tt EnumeratedType} and {\tt SequenceOfType}
 
-\subsection{ASN.1 ConstrainedType}
+\subsection{ASN.1 ReferencedType}
 \label{constraint}
 An ASN.1 referenced type is typically simply the type
 reference component of a type assignment. However, since we require the compile-time type
@@ -228,7 +228,253 @@ For example\\
 represents a reference to the ASN.1 type {\tt IntegerType}. Although this appears simply to
 add unnecessary complexity to the code, it allows us to faithfully pretty print ASN.1 types.
 
-\subsection{ADN.1 ReferencedType}
+\subsection{ASN.1 ConstrainedType}
+\label{constraint}
+
+A {\tt ConstrainedType} is either a
+\begin{itemize}
+\item
+a type associated with a {\tt Constraint} or
+\item
+a {\tt SETOF} or {\tt SEQUENCEOF} type with a constraint on the collection
+type. That is, the usual type constraint construct implies that
+the constraint is applied to the component type of a collection
+type, and not to the collection itself.
+\end{itemize}
+
+A {\tt Constraint} is either a {\tt SubtypeConstraint} or a {\tt
+GeneralConstraint} with or without an exception. We have only implemented subtype contraints.
+
+Now a {\tt SubtypeConstraint} can be non-extensible, extensible but as yet have no extension
+additions, or be extensible with extension additions. Our type {\em Subtypeconstraint}
+provides for each of these cases.
+
+\begin{code}
+
+data SubtypeConstraint a where
+    RootOnly :: ConstraintSet a -> SubtypeConstraint a
+    EmptyExtension :: ConstraintSet a -> SubtypeConstraint a
+    NonEmptyExtension :: ConstraintSet a -> ConstraintSet a -> SubtypeConstraint a
+
+\end{code}
+
+The root and extension addition components of a subtype constraint are values of type
+{\em ConstraintSet}. These are constraints that are specified as a combination of atomic
+constraints. They are combined using set operations. At the top-most level a constraint is
+either a union of sub-constraints or the complement of a constraint.
+
+\begin{code}
+
+data ConstraintSet a where
+ UnionSet        :: Union a -> ConstraintSet a
+ ComplementSet   :: Excl a  -> ConstraintSet a
+
+\end{code}
+
+
+
+\begin{code}
+
+data Union a = IC (IntCon a) | UC (Union a) (IntCon a)
+
+\end{code}
+
+\begin{code}
+
+newtype TypeReference = Ref {ref :: String}
+
+data Null = Null
+    deriving Show
+
+data InfInteger = NegInf | Val Integer | PosInf
+    deriving (Show, Ord, Eq)
+
+instance Bounded InfInteger where
+   minBound = NegInf
+   maxBound = PosInf
+
+instance Num InfInteger where
+   PosInf + _ = PosInf
+   _ + PosInf = PosInf
+   NegInf + _ = NegInf
+   _ + NegInf = NegInf
+   (Val x) + (Val y) = Val (x + y)
+   PosInf - _ = PosInf
+   _ - PosInf = NegInf
+   NegInf - _ = NegInf
+   _ - NegInf = PosInf
+   (Val x) - (Val y) = Val (x - y)
+   fromInteger v = Val v
+\end{code}
+
+
+-- Type aliases
+\begin{code}
+
+type TagInfo    = (TagType, TagValue, TagPlicity)
+type Name       = String
+
+\end{code}
+
+Type Classes which make explicit the (not necessarily PER-visible) subtypes associated with the ASN.1 types.
+
+See X.680 (07/2002) Section 47.1 Table 9
+
+\begin{code}
+
+class SingleValue a
+
+instance SingleValue BitString
+instance SingleValue InfInteger
+instance SingleValue VisibleString
+instance SingleValue PrintableString
+instance SingleValue NumericString
+instance SingleValue UniversalString
+instance SingleValue BMPString
+instance SingleValue IA5String
+
+class ContainedSubtype a
+
+instance ContainedSubtype BitString
+instance ContainedSubtype InfInteger
+instance ContainedSubtype VisibleString
+instance ContainedSubtype PrintableString
+instance ContainedSubtype NumericString
+instance ContainedSubtype UniversalString
+instance ContainedSubtype BMPString
+instance ContainedSubtype IA5String
+
+
+class ValueRange a
+
+instance ValueRange IA5String
+instance ValueRange PrintableString
+instance ValueRange NumericString
+instance ValueRange VisibleString
+instance ValueRange UniversalString
+instance ValueRange BMPString
+instance ValueRange InfInteger
+
+
+class PermittedAlphabet a
+
+instance PermittedAlphabet IA5String
+instance PermittedAlphabet PrintableString
+instance PermittedAlphabet NumericString
+instance PermittedAlphabet VisibleString
+instance PermittedAlphabet UniversalString
+instance PermittedAlphabet BMPString
+
+
+
+class SizeConstraint a
+
+instance SizeConstraint [a]
+instance SizeConstraint IA5String
+instance SizeConstraint PrintableString
+instance SizeConstraint NumericString
+instance SizeConstraint VisibleString
+instance SizeConstraint UniversalString
+instance SizeConstraint BMPString
+instance SizeConstraint BitString
+instance SizeConstraint OctetString
+
+class InnerType a
+
+instance InnerType (Choice a)
+instance InnerType  (Sequence a)
+instance InnerType [a]
+\end{code}
+
+
+
+
+
+
+\begin{code}
+
+type NamedBits = [NamedBit]
+
+data NamedBit = NB String Int
+
+\end{code}
+Definition of Constraint Type
+
+\begin{code}
+-- This current version of the constraint type has ignored exceptions (see X.680 45.6)
+
+type SerialSubtypeConstraints a = [SubtypeConstraint a]
+
+data IntCon a = INTER (IntCon a) (IE a) | ATOM (IE a)
+
+data Excl a = EXCEPT (Elem a)
+
+data IE a = E (Elem a) | Exc (Elem a) (Excl a)
+
+data Elem a = S (SV a) | C (CT a) | V (VR a) | SZ (Sz a) | P (PA a) | IT (IS a)
+
+data SV a = SingleValue a => SV a
+
+data CT a = ContainedSubtype a => Inc (ASNType a)
+
+data VR a = ValueRange a => R (a,a)
+
+data Sz a = SizeConstraint a => SC (SubtypeConstraint InfInteger)
+
+data PA a = PermittedAlphabet a => FR (SubtypeConstraint a)
+
+--IS to be completed for multiple type constraints
+data IS a = InnerType a => WC (SubtypeConstraint a) | WCS
+
+-- Type constraint (constraining an open type) to be done (47.6)
+-- Pattern constraint to be done.
+
+newtype IA5String = IA5String {iA5String :: String}
+    deriving (Eq, Show)
+newtype BitString = BitString {bitString :: BitStream}
+    deriving (Eq, Show)
+newtype OctetString = OctetString {octetString :: OctetStream}
+    deriving (Eq, Show)
+newtype PrintableString = PrintableString {printableString :: String}
+    deriving (Eq, Show)
+newtype NumericString = NumericString {numericString :: String}
+    deriving (Eq, Show)
+newtype VisibleString = VisibleString {visibleString :: String}
+    deriving (Eq, Show)
+newtype UniversalString = UniversalString {universalString :: String}
+    deriving (Eq, Show)
+newtype BMPString = BMPString {bmpString :: String}
+    deriving (Eq, Show)
+
+type BitStream = [Int]
+type Octet = Word8
+type OctetStream = [Octet]
+
+-- Some constraint-related types
+
+data IntegerConstraint = IntegerConstraint {lower :: InfInteger, upper :: InfInteger}
+   deriving (Show, Eq)
+
+-- ValidIntegerConstraint is used for the validity testing of a value against a constraint. Thus, unlike an
+-- effective constraint (which is used to produce encoding in a small number of bits) and is always a contiguous
+-- set of values, this type represents the true result of set combinations of constraints which may be non-contiguous.
+
+data ValidIntegerConstraint = Valid [IntegerConstraint]
+    deriving (Show, Eq)
+
+data ConType i = ConType {conType :: i}
+    deriving (Show, Eq)
+
+data ExtBS i = ExtBS i i Bool
+    deriving (Show, Eq)
+
+
+data ResStringConstraint a i = ResStringConstraint a i
+    deriving (Show,Eq)
+
+data ExtResStringConstraint a = ExtResStringConstraint a a Bool
+    deriving (Show, Eq)
+\end{code}
 
 \subsection{ASN.1 SequenceType}
 \label{sequence}
@@ -415,37 +661,40 @@ the number of actual values in the list. It has the following constructors:
 \begin{itemize}
 \item
 {\em EmptyList} which is the base case for this type - the empty list. It has the type
-{\em ExactlyOne Nil ZeroValues} where {\em ZeroValues} - a type with no associated values
-- is a type indicating no values.
+{\em ExactlyOne Nil NoSelectionMade} where {\em NoSelectionMade} - a type with no associated values
+- is a type indicating that no choice has yet been made.
 \item
 {\em AddAValue} which adds a value to a list.
-Its return type is {\em ExactlyOne (a:*:l) OneValue)} indicating that the list now
-has one value; and
+Its return type is {\em ExactlyOne (a:*:l) SelectionMade)} indicating a choice has now been made.
+{\em SelectionMade} is also a type with no associated values; and
 \item
-{\em NoAddAValue} which adds no value (of the appropriate type -- hence the use
-of the phantom type {\em Phantom a}) to a list. In this case the number of values in the
+{\em AddNoValue} which adds no value (of the appropriate type -- hence the use
+of the phantom type {\em NoValue a}) to a list. In this case the number of values in the
 list is not incremented.
 \end{itemize}
 
+A phantom type is one in which a type variable appears only on the left hand side of the
+type's definition. Thus a value of the type -- such as {\em NoValue} -- can match many
+different types. We use this as a placeholder for the non-selected components of a choice (and
+enumerated) type which will need to satisfy the various component types.
+
 It is important to have the constructors {\em AddAValue} and {\em AddNoValue} so that there is
 a match between the choice value and the choice type. That is, the overall choice value has the
-appropriate type, and the particulat choice of value has the required type.
+appropriate type, and the particular choice of value has the required type.
 
 
 \begin{code}
 
 data ExactlyOne a l where
-    EmptyList      :: ExactlyOne Nil ZeroValues
-    AddAValue      :: a -> ExactlyOne l ZeroValues -> ExactlyOne (a:*:l) OneValue
-    AddNoValue     :: Phantom a -> ExactlyOne l n -> ExactlyOne (a:*:l) n
+    EmptyList      :: ExactlyOne Nil NoSelectionMade
+    AddAValue      :: a -> ExactlyOne l NoSelectionMade -> ExactlyOne (a:*:l) SelectionMade
+    AddNoValue     :: NoValue a -> ExactlyOne l n -> ExactlyOne (a:*:l) n
 
-data ZeroValues
+data NoSelectionMade
 
-data Increment n
+data SelectionMade
 
-type OneValue = Increment ZeroValues
-
-data Phantom a = NoValue
+data NoValue a = NoValue
 
 instance Show (ExactlyOne Nil n) where
    show _ = "EmptyExactlyOne"
@@ -461,10 +710,10 @@ instance (Eq a, Eq b) => Eq (a:*:b) where
    x:*:xs == y:*:ys =
       x == y && xs == ys
 
-instance Eq (ExactlyOne Nil OneValue) where
+instance Eq (ExactlyOne Nil SelectionMade) where
    _ == _ = True
 
-instance (Eq a, Eq (ExactlyOne l OneValue)) => Eq (ExactlyOne (a:*:l) OneValue) where
+instance (Eq a, Eq (ExactlyOne l SelectionMade)) => Eq (ExactlyOne (a:*:l) SelectionMade) where
    AddAValue   _ _ == AddNoValue _ _ = False
    AddNoValue _ _ == AddAValue _ _   = False
    AddNoValue _ xs == AddNoValue _ ys = xs == ys
@@ -473,16 +722,19 @@ instance (Eq a, Eq (ExactlyOne l OneValue)) => Eq (ExactlyOne (a:*:l) OneValue) 
 \end{code}
 
 \subsection{ASN.1 EnumeratedType}
+\label{enumerate}
 
-An enumeration is a collection of identifiers (implicitly or explicitly) associated
-with an integer. We use an algebraic type {\em EnumerationItem} to represent the two possible
+An enumeration type is a collection of identifiers which are each implicitly or explicitly associated
+with an integer. We use an algebraic type {\em EnumerationItem} to represent these two possible
 cases. It has two constructors:
 \begin{itemize}
 \item
-{\em Identifier} which will be assigned a distinct non-negative number; and
+{\em Identifier} which constructs an enumeration item from a name. Any such item will be implicitly
+assigned a distinct non-negative number; and
 \item
-{\em NamedNumber} which takes a name and a non-negative number which must be distinct from
-any number already assigned to an {\em Identifier} or already in existence in a {\em NamedNumber}.
+{\em NamedNumber} which constructs an enumeration item from a name and a non-negative number
+which must be distinct from any number already assigned to an {\em Identifier} or already in
+existence in a {\em NamedNumber}.
 \end{itemize}
 
 The GADT {\em Enumerate} represents an enumeration built from {\em EnumerationItem}s. This
@@ -545,257 +797,9 @@ the constraint is applied to the component type of a collection
 type, and not to the collection itself.
 \end{itemize}
 
-A {\tt Constraint} is either a {\tt SubtypeConstraint} or a {\tt
-GeneralConstraint} with or without an exception.
-
-A {\tt SubtypeConstraint} may be extensible as indicated by {\tt
-...} and is defined in X.680 using the type {\tt ElementSetSpecs}
-as
-\begin{verbatim}
-ElementSetSpecs ::=
-    RootElementSetSpec
-    | RootElementSetSpec "," "..."
-    | RootElementSetSpec "," "..." "," AdditionalElementSetSpec
-
-RootElementSetSpec ::= ElementSetSpec
-
-AdditionalElementSetSpec ::= ElementSetSpec
-
-ElementSetSpec ::= Unions
-    | ALL Exclusions
-
-Unions ::= Intersections
-    | UElems UnionMark Intersections
-
-UElems ::= Unions
-
-Intersections ::= IntersectionElements
-    | IElems IntersectionMark IntersectionElements
-
-IElems ::= Intersections
-
-IntersectionElements ::= Elements | Elems Exclusions
-
-Elems ::= Elements
-
-Exclusions ::= EXCEPT Elements
-
-UnionMark ::= "|" | UNION
-
-IntersectionMark ::= "^" | INTERSECTION
-\end{verbatim}
-In summary a {\tt SubtypeConstraint} is either a union of
-intersections of atomic constraints (such as single value, range and size) or everything except a subset of
-values of a type. A {\tt GeneralConstraint} is defined in X.682.
-
-X.680 16.1
-
-
-
-\begin{code}
-
-newtype TypeReference = Ref {ref :: String}
-
-data Null = Null
-    deriving Show
-
-data InfInteger = NegInf | Val Integer | PosInf
-    deriving (Show, Ord, Eq)
-
-instance Bounded InfInteger where
-   minBound = NegInf
-   maxBound = PosInf
-
-instance Num InfInteger where
-   PosInf + _ = PosInf
-   _ + PosInf = PosInf
-   NegInf + _ = NegInf
-   _ + NegInf = NegInf
-   (Val x) + (Val y) = Val (x + y)
-   PosInf - _ = PosInf
-   _ - PosInf = NegInf
-   NegInf - _ = NegInf
-   _ - NegInf = PosInf
-   (Val x) - (Val y) = Val (x - y)
-   fromInteger v = Val v
-\end{code}
-
-
--- Type aliases
-\begin{code}
-
-type TagInfo    = (TagType, TagValue, TagPlicity)
-type Name       = String
-
-\end{code}
-
-Type Classes which make explicit the (not necessarily PER-visible) subtypes associated with the ASN.1 types.
-
-See X.680 (07/2002) Section 47.1 Table 9
-
-\begin{code}
-
-class SingleValue a
-
-instance SingleValue BitString
-instance SingleValue InfInteger
-instance SingleValue VisibleString
-instance SingleValue PrintableString
-instance SingleValue NumericString
-instance SingleValue UniversalString
-instance SingleValue BMPString
-instance SingleValue IA5String
-
-class ContainedSubtype a
-
-instance ContainedSubtype BitString
-instance ContainedSubtype InfInteger
-instance ContainedSubtype VisibleString
-instance ContainedSubtype PrintableString
-instance ContainedSubtype NumericString
-instance ContainedSubtype UniversalString
-instance ContainedSubtype BMPString
-instance ContainedSubtype IA5String
-
-
-class ValueRange a
-
-instance ValueRange IA5String
-instance ValueRange PrintableString
-instance ValueRange NumericString
-instance ValueRange VisibleString
-instance ValueRange UniversalString
-instance ValueRange BMPString
-instance ValueRange InfInteger
-
-
-class PermittedAlphabet a
-
-instance PermittedAlphabet IA5String
-instance PermittedAlphabet PrintableString
-instance PermittedAlphabet NumericString
-instance PermittedAlphabet VisibleString
-instance PermittedAlphabet UniversalString
-instance PermittedAlphabet BMPString
-
-
-
-class SizeConstraint a
-
-instance SizeConstraint [a]
-instance SizeConstraint IA5String
-instance SizeConstraint PrintableString
-instance SizeConstraint NumericString
-instance SizeConstraint VisibleString
-instance SizeConstraint UniversalString
-instance SizeConstraint BMPString
-instance SizeConstraint BitString
-instance SizeConstraint OctetString
-
-class InnerType a
-
-instance InnerType (Choice a)
-instance InnerType  (Sequence a)
-instance InnerType [a]
-\end{code}
-
-
-
-
-
-
-\begin{code}
-
-type NamedBits = [NamedBit]
-
-data NamedBit = NB String Int
-
-\end{code}
-Definition of Constraint Type
-
-\begin{code}
--- This current version of the constraint type has ignored exceptions (see X.680 45.6)
-
-data SubtypeConstraint a = RE (Constr a) | EXT (Constr a) | EXTWITH (Constr a) (Constr a)
-
-type SerialSubtypeConstraints a = [SubtypeConstraint a]
-
-data Constr a = UNION (Union a) | ALL (Excl a)
-
-data Union a = IC (IntCon a) | UC (Union a) (IntCon a)
-
-data IntCon a = INTER (IntCon a) (IE a) | ATOM (IE a)
-
-data Excl a = EXCEPT (Elem a)
-
-data IE a = E (Elem a) | Exc (Elem a) (Excl a)
-
-data Elem a = S (SV a) | C (CT a) | V (VR a) | SZ (Sz a) | P (PA a) | IT (IS a)
-
-data SV a = SingleValue a => SV a
-
-data CT a = ContainedSubtype a => Inc (ASNType a)
-
-data VR a = ValueRange a => R (a,a)
-
-data Sz a = SizeConstraint a => SC (SubtypeConstraint InfInteger)
-
-data PA a = PermittedAlphabet a => FR (SubtypeConstraint a)
-
---IS to be completed for multiple type constraints
-data IS a = InnerType a => WC (SubtypeConstraint a) | WCS
-
--- Type constraint (constraining an open type) to be done (47.6)
--- Pattern constraint to be done.
-
-newtype IA5String = IA5String {iA5String :: String}
-    deriving (Eq, Show)
-newtype BitString = BitString {bitString :: BitStream}
-    deriving (Eq, Show)
-newtype OctetString = OctetString {octetString :: OctetStream}
-    deriving (Eq, Show)
-newtype PrintableString = PrintableString {printableString :: String}
-    deriving (Eq, Show)
-newtype NumericString = NumericString {numericString :: String}
-    deriving (Eq, Show)
-newtype VisibleString = VisibleString {visibleString :: String}
-    deriving (Eq, Show)
-newtype UniversalString = UniversalString {universalString :: String}
-    deriving (Eq, Show)
-newtype BMPString = BMPString {bmpString :: String}
-    deriving (Eq, Show)
-
-type BitStream = [Int]
-type Octet = Word8
-type OctetStream = [Octet]
-
--- Some constraint-related types
-
-data IntegerConstraint = IntegerConstraint {lower :: InfInteger, upper :: InfInteger}
-   deriving (Show, Eq)
-
--- ValidIntegerConstraint is used for the validity testing of a value against a constraint. Thus, unlike an
--- effective constraint (which is used to produce encoding in a small number of bits) and is always a contiguous
--- set of values, this type represents the true result of set combinations of constraints which may be non-contiguous.
-
-data ValidIntegerConstraint = Valid [IntegerConstraint]
-    deriving (Show, Eq)
-
-data ConType i = ConType {conType :: i}
-    deriving (Show, Eq)
-
-data ExtBS i = ExtBS i i Bool
-    deriving (Show, Eq)
-
-
-data ResStringConstraint a i = ResStringConstraint a i
-    deriving (Show,Eq)
-
-data ExtResStringConstraint a = ExtResStringConstraint a a Bool
-    deriving (Show, Eq)
 
 -- UNIVERSAL TAG FUNCTIONS
-
+\begin{code}
 getCTI :: ComponentType a -> TagInfo
 getCTI (MandatoryComponent (NamedType _  (BuiltinType (TAGGED t ct)))) = t
 getCTI (MandatoryComponent (NamedType _  t))             = getTI t

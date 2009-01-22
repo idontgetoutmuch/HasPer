@@ -27,9 +27,9 @@ Generation of Integer constraints.
 
 lApplyExt :: (IC a, Eq a, Lattice a, Show a) =>
              Either String a -> SubtypeConstraint InfInteger -> (Either String a, Bool)
-lApplyExt rp (RE _)  = (bottom, False)
-lApplyExt rp (EXT _) = (bottom, True)
-lApplyExt rp (EXTWITH _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
+lApplyExt rp (RootOnly _)  = (bottom, False)
+lApplyExt rp (EmptyExtension _) = (bottom, True)
+lApplyExt rp (NonEmptyExtension _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
 
 -- Need to define calcEC (follow rules outlined in X.680 G.4.3.8)
 -- and appExtWithRt
@@ -39,7 +39,7 @@ lApplyExt rp (EXTWITH _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
 -- calcC. Thus G.4.3.8 can be ignored.
 
 lCalcEC :: (IC a,Lattice a, Show a, Eq a) =>
-           Constr InfInteger -> Either String a
+           ConstraintSet InfInteger -> Either String a
 lCalcEC c = lCalcC c
 
 -- applyExtWithRt is simply serialC (defined below) since it is
@@ -72,9 +72,9 @@ lRootIntCons x (c:cs) = lRootIntCons (lEvalC c x) cs
 
 lEvalC ::  (IC a, Lattice a, Eq a, Show a) =>
           SubtypeConstraint InfInteger -> Either String a -> Either String a
-lEvalC (RE c) x       = lSerialC x (lCalcC c)
-lEvalC (EXT c) x      = lSerialC x (lCalcC c)
-lEvalC (EXTWITH c d) x = lSerialC x (lCalcC c)
+lEvalC (RootOnly c) x       = lSerialC x (lCalcC c)
+lEvalC (EmptyExtension c) x      = lSerialC x (lCalcC c)
+lEvalC (NonEmptyExtension c d) x = lSerialC x (lCalcC c)
 
 -- See X.680 section G.4.2.3 for details on the serial application
 -- of constraints. The second input is the new constraint whose
@@ -102,8 +102,8 @@ lSerialC mx my =
                 = return (serialCombine a b)
       foobar
 
-lCalcC :: (IC a, Lattice a, Eq a, Show a) => Constr InfInteger -> Either String a
-lCalcC (UNION u) = lCalcU u
+lCalcC :: (IC a, Lattice a, Eq a, Show a) => ConstraintSet InfInteger -> Either String a
+lCalcC (UnionSet u) = lCalcU u
 
 -- Need to define unionC which returns the union of two
 -- constraints
@@ -280,9 +280,9 @@ lEffCons :: (Eq (b i),
                 ExtConstraint a,
                 MonadError [Char] t1) =>
                (Elem t -> Bool -> t1 (a (b i))) -> SubtypeConstraint t -> t1 (a (b i))
-lEffCons fn (RE c)         = lCon fn c False
-lEffCons fn (EXT c)        = lCon fn c True
-lEffCons fn (EXTWITH c e)  = lExtendC (lCon fn c False) (lCon fn e False)
+lEffCons fn (RootOnly c)         = lCon fn c False
+lEffCons fn (EmptyExtension c)        = lCon fn c True
+lEffCons fn (NonEmptyExtension c e)  = lExtendC (lCon fn c False) (lCon fn e False)
 
 \end{code}
 
@@ -296,9 +296,9 @@ lCon :: (MonadError [Char] t1,
             Lattice (b i),
             Constraint b i,
             Eq (b i)) =>
-           (Elem t -> Bool -> t1 (a (b i))) -> Constr t -> Bool -> t1 (a (b i))
-lCon fn (UNION u) b         = lConU fn u b
-lCon fn (ALL (EXCEPT e)) b  = lExceptAll top (fn e b)
+           (Elem t -> Bool -> t1 (a (b i))) -> ConstraintSet t -> Bool -> t1 (a (b i))
+lCon fn (UnionSet u) b         = lConU fn u b
+lCon fn (ComplementSet (EXCEPT e)) b  = lExceptAll top (fn e b)
 
 \end{code}
 
@@ -563,9 +563,9 @@ lResConE :: (RS a,
                 Eq a) =>
                 Elem a -> Bool ->  Either String (ExtResStringConstraint (ResStringConstraint a i))
 lResConE (SZ (SC v)) b            = lEffSize v b
-lResConE (P (FR (EXT _))) b       = throwError "Invisible!"
-lResConE (P (FR (EXTWITH _ _))) b = throwError "Invisible!"
-lResConE (P (FR (RE p)))  b       = lEffCons lPaConE (RE p)
+lResConE (P (FR (EmptyExtension _))) b       = throwError "Invisible!"
+lResConE (P (FR (NonEmptyExtension _ _))) b = throwError "Invisible!"
+lResConE (P (FR (RootOnly p)))  b       = lEffCons lPaConE (RootOnly p)
 lResConE (C (Inc c)) b            = lProcessCST lResConE c []
 lResConE (S (SV v))  b            = throwError "Invisible!"
 
@@ -644,13 +644,13 @@ lEffSize :: (IC a1,
                 Lattice (b a1),
                 ExtConstraint a) =>
                SubtypeConstraint InfInteger -> Bool -> Either String (a (b a1))
-lEffSize (RE c) b
+lEffSize (RootOnly c) b
     = do ec <- lCalcC c
          return (makeEC (makeSC ec) top b)
-lEffSize (EXT c) b
+lEffSize (EmptyExtension c) b
     = do ec <- lCalcC c
          return (makeEC (makeSC ec) top True)
-lEffSize (EXTWITH c d) b
+lEffSize (NonEmptyExtension c d) b
     = do r <- lCalcC c
          e <- lCalcC d
          return (makeEC (makeSC r) (makeSC e) True)

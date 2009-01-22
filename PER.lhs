@@ -645,7 +645,7 @@ encoding.
 
 \begin{code}
 
-lEncodeEnum :: Enumerate a -> ExactlyOne a OneValue -> PerEncoding
+lEncodeEnum :: Enumerate a -> ExactlyOne a SelectionMade -> PerEncoding
 lEncodeEnum e x
     = let (b,inds) = assignIndex e
           no = genericLength inds
@@ -1481,7 +1481,7 @@ that only one choice value is encoded.
 
 \begin{code}
 
-lEncodeChoice :: Choice a -> ExactlyOne a OneValue -> PerEncoding
+lEncodeChoice :: Choice a -> ExactlyOne a SelectionMade -> PerEncoding
 lEncodeChoice c x
     =   do ts  <- return (getCTags c)
            (ea, ec) <- (encodeChoiceAux [] [] c x)
@@ -1936,7 +1936,7 @@ decodeLengthDeterminant c f t
       (Val v) = ub
 
       rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
-      rangeConstraint =  RE . UNION . IC . ATOM . E . V . R
+      rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
 
 \end{code}
 
