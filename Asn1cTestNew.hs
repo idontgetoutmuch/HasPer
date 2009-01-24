@@ -24,7 +24,8 @@ import Data.Char
 import Data.Time
 
 import ASNTYPE
-import NewTestData
+import NewTestData -- FIXME: For temporary testing - testing should
+                   -- really be done outside of the module being tested
 
 cMain :: ASNType a -> a -> IO Doc
 cMain t x =
