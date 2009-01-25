@@ -1,0 +1,26 @@
+Name:            PER
+Version:         0.0.20
+License:         BSD3
+Author:          Dominic Steinitz
+Maintainer:      dominic.steinitz@blueyonder.co.uk
+Copyright:       Dominic Steinitz 2003 - 2009
+Stability:       Alpha
+Category:        Language
+Homepage:        http://www.haskell.org/asn1
+Synopsis:        ASN.1 PER support for Haskell
+Description:     A formal and executable specification of the Packed Encoding Rules (PER)
+                 for ASN.1
+build-depends:   binary-strict == 0.4.2,
+                 bytestring,
+                 mtl,
+                 containers,
+                 time,
+                 pretty,
+                 base
+build-type:      Simple
+
+Exposed-Modules: Language.ASN1.PER.Integer
+                 Language.ASN1.PER.GenerateC
+
+Executable:      PERTest
+Main-Is:         PERTest.hs
