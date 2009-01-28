@@ -114,7 +114,7 @@ lCalcU(UC u i) = (lCalcU u) `ljoin` (lCalcI i)
 
 
 lCalcI :: (IC a, Lattice a, Eq a, Show a) =>
-          IntCon InfInteger -> Either String a
+          Intersection InfInteger -> Either String a
 lCalcI (INTER i e) = (lCalcI i) `meet` (lCalcA e)
 lCalcI (ATOM a)    = lCalcA a
 
@@ -128,7 +128,7 @@ lCalcA (E e) = lCalcE e
 -- NOTE: Need to deal with illegal constraints resulting from
 -- processCT
 
-lCalcE :: (IC a, Lattice a, Eq a, Show a) => Elem InfInteger -> Either String a
+lCalcE :: (IC a, Lattice a, Eq a, Show a) => Element InfInteger -> Either String a
 lCalcE (S (SV i)) = return (makeIC i i)
 lCalcE (C (Inc t)) = lProcessCT t []
 lCalcE (V (R (l,u))) = return (makeIC l u)
@@ -183,7 +183,7 @@ lSerialEffCons :: (MonadError [Char] t,
                       Constraint b i,
                       Lattice (b i),
                       ExtConstraint a) =>
-                     (Elem t1 -> Bool -> t (a (b i))) -> t (a1 (b i)) -> [SubtypeConstraint t1] -> t (a1 (b i))
+                     (Element t1 -> Bool -> t (a (b i))) -> t (a1 (b i)) -> [SubtypeConstraint t1] -> t (a1 (b i))
 lSerialEffCons fn m ls
     = do
         let foobar
@@ -203,7 +203,7 @@ lSerialApply :: (MonadError [Char] m,
                  Eq (b i),
                  ExtConstraint a2,
                  ExtConstraint a) =>
-                (Elem t -> Bool -> m (a1 (b i))) -> a (b i) -> SubtypeConstraint t -> m (a2 (b i))
+                (Element t -> Bool -> m (a1 (b i))) -> a (b i) -> SubtypeConstraint t -> m (a2 (b i))
 lSerialApply fn ersc c = lEitherApply ersc (lEffCons fn c)
 
 \end{code}
@@ -238,7 +238,7 @@ lSerialApplyLast :: (MonadError [Char] t1,
                      Eq (b i),
                      ExtConstraint a,
                      ExtConstraint a2) =>
-                    (Elem t -> Bool -> t1 (a1 (b i))) -> a (b i) -> SubtypeConstraint t -> t1 (a2 (b i))
+                    (Element t -> Bool -> t1 (a1 (b i))) -> a (b i) -> SubtypeConstraint t -> t1 (a2 (b i))
 lSerialApplyLast fn x c = lLastApply x (lEffCons fn c)
 
 
@@ -279,7 +279,7 @@ lEffCons :: (Eq (b i),
                 Lattice (b i),
                 ExtConstraint a,
                 MonadError [Char] t1) =>
-               (Elem t -> Bool -> t1 (a (b i))) -> SubtypeConstraint t -> t1 (a (b i))
+               (Element t -> Bool -> t1 (a (b i))) -> SubtypeConstraint t -> t1 (a (b i))
 lEffCons fn (RootOnly c)         = lCon fn c False
 lEffCons fn (EmptyExtension c)        = lCon fn c True
 lEffCons fn (NonEmptyExtension c e)  = lExtendC (lCon fn c False) (lCon fn e False)
@@ -296,7 +296,7 @@ lCon :: (MonadError [Char] t1,
             Lattice (b i),
             Constraint b i,
             Eq (b i)) =>
-           (Elem t -> Bool -> t1 (a (b i))) -> ConstraintSet t -> Bool -> t1 (a (b i))
+           (Element t -> Bool -> t1 (a (b i))) -> ConstraintSet t -> Bool -> t1 (a (b i))
 lCon fn (UnionSet u) b         = lConU fn u b
 lCon fn (ComplementSet (EXCEPT e)) b  = lExceptAll top (fn e b)
 
@@ -373,7 +373,7 @@ lConU :: (Constraint b i,
              Lattice (b i),
              ExtConstraint a,
              MonadError [Char] t1) =>
-            (Elem t -> Bool -> t1 (a (b i))) -> Union t -> Bool -> t1 (a (b i))
+            (Element t -> Bool -> t1 (a (b i))) -> Union t -> Bool -> t1 (a (b i))
 lConU fn (IC i) b   = lConI fn i b
 lConU fn (UC u i) b = lUnionC (lConI fn i b) (lConU fn u False)
 
@@ -433,7 +433,7 @@ lConI :: (MonadError [Char] t1,
              ExtConstraint a,
              Lattice (b i),
              Constraint b i) =>
-            (Elem t -> Bool -> t1 (a (b i))) -> IntCon t -> Bool -> t1 (a (b i))
+            (Element t -> Bool -> t1 (a (b i))) -> Intersection t -> Bool -> t1 (a (b i))
 lConI fn (INTER i e) b = lInterC (lConA fn e b) (lConI fn i False)
 lConI fn (ATOM e) b    = lConA fn e b
 
@@ -490,7 +490,7 @@ lConA :: (ExtConstraint a,
              MonadError [Char] m,
              Lattice (b i),
              Constraint b i) =>
-            (Elem t -> Bool -> m (a (b i))) -> IE t -> Bool -> m (a (b i))
+            (Element t -> Bool -> m (a (b i))) -> IE t -> Bool -> m (a (b i))
 lConA fn (E e) b  = fn e b
 lConA fn (Exc e (EXCEPT ex)) b
                 = lExceptC (fn e b) (fn ex False)
@@ -561,7 +561,7 @@ lResConE :: (RS a,
                 Eq i,
                 Show i,
                 Eq a) =>
-                Elem a -> Bool ->  Either String (ExtResStringConstraint (ResStringConstraint a i))
+                Element a -> Bool ->  Either String (ExtResStringConstraint (ResStringConstraint a i))
 lResConE (SZ (SC v)) b            = lEffSize v b
 lResConE (P (FR (EmptyExtension _))) b       = throwError "Invisible!"
 lResConE (P (FR (NonEmptyExtension _ _))) b = throwError "Invisible!"
@@ -574,7 +574,7 @@ lBSConE :: (Eq i,
             Show i,
             Lattice i,
             IC i) =>
-            Elem BitString -> Bool -> Either String (ExtBS (ConType i))
+            Element BitString -> Bool -> Either String (ExtBS (ConType i))
 lBSConE (SZ (SC v)) b  = lEffSize v b
 lBSConE (C (Inc c)) b  = throwError "Invisible!"
 lBSConE (S (SV v))  b  = throwError "Invisible!"
@@ -584,7 +584,7 @@ lOSConE :: (Eq i,
             Show i,
             Lattice i,
             IC i) =>
-            Elem OctetString -> Bool -> Either String (ExtBS (ConType i))
+            Element OctetString -> Bool -> Either String (ExtBS (ConType i))
 lOSConE (SZ (SC v)) b  = lEffSize v b
 lOSConE (C (Inc c)) b  = throwError "Invisible!"
 lOSConE (S (SV v))  b  = throwError "Invisible!"
@@ -609,7 +609,7 @@ lPaConE :: (Lattice a,
             Eq i,
             Show i,
             IC i) =>
-            Elem a -> Bool -> Either String (ExtResStringConstraint (ResStringConstraint a i))
+            Element a -> Bool -> Either String (ExtResStringConstraint (ResStringConstraint a i))
 lPaConE (V (R (l,u))) b
     = let ls = getString l
           us = getString u
@@ -628,7 +628,7 @@ lSeqOfConE :: (Eq i,
             Show i,
             Lattice i,
             IC i) =>
-            Elem [a] -> Bool -> Either String (ExtBS (ConType i))
+            Element [a] -> Bool -> Either String (ExtBS (ConType i))
 lSeqOfConE (SZ (SC v)) b  = lEffSize v b
 lSeqOfConE (C (Inc c)) b  = throwError "Invisible!"
 lSeqOfConE (S (SV v))  b  = throwError "Invisible!"
@@ -662,7 +662,7 @@ lProcessCST :: (Lattice (t1 (a1 (b i))),
                 Eq (b i),
                 Constraint b i,
                 Lattice (b i)) =>
-               (Elem t -> Bool -> t1 (a1 (b i))) -> ASNType t -> [SubtypeConstraint t] -> t1 (a1 (b i))
+               (Element t -> Bool -> t1 (a1 (b i))) -> ASNType t -> [SubtypeConstraint t] -> t1 (a1 (b i))
 lProcessCST fn (BuiltinType _) cl = lRootStringCons fn top cl
 lProcessCST fn (ConstrainedType t c) cl = lProcessCST fn t (c:cl)
 
@@ -672,7 +672,7 @@ lRootStringCons :: (ExtConstraint a,
                     Constraint b i,
                     Eq (b i),
                     MonadError [Char] t1) =>
-                   (Elem t -> Bool -> t1 (a (b i))) -> t1 (a (b i)) -> [SubtypeConstraint t] -> t1 (a (b i))
+                   (Element t -> Bool -> t1 (a (b i))) -> t1 (a (b i)) -> [SubtypeConstraint t] -> t1 (a (b i))
 lRootStringCons fn t cs
     = let m = lSerialEffCons fn t cs
       in do

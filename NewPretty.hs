@@ -75,12 +75,15 @@ prettyNamedType (NamedType n ct) = text n <+> prettyType ct
 prettyPlicity Implicit = text "IMPLICIT"
 prettyPlicity Explicit = text "EXPLICIT"
 
-prettyElementSetSpecs t (RE c) = prettyConstraint t c
-prettyElementSetSpecs t (EXT c) = prettyConstraint t c <> comma <+> text "..."
-prettyElementSetSpecs t (EXTWITH c1 c2) = prettyConstraint t c1 <> comma <+> text "..." <> comma <+> prettyConstraint t c2
+prettyElementSetSpecs t (RootOnly c)
+    = prettyConstraint t c
+prettyElementSetSpecs t (EmptyExtension c)
+    = prettyConstraint t c <> comma <+> text "..."
+prettyElementSetSpecs t (NonEmptyExtension c1 c2)
+    = prettyConstraint t c1 <> comma <+> text "..." <> comma <+> prettyConstraint t c2
 
-prettyConstraint t (UNION u) = prettyUnion t u
-prettyConstraint t (ALL e) = prettyExcept t e
+prettyConstraint t (UnionSet u) = prettyUnion t u
+prettyConstraint t (ComplementSet e) = prettyExcept t e
 
 prettyExcept t (EXCEPT e) = prettyElem t e
 
@@ -102,20 +105,20 @@ prettyElem t (C c) = error "C"
 prettyElem t (SZ s) = prettySizedElem t s
 prettyElem t (IT i) = error "IT"
 
-prettySizedElem :: ASNType a -> Sz a -> Doc
+prettySizedElem :: ASNType a -> SizeConstraint a -> Doc
 prettySizedElem t (SC x) = text "SIZE" <+> parens (prettyElementSetSpecs (BuiltinType INTEGER) x)
 
-prettyPermittedAlphabet :: ASNType a -> PA a -> Doc
+prettyPermittedAlphabet :: ASNType a -> PermittedAlphabetConstraint a -> Doc
 prettyPermittedAlphabet t (FR a) = text "FROM" <+> parens (prettyElementSetSpecs t a)
 
-prettyValueRange :: ASNType a -> VR a -> Doc
+prettyValueRange :: ASNType a -> ValueRangeConstraint a -> Doc
 prettyValueRange (BuiltinType INTEGER) (R (x,y)) = pretty x <> text ".." <> pretty y
 prettyValueRange (BuiltinType IA5STRING) (R (x,y)) = text (iA5String x) <> text ".." <> text (iA5String y)
 prettyValueRange (BuiltinType PRINTABLESTRING) (R (x,y)) = text (printableString x) <> text ".." <> text (printableString y)
 prettyValueRange (BuiltinType NUMERICSTRING) (R (x,y)) = text (numericString x) <> text ".." <> text (numericString y)
 prettyValueRange (BuiltinType (BITSTRING _)) (R (x,y)) = text (show x) <> text ".." <> text (show y)
 
-prettySingleValue :: ASNType a -> SV a -> Doc
+prettySingleValue :: ASNType a -> SingleValueConstraint a -> Doc
 prettySingleValue (BuiltinType INTEGER) (SV e) = text (show e)
 prettySingleValue (BuiltinType (BITSTRING _)) (SV e) = prettyBitString e
 prettySingleValue (BuiltinType IA5STRING) (SV e) = text (show e)

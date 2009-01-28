@@ -259,25 +259,69 @@ data SubtypeConstraint a where
 \end{code}
 
 The root and extension addition components of a subtype constraint are values of type
-{\em ConstraintSet}. These are constraints that are specified as a combination of atomic
-constraints. They are combined using set operations. At the top-most level a constraint is
-either a union of sub-constraints or the complement of a constraint.
+{\em ConstraintSet}. These are constraints that are specified as a set combination of
+various elemental constraints. At the top-most level a constraint is either a union of
+sub-constraints or the complement of a constraint.
 
 \begin{code}
 
 data ConstraintSet a where
  UnionSet        :: Union a -> ConstraintSet a
- ComplementSet   :: Excl a  -> ConstraintSet a
+ ComplementSet   :: Exclusions a  -> ConstraintSet a
 
 \end{code}
 
-
+The sub-constraints of a union are intersections of constraints which are either element constraints
+or the set difference of element constraints. Note that only element constraints
+may be complemented and element constraints may themselves be the set combination of
+constraints.
 
 \begin{code}
 
-data Union a = IC (IntCon a) | UC (Union a) (IntCon a)
+data Union a = IC (Intersection a) | UC (Union a) (Intersection a)
+data Exclusions a = EXCEPT (Element a)
+data Intersection a = INTER (Intersection a) (IE a) | ATOM (IE a)
+data IE a = E (Element a) | Exc (Element a) (Exclusions a)
 
 \end{code}
+
+There are eight kinds of element constraint which are variously supported by the basic ASN.1
+types. Our representation of each of the element constraints are presented below the
+definition of the type {\em Element}. Note that we manage the association of an elemental
+constraint with an ASN.1 basic type by using a collection of new Haskell type classes. For
+example, the {\em ValueRangeConstraint} may only be applied to types which are members of the
+type class {\em ValueRange}: the {\em InfInteger} and various restricted character strings
+types. 
+
+
+
+We do not currently support {\tt TypeConstraint} and {\tt PatternConstraint}.
+
+\begin{code}
+
+data Element a = S (SingleValueConstraint a) | C (ContainedSubtypeConstraint a)
+                 | V (ValueRangeConstraint a) | P (PermittedAlphabetConstraint a)
+                 | SZ (SizeConstraint a) | IT (InnerTypeConstraints a)
+
+
+data SingleValueConstraint a = SingleValue a => SV a
+
+data ContainedSubtypeConstraint a = ContainedSubtype a => Inc (ASNType a)
+
+data ValueRangeConstraint a = ValueRange a => R (a,a)
+
+data SizeConstraint a = Size a => SC (SubtypeConstraint InfInteger)
+
+data PermittedAlphabetConstraint a = PermittedAlphabet a => FR (SubtypeConstraint a)
+
+--IS to be completed for multiple type constraints
+data InnerTypeConstraints a = InnerType a => WC (SubtypeConstraint a) | WCS
+
+\end{code}
+
+
+
+
 
 \begin{code}
 
@@ -325,13 +369,16 @@ See X.680 (07/2002) Section 47.1 Table 9
 class SingleValue a
 
 instance SingleValue BitString
+instance SingleValue Bool
 instance SingleValue InfInteger
+instance SingleValue Null
 instance SingleValue VisibleString
 instance SingleValue PrintableString
 instance SingleValue NumericString
 instance SingleValue UniversalString
 instance SingleValue BMPString
 instance SingleValue IA5String
+instance SingleValue a => SingleValue (ExactlyOne a SelectionMade)
 
 class ContainedSubtype a
 
@@ -367,17 +414,17 @@ instance PermittedAlphabet BMPString
 
 
 
-class SizeConstraint a
+class Size a
 
-instance SizeConstraint [a]
-instance SizeConstraint IA5String
-instance SizeConstraint PrintableString
-instance SizeConstraint NumericString
-instance SizeConstraint VisibleString
-instance SizeConstraint UniversalString
-instance SizeConstraint BMPString
-instance SizeConstraint BitString
-instance SizeConstraint OctetString
+instance Size [a]
+instance Size IA5String
+instance Size PrintableString
+instance Size NumericString
+instance Size VisibleString
+instance Size UniversalString
+instance Size BMPString
+instance Size BitString
+instance Size OctetString
 
 class InnerType a
 
@@ -405,26 +452,6 @@ Definition of Constraint Type
 
 type SerialSubtypeConstraints a = [SubtypeConstraint a]
 
-data IntCon a = INTER (IntCon a) (IE a) | ATOM (IE a)
-
-data Excl a = EXCEPT (Elem a)
-
-data IE a = E (Elem a) | Exc (Elem a) (Excl a)
-
-data Elem a = S (SV a) | C (CT a) | V (VR a) | SZ (Sz a) | P (PA a) | IT (IS a)
-
-data SV a = SingleValue a => SV a
-
-data CT a = ContainedSubtype a => Inc (ASNType a)
-
-data VR a = ValueRange a => R (a,a)
-
-data Sz a = SizeConstraint a => SC (SubtypeConstraint InfInteger)
-
-data PA a = PermittedAlphabet a => FR (SubtypeConstraint a)
-
---IS to be completed for multiple type constraints
-data IS a = InnerType a => WC (SubtypeConstraint a) | WCS
 
 -- Type constraint (constraining an open type) to be done (47.6)
 -- Pattern constraint to be done.

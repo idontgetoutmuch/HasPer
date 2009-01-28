@@ -34,35 +34,35 @@ import ConstraintGeneration
 
 import Language.ASN1(TagType(..), TagPlicity(..))
 
-sc1 = UNION (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
-sc2 = UNION (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
-sc3 = UNION (UC (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (259,262))))))
+sc1 = UnionSet (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
+sc2 = UnionSet (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
+sc3 = UnionSet (UC (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (259,262))))))
              (ATOM (E (V (R (251,255))))))
 
 
-con1 = RE (UNION (IC (ATOM (E (V (R (250,253)))))))
-con2 = RE (UNION (IC (ATOM (E (V (R (245,253)))))))
-con3 = RE sc1
-con32 = RE sc3
-con4 = EXT sc1
-con5 = EXTWITH sc1 sc2
+con1 = RootOnly (UnionSet (IC (ATOM (E (V (R (250,253)))))))
+con2 = RootOnly (UnionSet (IC (ATOM (E (V (R (245,253)))))))
+con3 = RootOnly sc1
+con32 = RootOnly sc3
+con4 = EmptyExtension sc1
+con5 = NonEmptyExtension sc1 sc2
 
 -- String constraints
-pac1 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
-             (ATOM (E (P (FR (RE (UNION (IC (ATOM (E (S (SV (VisibleString "dan")))))))))))))
+pac1 = UnionSet (UC (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,5)))))))))))))
+             (ATOM (E (P (FR (RootOnly (UnionSet (IC (ATOM (E (S (SV (VisibleString "dan")))))))))))))
 
-pac2 = UNION (IC (INTER (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (8,8))))))))))))
-             (E (P (FR (RE (UNION (IC (ATOM (E (S (SV (VisibleString "0123456789")))))))))))))
+pac2 = UnionSet (IC (INTER (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (8,8))))))))))))
+             (E (P (FR (RootOnly (UnionSet (IC (ATOM (E (S (SV (VisibleString "0123456789")))))))))))))
 
-pac3 = UNION (IC (INTER (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (245,249))))))))))))
+pac3 = UnionSet (IC (INTER (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (245,249))))))))))))
              (E (S (SV (VisibleString "adn"))))))
 
-pac4 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
-             (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
+pac4 = UnionSet (UC (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,5)))))))))))))
+             (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (7,10)))))))))))))
 
-pac5 = UNION (IC (ATOM ((E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (3,3))))))))))))))
+pac5 = UnionSet (IC (ATOM ((E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (3,3))))))))))))))
 
-ns1 = RE (UNION (IC (ATOM ((E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,1)))))))))))))))
+ns1 = RootOnly (UnionSet (IC (ATOM ((E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,1)))))))))))))))
 
 tester :: Either String (ExtResStringConstraint (ResStringConstraint VisibleString IntegerConstraint))
 tester =  lLastApply (ExtResStringConstraint (ResStringConstraint (VisibleString "Dan")
@@ -70,13 +70,13 @@ tester =  lLastApply (ExtResStringConstraint (ResStringConstraint (VisibleString
             (ResStringConstraint top (IntegerConstraint 1 1)) top False))
 
 
-dateCon = RE (UNION (IC (INTER (ATOM (E (SZ (SC (EXTWITH (UNION (IC (ATOM (E (V (R (8,8)))))))
-                    (UNION (IC (ATOM (E (V (R (9,20))))))))))))
-             (E (P (FR (RE (UNION (IC (ATOM (E (S (SV (VisibleString "0123456789"))))))))))))))
+dateCon = RootOnly (UnionSet (IC (INTER (ATOM (E (SZ (SC (NonEmptyExtension (UnionSet (IC (ATOM (E (V (R (8,8)))))))
+                    (UnionSet (IC (ATOM (E (V (R (9,20))))))))))))
+             (E (P (FR (RootOnly (UnionSet (IC (ATOM (E (S (SV (VisibleString "0123456789"))))))))))))))
 
 nameStringCon
-    = RE (UNION (IC (INTER (ATOM (E (SZ (SC (EXT (UNION (IC (ATOM (E (V (R (1,64))))))))))))
-             (E (P (FR (RE (UNION (UC
+    = RootOnly (UnionSet (IC (INTER (ATOM (E (SZ (SC (EmptyExtension (UnionSet (IC (ATOM (E (V (R (1,64))))))))))))
+             (E (P (FR (RootOnly (UnionSet (UC
                             (UC (IC (ATOM (E (S (SV (VisibleString ['a'..'z']))))))
                                     (ATOM (E (S (SV (VisibleString ['A'..'Z']))))))
                                     (ATOM (E (S (SV (VisibleString "-."))))))))))))))
@@ -95,10 +95,10 @@ nameSeq = AddComponent (MandatoryComponent (NamedType "givenName" nameString))
 
 nameVal = VisibleString "John" :*: (VisibleString "P" :*: (VisibleString "Smith" :*: Empty))
 
-cpac1 = [RE pac1]
-cpac2 = [RE pac2]
-cpac3 = [RE pac3]
-cpac4 = [RE pac4]
+cpac1 = [RootOnly pac1]
+cpac2 = [RootOnly pac2]
+cpac3 = [RootOnly pac3]
+cpac4 = [RootOnly pac4]
 cpac5 = [dateCon]
 
 
@@ -141,13 +141,13 @@ test10 = perEncode t7 [] 271
 -- String types
 
 --constrained
-st1 = ConstrainedType  (BuiltinType VISIBLESTRING) (RE pac2)
-st2 = ConstrainedType  (BuiltinType VISIBLESTRING) (RE pac4)
+st1 = ConstrainedType  (BuiltinType VISIBLESTRING) (RootOnly pac2)
+st2 = ConstrainedType  (BuiltinType VISIBLESTRING) (RootOnly pac4)
 st3 = ConstrainedType  (BuiltinType VISIBLESTRING) dateCon
 st4 = ConstrainedType  (BuiltinType VISIBLESTRING) nameStringCon
 
 --unconstrained
-ust1 = ConstrainedType  (BuiltinType NUMERICSTRING) (RE pac5)
+ust1 = ConstrainedType  (BuiltinType NUMERICSTRING) (RootOnly pac5)
 
 testS1 = myTest st1 (VisibleString "19571111")
 testS2 = myTest st3 (VisibleString "19571111")
@@ -157,15 +157,15 @@ testS5 = myTest ust1 (NumericString "123")
 testS6 = myTest ust1 (NumericString "dan")
 
 -- BITSTRING
-pac41 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5))))))))))))) (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
-st5 = ConstrainedType  (BuiltinType (BITSTRING [])) (RE pac41)
-st6 = ConstrainedType  (BuiltinType (BITSTRING [NB "A" 2, NB "B" 3])) (RE pac41)
+pac41 = UnionSet (UC (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,5))))))))))))) (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (7,10)))))))))))))
+st5 = ConstrainedType  (BuiltinType (BITSTRING [])) (RootOnly pac41)
+st6 = ConstrainedType  (BuiltinType (BITSTRING [NB "A" 2, NB "B" 3])) (RootOnly pac41)
 
 testBS1 = myTest st5 (BitString [1,1,0,0,0,0,0])
 testBS2 = myTest st6 (BitString [1,1,0,0,0,0,0,0,1,0,0,0])
 
 sibDataVariableType =
-   ConstrainedType  (BuiltinType (BITSTRING [])) (RE (UNION (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,214)))))))))))))))
+   ConstrainedType  (BuiltinType (BITSTRING [])) (RootOnly (UnionSet (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,214)))))))))))))))
 
 sibDataVariableValue =
    BitString [1,1,1,1,1,1,1,1]
@@ -174,19 +174,19 @@ sibTest = myTest' sibDataVariableType sibDataVariableValue
 
 incompleteSIBList = BuiltinType (SEQUENCEOF sibDataVariableType)
 
-completeSIBListConstraint :: Constr [BitString]
-completeSIBListConstraint = UNION (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,16)))))))))))))
+completeSIBListConstraint :: ConstraintSet [BitString]
+completeSIBListConstraint = UnionSet (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,16)))))))))))))
 
-completeSIBList = ConstrainedType  (BuiltinType (SEQUENCEOF sibDataVariableType)) (RE completeSIBListConstraint)
+completeSIBList = ConstrainedType  (BuiltinType (SEQUENCEOF sibDataVariableType)) (RootOnly completeSIBListConstraint)
 
 completeSIBListTest = lEncode completeSIBList [] (take 3 $ repeat (BitString [1,1,1,1,1,1,1,1]))
 
 seqOfTest1 = lEncode (BuiltinType (SEQUENCEOF (BuiltinType INTEGER))) [] (take 1 $ repeat (Val 1))
 
 -- OCTETSTRING
-os41 = UNION (UC (IC (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (1,5)))))))))))))
-             (ATOM (E (SZ (SC (RE (UNION (IC (ATOM (E (V (R (7,10)))))))))))))
-os1 = ConstrainedType  (BuiltinType (OCTETSTRING)) (RE os41)
+os41 = UnionSet (UC (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,5)))))))))))))
+             (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (7,10)))))))))))))
+os1 = ConstrainedType  (BuiltinType (OCTETSTRING)) (RootOnly os41)
 
 testOS1 = myTest os1 (OctetString [20,140,5,16,23,87,10])
 
@@ -213,7 +213,7 @@ choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
                                           (ChoiceExtensionAdditionGroup NoVersionNumber (ChoiceExtensionMarker EmptyChoice))))))
 
 
-eag1 = AddComponent (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RE pac5))))
+eag1 = AddComponent (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RootOnly pac5))))
         (AddComponent (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) EmptySequence)
 
 
@@ -244,24 +244,24 @@ dash  = ATOM (E (S (SV (PrintableString "-"))))
 dot   = ATOM (E (S (SV (PrintableString "."))))
 blank = ATOM (E (S (SV (PrintableString " "))))
 
-morseChars = RE (UNION (UC (UC (IC dash) dot) blank))
+morseChars = RootOnly (UnionSet (UC (UC (IC dash) dot) blank))
 
 morseAlphabet = ConstrainedType  (BuiltinType PRINTABLESTRING) morseChars
 
-morse = ConstrainedType  (BuiltinType PRINTABLESTRING ) (RE (UNION (IC (ATOM ((E (P (FR morseChars))))))))
+morse = ConstrainedType  (BuiltinType PRINTABLESTRING ) (RootOnly (UnionSet (IC (ATOM ((E (P (FR morseChars))))))))
 
 -- Note that the outer monad is BitGet and the inner monad is the Error
 
 -- thereAndBack x = flip (BG.runBitGet . BP.runBitPut . bitPutify . encodeUInt ) (runErrorT decodeUInt) x
 
-mySc1 = UNION (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
-mySc2 = UNION (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
+mySc1 = UnionSet (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
+mySc2 = UnionSet (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
 
-myCon1 = RE (UNION (IC (ATOM (E (V (R (250,253)))))))
-myCon2 = RE (UNION (IC (ATOM (E (V (R (245,253)))))))
-myCon3 = RE mySc1
-myCon4 = EXT mySc1
-myCon5 = EXTWITH mySc1 mySc2
+myCon1 = RootOnly (UnionSet (IC (ATOM (E (V (R (250,253)))))))
+myCon2 = RootOnly (UnionSet (IC (ATOM (E (V (R (245,253)))))))
+myCon3 = RootOnly mySc1
+myCon4 = NonEmptyExtension mySc1
+myCon5 = NonEmptyExtension mySc1 mySc2
 
 mt1 = ConstrainedType  (BuiltinType INTEGER) myCon1
 mt2 = ConstrainedType  mt1 myCon2
@@ -379,8 +379,8 @@ unConstrainedIntegerTest2 =
       assertEqual "Unconstrained INTEGER Test 2" vInteger2 tabInteger2
    )
 
-cInteger9 = UNION (IC (ATOM (E (V (R (4000,4254))))))
-tInteger9 = ConstrainedType  (BuiltinType INTEGER) (RE cInteger9)
+cInteger9 = UnionSet (IC (ATOM (E (V (R (4000,4254))))))
+tInteger9 = ConstrainedType  (BuiltinType INTEGER) (RootOnly cInteger9)
 vInteger9'1 = Val 4002
 tabInteger9'1 = myTAB'' tInteger9 vInteger9'1
 
@@ -389,7 +389,7 @@ constrainedIntegerTest1 =
       assertEqual "Constrained INTEGER Test 1" vInteger9'1 tabInteger9'1
    )
 
-tInteger9Extension = ConstrainedType  (BuiltinType INTEGER) (EXT cInteger9)
+tInteger9Extension = ConstrainedType  (BuiltinType INTEGER) (EmptyExtension cInteger9)
 tabInteger9'1Extension = myTAB'' tInteger9Extension vInteger9'1
 
 -- INTEGER (4000..4254)
@@ -399,8 +399,8 @@ constrainedIntegerExtensionTest1 =
       assertEqual "Constrained INTEGER Extension Test 1" vInteger9'1 tabInteger9'1Extension
    )
 
-cInteger9'1 = UNION (IC (ATOM (E (V (R (5000,5254))))))
-tInteger9Extension1 = ConstrainedType  (BuiltinType INTEGER) (EXTWITH cInteger9 cInteger9'1)
+cInteger9'1 = UnionSet (IC (ATOM (E (V (R (5000,5254))))))
+tInteger9Extension1 = ConstrainedType  (BuiltinType INTEGER) (NonEmptyExtension cInteger9 cInteger9'1)
 tabInteger9'1Extension1 = myTAB'' tInteger9Extension1 vInteger9'1
 
 -- INTEGER (4000..4254, ..., 5000..5254)
