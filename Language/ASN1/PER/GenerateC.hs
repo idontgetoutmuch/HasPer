@@ -14,12 +14,10 @@
 -- TBD
 -----------------------------------------------------------------------------
 
-module Language.ASN1.PER.GenerateC where
-{-
+module Language.ASN1.PER.GenerateC
    (
-     allocPointer
+     generateC
    ) where
--}
 
 import Text.PrettyPrint
 import Data.Char
@@ -28,8 +26,10 @@ import Data.Time
 import ASNTYPE
 import NewTestData
 
-cMain :: ASNType a -> a -> IO Doc
-cMain t x =
+-- | Generate a C program which writes out PER to a file given an ASN.1 type
+-- and a corresponding value.
+generateC :: ASNType a -> a -> IO Doc
+generateC t x =
    do zt <- getZonedTime       
       return (creationData zt $$ includeFiles t $$ fileFunction $$ mainC t x)
 
@@ -49,11 +49,11 @@ mainC t@(ReferencedType r ct) v =
               , cComment (text "Encoder return value")
               , text "asn_enc_rval_t ec;"
               , space
-              , text "/* Allocate an instance of " <+> text name <+> text "*/"
-              , cPtr <> text " = calloc(1, sizeof(" <> cType <> text ")); /* not malloc! */"
-              , text "assert(" <> cPtr <> text "); /* Assume infinite memory */"
+              , cComment (text "Allocate an instance of " <+> text name)
+              , cPtr <> text " = calloc(1, sizeof(" <> cType <> text "));" <+> cComment (text "not malloc!")
+              , text "assert(" <> cPtr <> text ");" <+> cComment(text "Assume infinite memory")
               , space
-              , text "/* Initialize" <+> text name <+> text "*/"
+              , cComment (text "Initialize" <+> text name)
               , referenceTypeAndVal t v
               , space
               , text "if(ac < 2) {"
@@ -211,3 +211,6 @@ eg3 =
    where
       x   = (Val 5) :*: ((Val 3) :*: Empty)
       y   = x :*: ( x :*: Empty)
+
+x3 = (Val 5) :*: ((Val 3) :*: Empty)
+y3 = x3 :*: ( x3 :*: Empty)
