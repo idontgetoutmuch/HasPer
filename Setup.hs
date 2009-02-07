@@ -28,14 +28,12 @@ perPostConf a cfs pd lbi =
           mAsn1c = lookupProgram (simpleProgram "asn1c") (withPrograms lbi)
       case mPdf of
          Nothing -> 
-            do warn v "Full documentation cannot be built without pdflatex"
-               return ()
+            warn v "Full documentation cannot be built without pdflatex" >> return ()
          Just _ ->
             return ()
       case mAsn1c of
          Nothing -> 
-            do warn v "Full inter-operability testing cannot be performed without asn1c"
-               return ()
+            warn v "Full inter-operability testing cannot be performed without asn1c" >> return ()
          Just _ ->
             return ()
       
