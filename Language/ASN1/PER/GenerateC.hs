@@ -25,6 +25,7 @@ import Data.Time
 
 import ASNTYPE
 import NewTestData
+import NewPretty
 
 -- | Generate a C program which writes out PER to a file given an ASN.1 type
 -- and a corresponding value.
@@ -171,7 +172,7 @@ referenceTypeAndValAux1 ns (BuiltinType b) v =
    referenceTypeAndValAux2 ns b v
 
 referenceTypeAndValAux2 :: Prefix -> ASNBuiltin a -> a -> Doc
-referenceTypeAndValAux2 ns INTEGER      x = lhs ns <> text " = " <> text (show x) <> semi
+referenceTypeAndValAux2 ns INTEGER      x = lhs ns <> text " = " <> prettyTypeVal (BuiltinType INTEGER) x <> semi
 referenceTypeAndValAux2 ns (SEQUENCE s) x = cSEQUENCE ns s x
 
 cSEQUENCE :: Prefix -> Sequence a -> a -> Doc

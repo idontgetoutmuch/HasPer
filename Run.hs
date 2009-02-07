@@ -1,22 +1,24 @@
+{-# OPTIONS_GHC -fwarn-unused-imports -fwarn-incomplete-patterns
+                -XScopedTypeVariables
+#-}
+
 module Main(main) where
 
 import System.Process
 import System.Exit
-import Asn1cTest
 import Data.Time
 import System.Directory
 import Text.PrettyPrint
-import Pretty
-import ConstrainedType
-import qualified Data.ByteString as B
-import qualified Data.Binary.Strict.BitGet as BG
-import Control.Monad.State
 import Control.Monad.Error
 import qualified Control.Exception as CE
 import IO
-import TestData
 import System.FilePath
 import System.Info
+
+import Language.ASN1.PER.GenerateC
+import GenerateModule
+import ASNTYPE
+import NewTestData
 
 skeletons = 
    case os of
@@ -63,15 +65,25 @@ runCommands ((c,e):xs) =
          ExitSuccess ->
             runCommands xs
          ExitFailure n ->
-            return (e ++ ": " ++ show n)
+            fail (e ++ ": " ++ show n)
 
-test genFile ty@(TYPEASS name _ _) val =
+-- name = "foobarbaz"
+
+
+
+writeASN1AndC asn1File cFile t v =
+   do writeFile asn1File (render (prettyModule t))
+      c <- generateC t v
+      writeFile cFile (render c)
+
+test genFile ty val =
    do d <- getCurrentDirectory
       t <- getCurrentTime
       let u = "asn1c." ++ show (utctDay t) ++ "." ++ show (utctDayTime t)
       createDirectory u
       setCurrentDirectory u
-      CE.catch (do writeASN1AndC (genFile <.> "asn1") (genFile <.> "c") ty val
+      CE.catch (do c <- generateC ty val
+                   writeASN1AndC (genFile <.> "asn1") (genFile <.> "c") ty val
                    runCommands [(asn1c ++ " " ++ asn1cOptions ++ " " ++ skeletons ++ " " ++ (genFile <.> "asn1"), "Failure in asn1c")]
                    d <- getCurrentDirectory
                    fs <- getDirectoryContents d
@@ -109,16 +121,28 @@ test genFile ty@(TYPEASS name _ _) val =
          case os of
             "mingw32" -> f <.> "exe"
             _         -> joinPath [".",f]
+      name = referenceTypeName ty
+      referenceTypeName (ReferencedType r _) = ref r
 test _ _ _  = error "Can only test type assignments"
     
 readGen :: String -> ASNType a -> IO ()
+readGen = error "readGen"
+{-
 readGen perFile t =
    do h <- openFile perFile ReadMode
       b <- B.hGetContents h
-      let d = BG.runBitGet b (mFromPer' t)
+      let d = undefined -- BG.runBitGet b (mFromPer' t)
       case d of
          Left s  -> putStrLn ("Left " ++ show s)
          Right x -> putStrLn ("Right " ++ render (prettyTypeVal t x))
 
-main = test "generated" bigIntSeq1Type' bigIntSeq1Val 
+example = runErrorT (fromPER rt3)
+example1 = 
+   case perEncode rt3 [] v3 of
+      Left errorMessage -> 
+         error errorMessage
+      Right x ->
+         BP.runBitPut x
+-}
 
+main = test "generated" rt3 v3
