@@ -15,10 +15,15 @@ import IO
 import System.FilePath
 import System.Info
 
+import qualified Data.ByteString as B
+import qualified Data.Binary.Strict.BitGet as BG
+
 import Language.ASN1.PER.GenerateC
 import GenerateModule
 import ASNTYPE
-import NewTestData
+import PER
+import NewTestData -- FIXME: Temporary?
+import NewPretty
 
 skeletons = 
    case os of
@@ -66,10 +71,6 @@ runCommands ((c,e):xs) =
             runCommands xs
          ExitFailure n ->
             fail (e ++ ": " ++ show n)
-
--- name = "foobarbaz"
-
-
 
 writeASN1AndC asn1File cFile t v =
    do writeFile asn1File (render (prettyModule t))
@@ -125,16 +126,32 @@ test genFile ty val =
       referenceTypeName (ReferencedType r _) = ref r
 test _ _ _  = error "Can only test type assignments"
     
-readGen :: String -> ASNType a -> IO ()
-readGen = error "readGen"
 {-
+readGen :: String -> ASNType a -> IO ()
 readGen perFile t =
    do h <- openFile perFile ReadMode
       b <- B.hGetContents h
-      let d = undefined -- BG.runBitGet b (mFromPer' t)
+      let d = BG.runBitGet b (runErrorT (fromPER t))
+      undefined -- return d 
+-}
+
+readGen perFile t =
+   do h <- openFile perFile ReadMode
+      b <- B.hGetContents h
+      let d = BG.runBitGet b (runErrorT (fromPER t))
       case d of
+         Left s  -> putStrLn ("BitGet error: " ++ show s)
+         Right x -> case x of
+                       Left e  -> putStrLn ("ASN.1 decoding error: " ++ show e)
+                       Right y -> putStrLn (render (prettyTypeVal t y))
+
+{-
+of
          Left s  -> putStrLn ("Left " ++ show s)
          Right x -> putStrLn ("Right " ++ render (prettyTypeVal t x))
+-}
+
+{-
 
 example = runErrorT (fromPER rt3)
 example1 = 
@@ -146,3 +163,5 @@ example1 =
 -}
 
 main = test "generated" rt3 v3
+
+foo x = fromPER x

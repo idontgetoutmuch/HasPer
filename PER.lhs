@@ -1895,6 +1895,7 @@ fromPER x = decode4 x []
 
 decode4 (BuiltinType t) cl = fromPer3 t cl
 decode4 (ConstrainedType t c) cl = decode4 t (c:cl)
+decode4 (ReferencedType r t) cl  = decode4 t cl
 
 fromPer3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
             ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a

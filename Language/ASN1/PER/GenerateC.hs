@@ -24,7 +24,7 @@ import Data.Char
 import Data.Time
 
 import ASNTYPE
-import NewTestData
+import NewTestData -- FIXME: Temporary - tests should not be done in the module
 import NewPretty
 
 -- | Generate a C program which writes out PER to a file given an ASN.1 type
