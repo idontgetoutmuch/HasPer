@@ -126,15 +126,6 @@ test genFile ty val =
       referenceTypeName (ReferencedType r _) = ref r
 test _ _ _  = error "Can only test type assignments"
     
-{-
-readGen :: String -> ASNType a -> IO ()
-readGen perFile t =
-   do h <- openFile perFile ReadMode
-      b <- B.hGetContents h
-      let d = BG.runBitGet b (runErrorT (fromPER t))
-      undefined -- return d 
--}
-
 readGen perFile t =
    do h <- openFile perFile ReadMode
       b <- B.hGetContents h
@@ -146,13 +137,6 @@ readGen perFile t =
                        Right y -> putStrLn (render (prettyTypeVal t y))
 
 {-
-of
-         Left s  -> putStrLn ("Left " ++ show s)
-         Right x -> putStrLn ("Right " ++ render (prettyTypeVal t x))
--}
-
-{-
-
 example = runErrorT (fromPER rt3)
 example1 = 
    case perEncode rt3 [] v3 of
@@ -163,5 +147,3 @@ example1 =
 -}
 
 main = test "generated" rt3 v3
-
-foo x = fromPER x

@@ -136,6 +136,8 @@ instance Pretty InfInteger where
 
 prettyTypeVal :: ASNType a -> a -> Doc
 prettyTypeVal (BuiltinType INTEGER) x = pretty x
+prettyTypeVal (BuiltinType (SEQUENCE s)) x = undefined
+-- prettyTypeVal (ReferencedType
 
 prettyElementTypeVal :: ComponentType a -> a -> Doc
 prettyElementTypeVal (MandatoryComponent (NamedType n t)) x =
