@@ -3,7 +3,7 @@ In this section we present our Haskell representation of the Abstract Syntax Not
 We assume that the reader is familiar with ASN.1 and has also had some experience with
 programming languages. No prior knowledge of Haskell is required. We do not provide a tutorial
 overview of Haskell, but, where necessary, include some commentary to aid the reading of the
-enbedded code.
+embedded code.
 
 %if False
 \begin{code}
@@ -17,14 +17,13 @@ enbedded code.
 
 %endif
 
-The module that hosts our Haskell representation of ASN.1 types is {\em ASNTYPE}.
+The module that hosts our Haskell representation of ASN.1 types is {\em ASNTYPE}. It uses the
+type {\em Word8} defined in the imported library module {\em Data.Word}.
 
 \begin{code}
 
 module ASNTYPE where
 
-import Language.ASN1 hiding (Optional, BitString, PrintableString, IA5String,
-                ComponentType(Default), NamedType, OctetString, VisibleString, NULL)
 import Data.Word
 
 \end{code}
@@ -53,11 +52,11 @@ a constrained type -- a type with a constraint.
 \end{itemize}
 
 We represent ASN.1 types using Haskell's algebraic data type mechanism which enables the
-classification alluded to above to be described using a single polymorphic and recursive
+classification alluded to above to be described using a single, polymorphic and recursive
 Haskell type which we call
 {\em ASNType}. Note that in Haskell type names begin with an upper-case letter and
 variable names begin with a lower-case letter. In the definition of {\em ASNType} the
-name {\em a} represents a type variable which can be replaced by any type -- hence a
+name {\em a} represents a type variable which can be replaced by any type -- hence it is a
 polymorphic type.
 \begin{code}
 
@@ -80,10 +79,13 @@ later in this paper; or
 \item
 a constrained type which is an {\em ASNType} associated with a constraint prefixed by
 the constructor {\em ConstrainedType}. The constraint has a {\em SubtypeConstraint} type which
-is described in section \ref{constraint}.
+is described in section \ref{constraint}. Note that {\em ASNType} and {\em SubtypeConstraint}
+have the same parameter. Thus the type of the constraint must match the type of {\em ASNType}
+to which it is applied.
 \end{itemize}
 
-In table \ref{table1} we present some example ASN.1 types with their Haskell representations and types.
+In table \ref{table1} we present some example ASN.1 types with their Haskell representations and
+the type of the Haskell representation.
 \begin{table}[h]
 \caption{ASN.1 Types}
 \label{table1}
@@ -111,11 +113,11 @@ we presented examples which used the {\em ASNBuiltin} values {\em BOOLEAN} and {
 different types that directly impact on the type of the {\em ASNType} value which uses them
 in their construction. This type-based distinction is essential when encoding ASN.1 values -- the type
 of the value to be encoded determines the encoding function that is used.
-We discuss this further in section \ref{sequence}.
+We discuss this in detail when we describe our PER encoding functions.
 
 To achieve this constructor-specific type we need to use a {\em generalised algebraic data type} (GADT)
 which assigns a (potentially different) type for each of the type's constructors, rather than
-requiring each to have the same (albeit polymorphic) type as is the case with {\em ASNType}.
+requiring each to have the same (albeit polymorphic) type, as is the case with {\em ASNType}.
 The GADT {\em ASNBuiltin} closely
 resembles the production listed in section 16.2 of X.680. Note however that:
 \begin{itemize}
@@ -152,43 +154,153 @@ data ASNBuiltin a where
 
 \end{code}
 
-The {\em ASNBuiltin} type includes:
-\begin{itemize}
-\item
-the constructors {\em NULL}, {\em BOOLEAN}, {\em INTEGER}, {\em OCTETSTRING} and the various
-character string constructors which directly represent their associated ASN.1 built-in type. Each has a
-different type which uses either the Haskell built-in equivalent of the ASN.1 type or, in the case of the
-string types, new Haskell types to represent these types. Note that we have not included the possibility of
-associating a named number list with an integer type since X.680 section 18.3 states that it is
-{\em not significant in the definition of a type};
-\item
-the constructor {\em BITSTRING} requires the (possibly empty) collection of named bits to
-construct a value of the bitstring type;
-\item
-the constructors {\em SEQUENCE} and {\em SET} require a {\em Sequence} input to specify the
+The {\em ASNBuiltin} type includes several constructors which we describe in the following
+subsections. We have categorised the constructors as nullary - where that directly represent
+the type - and non-nullary where they require at least one input to construct the type.
+
+\subsubsection{ASNBuiltin Nullary Constructors}
+
+The nullary constructors {\em NULL}, {\em BOOLEAN}, {\em INTEGER}, {\em OCTETSTRING} and the various
+character string constructors directly represent their associated ASN.1 built-in type.
+Note that we have not included the possibility of associating a named
+number list with an integer type since X.680 section 18.3 states that it is {\em not
+significant in the definition of a type}.
+Each constructor has a different type as indicated by the replacement of the parameter {\em a} with a concrete Haskell
+type. The only Haskell built-in type that is used is {\em Bool}. Our type {\em Null} represents
+nullness with a single value also called {\em Null}.
+
+\begin{code}
+
+data Null = Null
+    deriving Show
+
+\end{code}
+
+The expression {\em deriving Show}
+indicates that the type is being implicitly added to the built-in type class {\em Show}. A type class is simply a
+collection of types typcially with an explicit collection of associated functions, operators
+and/or values. For example, any value of a {\em Show} typpe may be converted to its printable form
+using a function {\em show}.
+
+The type {\em InfInteger} is our integer type augmented with maximum and minimum values. This
+is also added to types classes -- {\em Show}, {\em Eq} the equality testing class, and {\em
+Ord} which hosts the comparison operators -- but is also being explicitly added to the type
+classes {\em Bounded} and {\em Num}. This is indicated by the keyword {\em instance} and
+requires the implementation of the type class's entities. {\em Bounded} has two
+values {\em minBound} and {\em maxBound} and {\em Num} includes the arithmetic operators.
+\begin{code}
+
+data InfInteger = NegInf | Val Integer | PosInf
+    deriving (Show, Ord, Eq)
+
+instance Bounded InfInteger where
+   minBound = NegInf
+   maxBound = PosInf
+
+instance Num InfInteger where
+   PosInf + _ = PosInf
+   _ + PosInf = PosInf
+   NegInf + _ = NegInf
+   _ + NegInf = NegInf
+   (Val x) + (Val y) = Val (x + y)
+   PosInf - _ = PosInf
+   _ - PosInf = NegInf
+   NegInf - _ = NegInf
+   _ - NegInf = PosInf
+
+\end{code}
+
+
+The restricted character string types and octetstring types are represented by
+new Haskell types. They are are each introduced by the keyword {\em newtype}.
+This is used in place of {\em data} when one wants a type which is the same as an existing
+type but is recognised as distinct from the existing type by the type system. Thus one is simply
+wrapping an existing type in a constructor to
+enable type distinction. Each new type includes a function for accessing the value wrapped in
+the constructor. For example, the function {\em iA5String} converts a {\em IA5String} value
+into a string.
+
+Note that the {\em BitString} type mimics the type {\em BitStream} which is simply another
+name for a list of integers. This is indicated by the keyword {\em type} which does not
+introduce a new type, but simply provides declares an alias for an existing type. Similarly
+the {\em OctetString} type mimics the type {\em OctetStream} which is a list of {\em Octet}s,
+an alias for {\em Word8}.
+
+\begin{code}
+
+newtype BitString = BitString {bitString :: BitStream}
+    deriving (Eq, Show)
+
+type BitStream = [Int]
+
+newtype OctetString = OctetString {octetString :: OctetStream}
+    deriving (Eq, Show)
+
+type Octet = Word8
+type OctetStream = [Octet]
+
+newtype IA5String = IA5String {iA5String :: String}
+    deriving (Eq, Show)
+
+newtype PrintableString = PrintableString {printableString :: String}
+    deriving (Eq, Show)
+newtype NumericString = NumericString {numericString :: String}
+    deriving (Eq, Show)
+newtype VisibleString = VisibleString {visibleString :: String}
+    deriving (Eq, Show)
+newtype UniversalString = UniversalString {universalString :: String}
+    deriving (Eq, Show)
+newtype BMPString = BMPString {bmpString :: String}
+    deriving (Eq, Show)
+
+\end{code}
+
+\subsubsection{The Non-Nullary Constructors}
+
+The constructor {\em BITSTRING} requires the (possibly empty) collection of named bits to
+construct a bitstring type.
+
+\begin{code}
+
+type Name       = String
+data NamedBit = NB Name Int
+type NamedBits = [NamedBit]
+
+\end{code}
+
+The constructors {\em SEQUENCE} and {\em SET} require a {\em Sequence} input to specify the
 particular type of sequence being represented. That is, different sequences may have different
-types.
-For example, a sequence constructed from an integer and a boolean has a
+types. For example, a sequence constructed from an integer and a boolean has a
 different type from one constructed from a couple of visible strings.
-We describe the type {\em Sequence} in section \ref{sequence};
-\item
-the constructor {\em ENUMERATED} which requires an input that represents the particular
-enumeration;
-\item
-the {\em SEQUENCEOF} and {\em SETOF} constructors which require the type of the individual
+We describe the type {\em Sequence} in section \ref{sequence}.
+
+The {\em SEQUENCEOF} and {\em SETOF} constructors require the type of the individual
 components to be provided as input. These could be any of the ASN.1 types (or any named type).
 The return type for
 {\em SEQUENCEOF} and {\em SETOF} is a list type (denoted {\em [a]}), which is Haskell's built-in
-type for representing zero or more values of the same type;
-\item
-the {\em CHOICE} constructor which, because of the similarities of a choice type to a sequence type,
+type for representing zero or more values of the same type.
+
+The {\em CHOICE} constructor because of the similarities of a choice type to a sequence type
 also requires an input that specifies the particular choices that are available. However, the
 return type needs to emphasise that only one value may actually be used. This is achieved by using
 a new type {\em ExactlyOne} which we describe later in this paper. This is also the approach used
-for an enumerated type; and
-\item
-the {\em TAGGED} constructor which creates a tagged value from a tag and builtin type value.
-\end{itemize}
+for an enumerated type. The constructor {\em ENUMERATED} requires an input that represents the particular
+enumeration. Finally the {\em TAGGED} constructor creates a tagged value from an ASN.1 tag and
+a builtin type.
+
+\begin{code}
+
+type TagInfo    = (TagType, TagValue, TagPlicity)
+
+data TagType = Universal | Application | Context | Private
+   deriving (Eq,Show,Enum,Ord)
+
+type TagValue = Integer
+
+data TagPlicity = Implicit | Explicit
+   deriving (Eq,Show,Ord)
+
+\end{code}
 
 We present in table \ref{ASN1Builtin} some examples of how we represent ASN.1 built-in types.
 
@@ -207,19 +319,25 @@ We present in table \ref{ASN1Builtin} some examples of how we represent ASN.1 bu
 \end{table}
 
 Note that {\em aComponent} and {\em bComponent} are names assigned to
-sequence components.Full details of our representation of sequences and their component types
-including {\em aComponent} and {\em bComponent}
-are presented in section \ref{sequence}.
-
-
-The last built-in type example uses a value of the {\em Sequence} type which is described in
-section \ref{sequence}. This is followed by descriptions of our represenations of the ASN.1 {\tt
-ChoiceType}, {\tt EnumeratedType} and {\tt SequenceOfType}
+sequence components. Full details of our representation of sequences,
+including the type {\em Sequence}, and their component types
+including {\em aComponent} and {\em bComponent} are presented in section \ref{sequence}.
+This is followed by descriptions of our representations of the ASN.1 {\tt
+ChoiceType} and {\tt EnumeratedType}.
 
 \subsection{ASN.1 ReferencedType}
 \label{constraint}
 An ASN.1 referenced type is typically simply the type
-reference component of a type assignment. However, since we require the compile-time type
+reference component of a type assignment.
+
+\begin{code}
+
+newtype TypeReference = Ref {ref :: String}
+
+\end{code}
+
+
+However, since we require the compile-time type
 checker to raise any type errors, we need to associate any type reference with its type.
 For example\\
 \\
@@ -243,10 +361,11 @@ type, and not to the collection itself.
 \end{itemize}
 
 A {\tt Constraint} is either a {\tt SubtypeConstraint} or a {\tt
-GeneralConstraint} with or without an exception. We have only implemented subtype contraints.
+GeneralConstraint} with or without an exception. We have only implemented subtype contraints
+and have not implemented exceptions (X.680 clause 49).
 
 Now a {\tt SubtypeConstraint} can be non-extensible, extensible but as yet have no extension
-additions, or be extensible with extension additions. Our type {\em Subtypeconstraint}
+additions, or be extensible with extension additions. Our type {\em SubtypeConstraint}
 provides for each of these cases.
 
 \begin{code}
@@ -266,8 +385,8 @@ sub-constraints or the complement of a constraint.
 \begin{code}
 
 data ConstraintSet a where
- UnionSet        :: Union a -> ConstraintSet a
- ComplementSet   :: Exclusions a  -> ConstraintSet a
+    UnionSet        :: Union a -> ConstraintSet a
+    ComplementSet   :: Exclusions a  -> ConstraintSet a
 
 \end{code}
 
@@ -285,17 +404,22 @@ data IE a = E (Element a) | Exc (Element a) (Exclusions a)
 
 \end{code}
 
-There are eight kinds of element constraint which are variously supported by the basic ASN.1
-types. Our representation of each of the element constraints are presented below the
-definition of the type {\em Element}. Note that we manage the association of an elemental
-constraint with an ASN.1 basic type by using a collection of new Haskell type classes. For
+There are eight kinds of element constraint each of which may be applied to a known collection
+of the ASN.1 types. Our representation of each of the element constraints are presented below the
+definition of the type {\em Element}. We manage the association of an element
+constraint with an ASN.1 type by using a collection of new Haskell type classes. For
 example, the {\em ValueRangeConstraint} may only be applied to types which are members of the
-type class {\em ValueRange}: the {\em InfInteger} and various restricted character strings
-types. 
+type class {\em ValueRange} as indicated by {\em ValueRange a =>} in the definition of the
+{\em ValueRangeConstraint} type. The {\em InfInteger} type and the various restricted character strings
+types are the only members of this type class.
 
+Note that each type class is simply used for membership purposes and thus does not have any
+associated methods.
 
-
-We do not currently support {\tt TypeConstraint} and {\tt PatternConstraint}.
+We do not currently support the constraint {\tt TypeConstraint} which is only applied to an open type and thus
+only of use with information object classes which are not part of this implementation. Neither do
+we support the constraint {\tt PatternConstraint} which imposes a regular expression-based constraint on restricted
+character string types.
 
 \begin{code}
 
@@ -314,57 +438,8 @@ data SizeConstraint a = Size a => SC (SubtypeConstraint InfInteger)
 
 data PermittedAlphabetConstraint a = PermittedAlphabet a => FR (SubtypeConstraint a)
 
---IS to be completed for multiple type constraints
 data InnerTypeConstraints a = InnerType a => WC (SubtypeConstraint a) | WCS
 
-\end{code}
-
-
-
-
-
-\begin{code}
-
-newtype TypeReference = Ref {ref :: String}
-
-data Null = Null
-    deriving Show
-
-data InfInteger = NegInf | Val Integer | PosInf
-    deriving (Show, Ord, Eq)
-
-instance Bounded InfInteger where
-   minBound = NegInf
-   maxBound = PosInf
-
-instance Num InfInteger where
-   PosInf + _ = PosInf
-   _ + PosInf = PosInf
-   NegInf + _ = NegInf
-   _ + NegInf = NegInf
-   (Val x) + (Val y) = Val (x + y)
-   PosInf - _ = PosInf
-   _ - PosInf = NegInf
-   NegInf - _ = NegInf
-   _ - NegInf = PosInf
-   (Val x) - (Val y) = Val (x - y)
-   fromInteger v = Val v
-\end{code}
-
-
--- Type aliases
-\begin{code}
-
-type TagInfo    = (TagType, TagValue, TagPlicity)
-type Name       = String
-
-\end{code}
-
-Type Classes which make explicit the (not necessarily PER-visible) subtypes associated with the ASN.1 types.
-
-See X.680 (07/2002) Section 47.1 Table 9
-
-\begin{code}
 
 class SingleValue a
 
@@ -431,77 +506,58 @@ class InnerType a
 instance InnerType (Choice a)
 instance InnerType  (Sequence a)
 instance InnerType [a]
-\end{code}
-
-
-
-
-
-
-\begin{code}
-
-type NamedBits = [NamedBit]
-
-data NamedBit = NB String Int
 
 \end{code}
-Definition of Constraint Type
+
+In the following section we provide some types which are required in the generation and
+processing of constraints.
+
+\subsection{Constraint Processing Types}
+
+In ASN.1 constraints can be applied in series. We represent the collection of this constraints
+using a list type which we call {\em SerialSubtypeConstraints}.
 
 \begin{code}
--- This current version of the constraint type has ignored exceptions (see X.680 45.6)
-
 type SerialSubtypeConstraints a = [SubtypeConstraint a]
+\end{code}
 
+The constraint {\em IntegerConstraint} is the type for effective integer constraints. These
+are contiguous sets of values and thus can be represented using a pair of values which
+indicate the lower and upper limits of the range. In constrast {\em ValidIntegerConstraint} is
+the type which represents the actual elements of a set combination of constraints which are
+typically non-contiguous. These are required to test the validity of a value. Since they are
+non-contiguous we represent their values as a list of contiguous sets.
 
--- Type constraint (constraining an open type) to be done (47.6)
--- Pattern constraint to be done.
-
-newtype IA5String = IA5String {iA5String :: String}
-    deriving (Eq, Show)
-newtype BitString = BitString {bitString :: BitStream}
-    deriving (Eq, Show)
-newtype OctetString = OctetString {octetString :: OctetStream}
-    deriving (Eq, Show)
-newtype PrintableString = PrintableString {printableString :: String}
-    deriving (Eq, Show)
-newtype NumericString = NumericString {numericString :: String}
-    deriving (Eq, Show)
-newtype VisibleString = VisibleString {visibleString :: String}
-    deriving (Eq, Show)
-newtype UniversalString = UniversalString {universalString :: String}
-    deriving (Eq, Show)
-newtype BMPString = BMPString {bmpString :: String}
-    deriving (Eq, Show)
-
-type BitStream = [Int]
-type Octet = Word8
-type OctetStream = [Octet]
-
--- Some constraint-related types
+\begin{code}
 
 data IntegerConstraint = IntegerConstraint {lower :: InfInteger, upper :: InfInteger}
    deriving (Show, Eq)
 
--- ValidIntegerConstraint is used for the validity testing of a value against a constraint. Thus, unlike an
--- effective constraint (which is used to produce encoding in a small number of bits) and is always a contiguous
--- set of values, this type represents the true result of set combinations of constraints which may be non-contiguous.
-
 data ValidIntegerConstraint = Valid [IntegerConstraint]
     deriving (Show, Eq)
 
-data ConType i = ConType {conType :: i}
-    deriving (Show, Eq)
+\end{code}
 
-data ExtBS i = ExtBS i i Bool
-    deriving (Show, Eq)
+The type {\em ResStringConstraint} represents the distinct components --
+the permitted alphabet constraint and the size constraint -- of a root or extension
+constraint of a restricted character string type. It is a polymorphic type to allow for the
+various restricted character string types. {\em ExtResStringConstraint} supports the
+combination of root and extension constraints. The boolean component indicates whether an
+extension constraint exists. NOTE: could this be replaced by ExtBS?
 
+\begin{code}
 
 data ResStringConstraint a i = ResStringConstraint a i
     deriving (Show,Eq)
 
 data ExtResStringConstraint a = ExtResStringConstraint a a Bool
     deriving (Show, Eq)
+
+data ExtBS i = ExtBS i i Bool
+    deriving (Show, Eq)
+
 \end{code}
+
 
 \subsection{ASN.1 SequenceType}
 \label{sequence}
@@ -551,15 +607,19 @@ instance Show Nil where
 
 instance (Show a, Show l) => Show (a:*:l) where
    show (x:*:xs) = show x ++ ":*:" ++ show xs
+
+instance Eq Nil where
+  _ == _ = True
+
+instance (Eq a, Eq b) => Eq (a:*:b) where
+   x:*:xs == y:*:ys =
+      x == y && xs == ys
 \end{code}
 
 The type {\em Nil} has one value {\em Empty} which is used as the starting point for the
-creation of any sequence. The heterogeneous list {\em :*:} uses a constrctor of the same name
-to build heterogeneous lists. The two declarations that begin with the keyword {\em instance}
-are type class instatiations. A type class is a collection of types which allow common behaviour
-as specified by their list of associated functions. The instantiations add types -- in this case {\em Nil} and {\em :*:} to type
-classes -- in this case {\em Show}. Thus the function {\em show} can now be used with values
-of the types {\em Nil} and {\em :*:}, which enables the printing of values of these types.
+creation of any sequence. The heterogeneous list {\em :*:} uses a constructor of the same name
+to build heterogeneous lists. We have added the type to the type classes {\em Show} and {\em Eq}
+to enable the printing of values and equality testing.
 
 In table \ref{sequenceEqs} we present some illustrative example sequences and their types.
 
@@ -568,36 +628,39 @@ In table \ref{sequenceEqs} we present some illustrative example sequences and th
 \label{sequenceEqs}
 \begin{tabular}{ll}
 {\bf Sequence} & {\bf Haskell Type}  \\
-{\em AddComponent integerComp EmptySequence} & {\em Sequence (InfInteger :*: Nil)}\\
+{\em AddComponent integerComp} & \\
+\hspace{0.2cm}{\em EmptySequence} & {\em Sequence (InfInteger :*: Nil)}\\
 {\em AddComponent boolComp} & \\
-\hspace{0.2cm} {\em (AddComponent stringComp EmptySequence)} & {\em Sequence (Bool :*: String :*: Nil)}\\
+\hspace{0.2cm} {\em (AddComponent stringComp} & \\
+\hspace{0.4cm} {\em EmptySequence)} & {\em Sequence (Bool :*: String :*: Nil)}\\
 {\em AddComponent integerComp1} & \\
 \hspace{0.2cm} {\em (ExtensionMarker &\\
 \hspace{0.25cm} {\em (ExtensionAdditionGroup NoVersionNumber &\\
 \hspace{0.3cm} {\em (AddComponent integerComp2 EmptySequence) &\\
-\hspace{0.35cm} {\em EmptySequence))} & {\em Sequence (InfInteger :*: (Maybe (InfInteger :*: Nil):*: Nil))}
+\hspace{0.35cm} {\em EmptySequence))} & {\em Sequence (InfInteger :*:}\\
+& \hspace{0.1cm}(Maybe (InfInteger :*: Nil):*: Nil))}
 \end{tabular}
 \end{table}
 To avoid providing a full representation of sequence components we have given them names
-such as {\em integerComp1}. We will later refer to the examples in table \ref{sequenceEqs}
-as {\em sequence1}, {\em sequence2} and {\em sequence3} respectively.
-
+such as {\em integerComp1}.
 
 It is clear that the type of a sequence depends on the number and type of components.
 This explicit type information is required when encoding a sequence so that the appropriate
-encoding function is is used on each component of a sequence.
+encoding function is used on each component of a sequence.
+Continuing with the illustrative examples provided in table \ref{sequenceEqs} -- and refering
+to them as {\em sequence1}, {\em sequence2} and {\em sequence3} respectively -- we can create
+the {\em ASNBuiltin} types presented in table \ref{ASNSeqs}.
 
-Now continuing with the illustrative examples provided in table \ref{sequenceEqs} we can create
-the following {\em ASNBuiltin} types.
-
-\begin{itemize}
-\item
-{\em SEQUENCE sequence1} has type {\em InfInteger :*: Nil}.
-\item
-{\em SEQUENCE sequence2} has type {\em Bool :*: String :*: Nil}.
-\item
-{\em SEQUENCE sequence3} has type {\em InfInteger :*: (Maybe (InfInteger :*: Nil):*: Nil)}.
-\end{itemize}
+\begin{table}[h]
+\caption{ASNBuiltin Sequences}
+\label{ASNSeqs}
+\begin{tabular}{ll}
+{\bf Sequence} & {\bf Haskell Type}  \\
+{\em SEQUENCE sequence1} & {\em InfInteger :*: Nil}\\
+{\em SEQUENCE sequence2} & {\em Bool :*: String :*: Nil}\\
+{\em SEQUENCE sequence3} & {\em InfInteger :*: (Maybe (InfInteger :*: Nil):*: Nil)}
+\end{tabular}
+\end{table}
 
 The component types of a sequence are represented by the GADT {\em ComponentType}. There are
 four forms of component type.
@@ -641,11 +704,60 @@ defined as
 {\em MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN))} respectively.
 \end{itemize}
 
+The encoding of the set type requires component tag information to order the components.
+We provide the selector function {\em getCTI} to access tag information. It uses {\em getTI}
+which is applied to an {\em ASNTYPE} which in turn uses {\em getBuiltinTI} which returns the
+universal tag of a builtin ASN.1 type. The choice type requires a further function {\em
+getCTags} to access the tags of a choice. This is also used in the encoding of a choice value. 
+
+\begin{code}
+getCTI :: ComponentType a -> TagInfo
+getCTI (MandatoryComponent (NamedType _  (BuiltinType (TAGGED t ct)))) = t
+getCTI (MandatoryComponent (NamedType _  t))             = getTI t
+getCTI (ExtensionComponent (NamedType _  (BuiltinType (TAGGED t ct))))   = t
+getCTI (ExtensionComponent (NamedType _ t))                = getTI t
+getCTI (OptionalComponent (NamedType _  (BuiltinType (TAGGED t ct))))  = t
+getCTI (OptionalComponent (NamedType _  t))              = getTI t
+getCTI (DefaultComponent (NamedType _  (BuiltinType (TAGGED t ct))) d) = t
+getCTI (DefaultComponent (NamedType _  t) d)             = getTI t
+
+getTI :: ASNType a -> TagInfo
+getTI (BuiltinType t) = getBuiltinTI t
+getTI (ConstrainedType t _) = getTI t
+getTI (ReferencedType r t) = getTI t
+
+getBuiltinTI :: ASNBuiltin a -> TagInfo
+getBuiltinTI BOOLEAN            = (Universal, 1, Explicit)
+getBuiltinTI INTEGER            = (Universal,2, Explicit)
+getBuiltinTI (BITSTRING _)      = (Universal, 3, Explicit)
+getBuiltinTI OCTETSTRING        = (Universal, 4, Explicit)
+getBuiltinTI NULL               = (Universal, 5, Explicit)
+getBuiltinTI PRINTABLESTRING    = (Universal, 19, Explicit)
+getBuiltinTI IA5STRING          = (Universal,22, Explicit)
+getBuiltinTI VISIBLESTRING      = (Universal, 26, Explicit)
+getBuiltinTI NUMERICSTRING      = (Universal, 18, Explicit)
+getBuiltinTI UNIVERSALSTRING    = (Universal, 28, Explicit)
+getBuiltinTI BMPSTRING          = (Universal, 30, Explicit)
+getBuiltinTI (SEQUENCE s)       = (Universal, 16, Explicit)
+getBuiltinTI (SEQUENCEOF s)     = (Universal, 16, Explicit)
+getBuiltinTI (SET s)            = (Universal, 17, Explicit)
+getBuiltinTI (SETOF s)          = (Universal, 17, Explicit)
+getBuiltinTI (CHOICE c)         = (minimum . getCTags) c
+
+getCTags :: Choice a -> [TagInfo]
+getCTags EmptyChoice                            = []
+getCTags (ChoiceExtensionMarker xs)             = getCTags xs
+getCTags (ChoiceExtensionAdditionGroup vn xs)   = getCTags xs
+getCTags (ChoiceOption (NamedType n (BuiltinType (TAGGED t a))) xs)
+        = t : getCTags xs
+getCTags (ChoiceOption (NamedType n a) xs)
+        = getTI a : getCTags xs
+\end{code}
 
 \subsection{ASN.1 ChoiceType}
-\label{sequence}
+\label{choice}
 
-The ASN.1 {\em ChoiceType} has similarities to the {\em SequenceType}. In effect it is a
+The ASN.1 {\tt ChoiceType} has similarities to the {\tt SequenceType}. In effect it is a
 sequence of optional components where exactly one must be used for any incarnation. We
 therefore have chosen a Haskell representation which has significant similarities to our
 representation of the {\tt SequenceType}.
@@ -691,13 +803,15 @@ the number of actual values in the list. It has the following constructors:
 {\em ExactlyOne Nil NoSelectionMade} where {\em NoSelectionMade} - a type with no associated values
 - is a type indicating that no choice has yet been made.
 \item
-{\em AddAValue} which adds a value to a list.
+{\em AddAValue} which adds a value to a list. It can only be applied to a list for which no
+choice has yet been made indicated by the type of the input list.
 Its return type is {\em ExactlyOne (a:*:l) SelectionMade)} indicating a choice has now been made.
 {\em SelectionMade} is also a type with no associated values; and
 \item
 {\em AddNoValue} which adds no value (of the appropriate type -- hence the use
 of the phantom type {\em NoValue a}) to a list. In this case the number of values in the
-list is not incremented.
+list is not incremented. That is, if the input list indicates that no selection has yet been
+made with {\em NoSelectionMade}, then so will the output list.
 \end{itemize}
 
 A phantom type is one in which a type variable appears only on the left hand side of the
@@ -709,6 +823,8 @@ It is important to have the constructors {\em AddAValue} and {\em AddNoValue} so
 a match between the choice value and the choice type. That is, the overall choice value has the
 appropriate type, and the particular choice of value has the required type.
 
+In common with the heterogeneous list type, we have added {\em ExactlyOne} to the type classes
+{\em Show} and {\em Eq}.
 
 \begin{code}
 
@@ -730,23 +846,13 @@ instance (Show a, Show (ExactlyOne l n)) => Show (ExactlyOne (a:*:l) n) where
    show (AddAValue x _ ) = show x
    show (AddNoValue _ xs) = show xs
 
-instance Eq Nil where
-  _ == _ = True
-
-instance (Eq a, Eq b) => Eq (a:*:b) where
-   x:*:xs == y:*:ys =
-      x == y && xs == ys
-
-instance Eq (ExactlyOne Nil SelectionMade) where
-   _ == _ = True
-
 instance (Eq a, Eq (ExactlyOne l SelectionMade)) => Eq (ExactlyOne (a:*:l) SelectionMade) where
    AddAValue   _ _ == AddNoValue _ _ = False
    AddNoValue _ _ == AddAValue _ _   = False
    AddNoValue _ xs == AddNoValue _ ys = xs == ys
    AddAValue x _ == AddAValue y _ = x == y
-
 \end{code}
+
 
 \subsection{ASN.1 EnumeratedType}
 \label{enumerate}
@@ -785,88 +891,8 @@ data EnumerationItem a where
 
 data Enumerate a where
     EmptyEnumeration            :: Enumerate Nil
-    AddEnumeration              :: EnumerationItem a -> Enumerate l -> Enumerate (a:*:l)
+    AddEnumeration              :: EnumerationItem a -> Enumerate l
+                                                     -> Enumerate (a:*:l)
     EnumerationExtensionMarker  :: Enumerate l -> Enumerate l
-
-\end{code}
-
-\subsection{SequenceOfType}
-
-
-A {\tt ReferencedType} is:
-\begin{itemize}
-\item
-a {\tt DefinedType} -- this is either a qualifed (using a module reference) type reference,
-a type reference, a parameterized type or a parameterized value
-set type.
-\item
-a {\tt UsefulType} -- a collection of predefined types such as
-\begin{verbatim}
-GeneralizedTime ::= [UNIVERSAL 24] IMPLICIT VisibleString
-\end{verbatim}
-\item
-a {\tt SelectionType} -- a type selected from a {\tt Choice} type.
-\item
-a {\tt TypeFromObject} -- a type from an information object (see X.681) or
-\item
-a {\tt ValueSetFromObjects} -- a value set from objects (see
-X.681).
-\end{itemize}
-
-A {\tt ConstrainedType} is either a
-\begin{itemize}
-\item
-a type associated with a {\tt Constraint} or
-\item
-a {\tt SETOF} or {\tt SEQUENCEOF} type with a constraint on the collection
-type. That is, the usual type constraint construct implies that
-the constraint is applied to the component type of a collection
-type, and not to the collection itself.
-\end{itemize}
-
-
--- UNIVERSAL TAG FUNCTIONS
-\begin{code}
-getCTI :: ComponentType a -> TagInfo
-getCTI (MandatoryComponent (NamedType _  (BuiltinType (TAGGED t ct)))) = t
-getCTI (MandatoryComponent (NamedType _  t))             = getTI t
-getCTI (ExtensionComponent (NamedType _  (BuiltinType (TAGGED t ct))))   = t
-getCTI (ExtensionComponent (NamedType _ t))                = getTI t
-getCTI (OptionalComponent (NamedType _  (BuiltinType (TAGGED t ct))))  = t
-getCTI (OptionalComponent (NamedType _  t))              = getTI t
-getCTI (DefaultComponent (NamedType _  (BuiltinType (TAGGED t ct))) d) = t
-getCTI (DefaultComponent (NamedType _  t) d)             = getTI t
-
-getTI :: ASNType a -> TagInfo
-getTI (BuiltinType t) = getBuiltinTI t
-getTI (ConstrainedType t _) = getTI t
-getTI (ReferencedType r t) = getTI t
-
-getBuiltinTI :: ASNBuiltin a -> TagInfo
-getBuiltinTI BOOLEAN            = (Universal, 1, Explicit)
-getBuiltinTI INTEGER            = (Universal,2, Explicit)
-getBuiltinTI (BITSTRING _)      = (Universal, 3, Explicit)
-getBuiltinTI OCTETSTRING        = (Universal, 4, Explicit)
-getBuiltinTI NULL               = (Universal, 5, Explicit)
-getBuiltinTI PRINTABLESTRING    = (Universal, 19, Explicit)
-getBuiltinTI IA5STRING          = (Universal,22, Explicit)
-getBuiltinTI VISIBLESTRING      = (Universal, 26, Explicit)
-getBuiltinTI NUMERICSTRING      = (Universal, 18, Explicit)
-getBuiltinTI UNIVERSALSTRING    = (Universal, 28, Explicit)
-getBuiltinTI BMPSTRING          = (Universal, 30, Explicit)
-getBuiltinTI (SEQUENCE s)       = (Universal, 16, Explicit)
-getBuiltinTI (SEQUENCEOF s)     = (Universal, 16, Explicit)
-getBuiltinTI (SET s)            = (Universal, 17, Explicit)
-getBuiltinTI (SETOF s)          = (Universal, 17, Explicit)
-getBuiltinTI (CHOICE c)         = (minimum . getCTags) c
-
-getCTags :: Choice a -> [TagInfo]
-getCTags EmptyChoice                            = []
-getCTags (ChoiceExtensionMarker xs)             = getCTags xs
-getCTags (ChoiceExtensionAdditionGroup vn xs)   = getCTags xs
-getCTags (ChoiceOption (NamedType n (BuiltinType (TAGGED t a))) xs)
-        = t : getCTags xs
-getCTags (ChoiceOption (NamedType n a) xs)
-        = getTI a : getCTags xs
 
 \end{code}

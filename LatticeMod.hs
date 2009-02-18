@@ -9,6 +9,9 @@ import Data.List
 import Control.Monad.Error
 import ASNTYPE
 
+data ConType i = ConType {conType :: i}
+   deriving (Show, Eq)
+
 class IC a where
     makeIC :: InfInteger -> InfInteger -> a
     getLower :: a -> InfInteger

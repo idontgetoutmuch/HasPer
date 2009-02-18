@@ -32,7 +32,6 @@ import Test.HUnit
 import ASNTYPE
 import ConstraintGeneration
 
-import Language.ASN1(TagType(..), TagPlicity(..))
 
 sc1 = UnionSet (UC (IC (ATOM (E (V (R (245,249)))))) (ATOM (E (V (R (251,255))))))
 sc2 = UnionSet (IC (INTER (ATOM (E (V (R (270,273))))) (E (V (R (271,276))))))
