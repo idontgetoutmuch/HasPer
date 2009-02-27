@@ -18,7 +18,7 @@ embedded code.
 %endif
 
 The module that hosts our Haskell representation of ASN.1 types is {\em ASNTYPE}. It uses the
-type {\em Word8} defined in the imported library module {\em Data.Word}.
+type {\em Word8}which is defined in the imported library module {\em Data.Word}.
 
 \begin{code}
 
@@ -40,10 +40,11 @@ describing and illustrating the PER encoding of such values.
 \subsection{ASN.1 Type}
 \label{asntype}
 
-ASN.1 types are categorised as follows:
+The top-level ASN.1 type, which is simply called {\tt Type}, encompasses all ASN.1 types. Each type is
+classified as:
 \begin{itemize}
 \item
-a builtin type -- any of the standard ASN.1 types or a tagged type;
+a built-in type -- any of the standard ASN.1 types or a tagged type;
 \item
 a referenced type -- a (qualified or unqualified) type reference or a parameterised type (defined in X.683);
 or
@@ -75,13 +76,13 @@ a built-in type of type {\em ASNBuiltin} prefixed by the constructor {\em Builti
 \item
 a type reference of the type {\em TypeReference} and a {\em ASNType} prefixed by the constructor
 {\em ReferencedType}. Note that a referenced type comes in various forms which we discuss
-later in this paper; or
+in section \ref{reference}; or
 \item
 a constrained type which is an {\em ASNType} associated with a constraint prefixed by
 the constructor {\em ConstrainedType}. The constraint has a {\em SubtypeConstraint} type which
 is described in section \ref{constraint}. Note that {\em ASNType} and {\em SubtypeConstraint}
-have the same parameter. Thus the type of the constraint must match the type of {\em ASNType}
-to which it is applied.
+have the same parameter which enforces a matching -- at a type-level -- of the type and
+its constraint.
 \end{itemize}
 
 In table \ref{table1} we present some example ASN.1 types with their Haskell representations and
@@ -91,21 +92,22 @@ the type of the Haskell representation.
 \label{table1}
 \begin{tabular}{lll}
 {\bf ASN.1 Type} & {\bf Haskell Representation} & {\bf Type} \\
-{\tt BOOLEAN} & {\em BuiltinType BOOLEAN} & {\em ASNType Bool}\\
-{\tt INTEGER} & {\em BuiltinType INTEGER} & {\em ASNType InfInteger}\\
+{\tt BOOLEAN} & {\em built-inType BOOLEAN} & {\em ASNType Bool}\\
+{\tt INTEGER} & {\em built-inType INTEGER} & {\em ASNType InfInteger}\\
 {\tt INTEGER (1..4)} & {\em ConstrainedType}  & {\em ASNType InfInteger}\\
-& {\em \hspace{0.5cm} (BuiltinType INTEGER) intCons} &
+& {\em \hspace{0.2cm} (built-inType INTEGER) intCons} &
 \end{tabular}
 \end{table}
 
 Note that {\em Bool} is the Haskell boolean type and {\em InfInteger} is our representation of an
 integer type with named maximum and minimum values.
 We have used the name {\em intCons} for an integer value range constraint to avoid presenting full
-details of our constraint representation. This is described later in this paper.
+details of our constraint representation. Full details of how we represent constraints are
+provided in section \ref{constraint}.
 
 
 \subsection{ASN.1 BuiltinType}
-\label{asnbuiltin}
+\label{ASNBuiltin}
 
 {\em ASNBuiltin} in common with {\em ASNType} is a parameterised algebraic type. However in this case we also
 want to be able to assign an appropriate type to any of its constructors. In the previous section
@@ -122,8 +124,10 @@ The GADT {\em ASNBuiltin} closely
 resembles the production listed in section 16.2 of X.680. Note however that:
 \begin{itemize}
 \item
-the character string types are represented individually without the need for another type
-to represent restricted and unrestricted character strings; and
+the character string types are represented directly without the need for an intermediate type
+which distinguishes the restricted and unrestricted character strings. We currently only
+represent a subset of the restricted character strings -- the known-multiplier
+character string types; and
 \item
 the following ASN.1 types are not included in this specification:\\ {\tt EmbeddedPDVType},
 {\tt ExternalType}, {\tt InstanceOfType}, {\tt ObjectClassFieldType},
@@ -136,7 +140,8 @@ data ASNBuiltin a where
    BITSTRING       :: NamedBits -> ASNBuiltin BitString
    BOOLEAN         :: ASNBuiltin Bool
    INTEGER         :: ASNBuiltin InfInteger
-   ENUMERATED      :: Enumerate a -> ASNBuiltin (ExactlyOne a SelectionMade)
+   ENUMERATED      :: Enumerate a
+                        -> ASNBuiltin (ExactlyOne a SelectionMade)
    OCTETSTRING     :: ASNBuiltin OctetString
    PRINTABLESTRING :: ASNBuiltin PrintableString
    IA5STRING       :: ASNBuiltin IA5String
@@ -149,7 +154,8 @@ data ASNBuiltin a where
    SEQUENCEOF      :: ASNType a -> ASNBuiltin [a]
    SET             :: Sequence a -> ASNBuiltin a
    SETOF           :: ASNType a -> ASNBuiltin [a]
-   CHOICE          :: Choice a -> ASNBuiltin (ExactlyOne a SelectionMade)
+   CHOICE          :: Choice a
+                        -> ASNBuiltin (ExactlyOne a SelectionMade)
    TAGGED          :: TagInfo -> ASNType a -> ASNBuiltin a
 
 \end{code}
@@ -286,7 +292,7 @@ return type needs to emphasise that only one value may actually be used. This is
 a new type {\em ExactlyOne} which we describe later in this paper. This is also the approach used
 for an enumerated type. The constructor {\em ENUMERATED} requires an input that represents the particular
 enumeration. Finally the {\em TAGGED} constructor creates a tagged value from an ASN.1 tag and
-a builtin type.
+a built-in type.
 
 \begin{code}
 
@@ -302,13 +308,13 @@ data TagPlicity = Implicit | Explicit
 
 \end{code}
 
-We present in table \ref{ASN1Builtin} some examples of how we represent ASN.1 built-in types.
+We present in table \ref{ASN1built-in} some examples of how we represent ASN.1 built-in types.
 
 \begin{table}[h]
-\caption{ASN.1 Builtin Types}
-\label{ASN1Builtin}
+\caption{ASN.1 built-in Types}
+\label{ASN1built-in}
 \begin{tabular}{ll}
-{\bf ASN.1 Builtin Type} & {\bf Haskell Representation}  \\
+{\bf ASN.1 built-in Type} & {\bf Haskell Representation}  \\
 {\tt BOOLEAN} & {\em BOOLEAN}\\
 {\tt INTEGER} & {\em INTEGER}\\
 {\tt SEQUENCE \{\}} & {\em SEQUENCE Nil}\\
@@ -326,7 +332,8 @@ This is followed by descriptions of our representations of the ASN.1 {\tt
 ChoiceType} and {\tt EnumeratedType}.
 
 \subsection{ASN.1 ReferencedType}
-\label{constraint}
+\label{reference}
+NEED A FULL EXPLANATION HERE -- SEE X.680
 An ASN.1 referenced type is typically simply the type
 reference component of a type assignment.
 
@@ -341,7 +348,7 @@ However, since we require the compile-time type
 checker to raise any type errors, we need to associate any type reference with its type.
 For example\\
 \\
-{\em ReferencedType (Ref "T") (BuiltinType INTEGER)}\\
+{\em ReferencedType (Ref "T") (built-inType INTEGER)}\\
 \\
 represents a reference to the ASN.1 type {\tt IntegerType}. Although this appears simply to
 add unnecessary complexity to the code, it allows us to faithfully pretty print ASN.1 types.
@@ -409,7 +416,7 @@ of the ASN.1 types. Our representation of each of the element constraints are pr
 definition of the type {\em Element}. We manage the association of an element
 constraint with an ASN.1 type by using a collection of new Haskell type classes. For
 example, the {\em ValueRangeConstraint} may only be applied to types which are members of the
-type class {\em ValueRange} as indicated by {\em ValueRange a =>} in the definition of the
+type class {\em ValueRange} as indicated by {\em ValueRange a $=>$} in the definition of the
 {\em ValueRangeConstraint} type. The {\em InfInteger} type and the various restricted character strings
 types are the only members of this type class.
 
@@ -695,20 +702,20 @@ data NamedType a where
 
 \end{code}
 
-Thus the components {\em aComponent} and {\em bComponent} used in table \ref{ASN1Builtin} are
+Thus the components {\em aComponent} and {\em bComponent} used in table \ref{ASN1built-in} are
 defined as
 \begin{itemize}
 \item
-{\em MandatoryComponent (NamedType "a" (BuiltinType INTEGER))} and
+{\em MandatoryComponent (NamedType "a" (built-inType INTEGER))} and
 \item
-{\em MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN))} respectively.
+{\em MandatoryComponent (NamedType "b" (built-inType BOOLEAN))} respectively.
 \end{itemize}
 
 The encoding of the set type requires component tag information to order the components.
 We provide the selector function {\em getCTI} to access tag information. It uses {\em getTI}
 which is applied to an {\em ASNTYPE} which in turn uses {\em getBuiltinTI} which returns the
-universal tag of a builtin ASN.1 type. The choice type requires a further function {\em
-getCTags} to access the tags of a choice. This is also used in the encoding of a choice value. 
+universal tag of a built-in ASN.1 type. The choice type requires a further function {\em
+getCTags} to access the tags of a choice. This is also used in the encoding of a choice value.
 
 \begin{code}
 getCTI :: ComponentType a -> TagInfo

@@ -1,4 +1,7 @@
+v v v v v v v
+*************
 
+^ ^ ^ ^ ^ ^ ^
 \documentclass{article}
 %include polycode.fmt
 
@@ -2228,3 +2231,8 @@ getBits n =
 %include TestCTR.lhs
 
 \end{document}
+v v v v v v v
+
+*************
+
+^ ^ ^ ^ ^ ^ ^
