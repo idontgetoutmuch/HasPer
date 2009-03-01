@@ -1,7 +1,3 @@
-v v v v v v v
-*************
-
-^ ^ ^ ^ ^ ^ ^
 \documentclass{article}
 %include polycode.fmt
 
@@ -80,8 +76,10 @@ The encoding is for UNALIGNED PER
 
 {-# OPTIONS_GHC -XMultiParamTypeClasses -XGADTs -XTypeOperators
                 -XEmptyDataDecls -XFlexibleInstances -XFlexibleContexts
-                -fwarn-unused-imports -fwarn-incomplete-patterns
 #-}
+{-
+                -fwarn-unused-imports -fwarn-incomplete-patterns
+-}
 
 \end{code}
 
@@ -96,6 +94,8 @@ import Data.List hiding (groupBy)
 import Data.Char
 import Control.Monad.Error
 import Control.Monad.Identity
+import Control.Monad.Writer
+
 import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.BitPut as BP
@@ -486,6 +486,8 @@ encodeUInt :: Integer -> BitStream
 encodeUInt x = encodeOctetsWithLength (to2sComplement x)
 
 \end{code}
+
+\section{Length Determinants}
 
 10.9 General rules for encoding a length determinant
 10.9.4, 10.9.4.2 and 10.9.3.4 to 10.9.3.8.4.
@@ -1218,6 +1220,16 @@ encodeExtSeqAux (ap,ab) (rp,rb) _ _
 
 \section{ENCODING THE SEQUENCE-OF TYPE}
 
+{\it I'm going to try and refactor this (Dom 28 Feb 2009).}
+
+\begin{enumerate}
+
+\item
+{\it The first thing we need is a generic way of encoding length
+determinants}
+
+\end{enumerate}
+
 encodeSO implements the encoding of an unconstrained
 sequence-of value. This requires both the encoding of
 each of the components, and in most cases the encoding
@@ -1239,6 +1251,64 @@ lEncodeUncSeqOf encodes an unconstrained SEQUENCEOF value.
 
 lEncodeUncSeqOf :: ASNType a -> [a] -> PerEncoding
 lEncodeUncSeqOf t xs = mEncodeWithLength (encodeList t) xs
+
+\end{code}
+
+The type signature looks about right:
+take a constraint and a function which encodes a given number of {\it ASNType a}
+(or rather returns an encoding function or an "encoding")
+and return a function which takes the {\it ASNType a} and returns an "encoding".
+
+\begin{code}
+
+type DomsMonad = ErrorT ASNError (WriterT BitStream Identity) ()
+
+temporaryConvert :: PerEncoding -> DomsMonad
+temporaryConvert (Left s) = throwError (OtherError s)
+temporaryConvert (Right x) = tell x
+
+encodeSequenceOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> DomsMonad
+encodeSequenceOf t [] xs = error "FIXME: I can't handle unconstrained SEQUENCE OF yet"
+encodeSequenceOf t cs xs =
+   encodeSequenceOfAux t (errorize (effSeqOfCon cs)) (errorize (validSeqOfCon cs)) xs
+
+encodeSequenceOfAux t me mv xs =
+   do e <- me
+      v <- mv
+      let rc = conType . getBSRC $ e
+      encodeLengthDeterminant rc nSequenceOf t xs
+
+encodeLengthDeterminant :: IntegerConstraint -> (ASNType a -> [a] -> DomsMonad) -> (ASNType a -> [a] -> DomsMonad)
+encodeLengthDeterminant c f t xs
+   | ub /= maxBound &&
+     ub == lb &&
+     y <= 64*(2^10) = f t xs
+   | ub == maxBound = encodeLargeLengthDeterminant f t xs {- FIXME: A word of explanation as to why
+                                                             we test this here - it's because after
+                                                             here we know y is defined. -}
+   | y <= 64*(2^10) {- 10.9.1 -}
+       = do constrainedWholeNumber c y 
+            f t xs
+   | otherwise      = error "FIXME: encodeLengthDeterminant"
+   where
+      ub = upper c 
+      lb = lower c
+      y  = genericLength xs
+
+encodeLargeLengthDeterminant :: (ASNType a -> [a] -> DomsMonad) -> ASNType a -> [a] -> DomsMonad
+encodeLargeLengthDeterminant f t = undefined
+
+constrainedWholeNumber :: IntegerConstraint -> Integer -> DomsMonad
+constrainedWholeNumber c v =
+   temporaryConvert (lEncodeInt [rangeConstraint (lb,ub)] (Val v))
+   where
+      ub = upper c
+      lb = lower c
+      rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
+      rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
+ 
+nSequenceOf :: ASNType a -> [a] -> DomsMonad
+nSequenceOf t xs = mapM_ (temporaryConvert . lEncode t []) xs
 
 
 --mEncodeWithLength :: ([t] -> PerEncoding) -> [t] -> PerEncoding
@@ -1335,8 +1405,8 @@ soCode rc t xs
       =  let l  = lower rc
              u  = upper rc
          in
-             if u == 0
-             then return []
+             if u == 0 -- FIXME: I believe this will raise an error as we have no fromInteger for InfInteger
+             then return [] -- FIXME: Is this right or should we raise an error (invalid constraint?)
              else if u == l && u <= 65536
                        then encodeAll t xs
                        else if u <= 65536
@@ -1901,7 +1971,7 @@ decode4 (BuiltinType t) cl = fromPer3 t cl
 decode4 (ConstrainedType t c) cl = decode4 t (c:cl)
 decode4 (ReferencedType r t) cl  = decode4 t cl
 
-fromPer3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
+fromPer3 :: ASNMonadTrans t =>
             ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
 fromPer3 t@INTEGER cl = decodeInt3 cl
 fromPer3 t@(SEQUENCE s) cl = decodeSEQUENCE s
@@ -1924,13 +1994,14 @@ lower bound ("lb") is negative, then the result is undefined.
 \begin{code}
 
 decodeLengthDeterminant ::
-   (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
+   ASNMonadTrans t =>
    IntegerConstraint -> (Integer -> ASNType a -> t BG.BitGet [b]) -> ASNType a -> t BG.BitGet [b]
 decodeLengthDeterminant c f t
    | ub /= maxBound &&
      ub == lb &&
      v <= 64*(2^10) = f v t
-   | ub == maxBound = decodeLargeLengthDeterminant3' f t
+   | ub == maxBound = decodeLargeLengthDeterminant3' f t -- FIXME: We don't seem to check if the number
+                                                         -- of elements satisfies the lower constraint.
    | v <= 64*(2^10) = do k <- decode4 (ConstrainedType (BuiltinType INTEGER) (rangeConstraint (lb,ub))) []
                          let (Val l) = k
                          f l t
@@ -2029,10 +2100,11 @@ data ASNError =
 instance Error ASNError where
    noMsg = OtherError "The impossible happened"
 
+errorize :: (MonadError ASNError m) => Either String a -> m a
 errorize (Left e)  = throwError (ConstraintError e)
 errorize (Right x) = return x
 
-decodeInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
+decodeInt3 :: ASNMonadTrans t => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
 decodeInt3 [] =
    lDecConsInt3 (return bottom) undefined (return bottom)
 decodeInt3 cs =
@@ -2044,7 +2116,7 @@ decodeInt3 cs =
       (effExt,isExtensible) = lApplyExt parentRoot lc
       effRoot               = lEvalC lc parentRoot
 
-lDecConsInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
+lDecConsInt3 :: ASNMonadTrans t =>
                  t BG.BitGet IntegerConstraint -> Bool -> t BG.BitGet IntegerConstraint -> t BG.BitGet InfInteger
 lDecConsInt3 mrc isExtensible mec =
    do rc <- mrc
@@ -2113,7 +2185,7 @@ lDecConsInt3 mrc isExtensible mec =
                   = throwError (OtherError "Unexpected error decoding INTEGER")
       foobar
 
-decodeUInt3 :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => t BG.BitGet Integer
+decodeUInt3 :: ASNMonadTrans t => t BG.BitGet Integer
 decodeUInt3 =
    do o <- octets
       return (from2sComplement' o)
@@ -2141,7 +2213,7 @@ bitMask n = sequence $ take n $ repeat $ BG.getBit
 
 type BitMap = [Bool]
 
-decodeSEQUENCEAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => BitMap -> Sequence a -> t BG.BitGet a
+decodeSEQUENCEAux :: ASNMonadTrans t => BitMap -> Sequence a -> t BG.BitGet a
 decodeSEQUENCEAux _ EmptySequence = return Empty -- ignoring the bit map doesn't look right - it's probably an error if it's not empty
 decodeSEQUENCEAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) =
    do x <- decode4 t []
@@ -2168,12 +2240,12 @@ swap (Right x) = fmap Right x
 
 nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
 
-decodeSequenceOf :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
+decodeSequenceOf :: ASNMonadTrans t =>
                     ASNType a -> [ElementSetSpecs [a]] -> t BG.BitGet [a]
 decodeSequenceOf t [] = decodeLargeLengthDeterminant3' (flip nSequenceOfElements []) t
 decodeSequenceOf t cs = decodeSequenceOfAux t (errorize (effSeqOfCon cs)) (errorize (validSeqOfCon cs))
 
-decodeSequenceOfAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) =>
+decodeSequenceOfAux :: ASNMonadTrans t =>
                        ASNType a ->
                        t BG.BitGet (ExtBS (ConType IntegerConstraint)) ->
                        t BG.BitGet (ExtBS (ConType ValidIntegerConstraint)) ->
@@ -2198,12 +2270,14 @@ highly inefficient.
 
 \begin{code}
 
-decodeBitString :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => [ElementSetSpecs BitString] -> t BG.BitGet BitString
+class (MonadError ASNError (t BG.BitGet), MonadTrans t) => ASNMonadTrans t
+
+decodeBitString :: ASNMonadTrans t => [ElementSetSpecs BitString] -> t BG.BitGet BitString
 decodeBitString constraints =
    do xs <- decodeBitStringAux (errorize (lSerialEffCons lBSConE top constraints))
       return (BitString . concat . (map bitString) $ xs)
 
-decodeBitStringAux :: (MonadError ASNError (t BG.BitGet), MonadTrans t) => t BG.BitGet (ExtBS (ConType IntegerConstraint)) -> t BG.BitGet [BitString]
+decodeBitStringAux :: ASNMonadTrans t => t BG.BitGet (ExtBS (ConType IntegerConstraint)) -> t BG.BitGet [BitString]
 decodeBitStringAux mx =
    do x <- mx
       let rc = conType . getBSRC $ x
@@ -2231,8 +2305,3 @@ getBits n =
 %include TestCTR.lhs
 
 \end{document}
-v v v v v v v
-
-*************
-
-^ ^ ^ ^ ^ ^ ^
