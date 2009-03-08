@@ -1218,17 +1218,117 @@ encodeExtSeqAux (ap,ab) (rp,rb) _ _
 
 \end{code}
 
+\section{Refactoring Stuff}
+
+Conversion functions for use during refactoring so
+we don't have to change everything all at once.
+
+\begin{code}
+
+temporaryConvert :: PerEncoding -> DomsMonad
+temporaryConvert (Left s) = throwError (OtherError s)
+temporaryConvert (Right x) = tell x
+
+\end{code}
+
+\section{Length Determinants}
+
+\begin{code}
+
+encodeLengthDeterminant :: 
+  IntegerConstraint -> (ASNType a -> [a] -> DomsMonad) -> (ASNType a -> [a] -> DomsMonad)
+encodeLengthDeterminant c f t xs
+   | ub /= maxBound &&
+     ub == lb &&
+     y <= 64*(2^10) = f t xs
+   | ub == maxBound = encodeLargeLengthDeterminant f t xs {- FIXME: A word of explanation as to why
+                                                             we test this here - it's because after
+                                                             here we know y is defined. -}
+   | y <= 64*(2^10) {- 10.9.1 -}
+        = do constrainedWholeNumber c y 
+             f t xs
+   | otherwise      = error "FIXME: encodeLengthDeterminant"
+   where
+      ub = upper c 
+      lb = lower c
+      y  = genericLength xs
+\end{code}
+
+Note: We can use length safely (rather than genericLength) in the cases where we know
+the arguments are sufficiently small (in particular we know we have blocks of 4 or less of
+blocks of $16(2^{10})$ or less).
+
+\begin{code}
+encodeLargeLengthDeterminant :: 
+  (ASNType a -> [a] -> DomsMonad) -> ASNType a -> [a] -> DomsMonad
+encodeLargeLengthDeterminant f t xs = doit
+   where
+      doit
+         | {- 10.9.3.6 -} l < 128       = h l >> f t xs
+         | {- 10.9.3.7 -} l < 16*(2^10) = h l >> f t xs
+         | {- 10.9.3.8 -} otherwise     = if isFullBlock 4
+                                             then fullBlock
+                                             else doFirstTrue possibleBlocks
+      ysss            = groupBy 4 (groupBy (16*(2^10)) xs)
+      (hsss, tsss)    = genericSplitAt 1 ysss
+      hss             = concat hsss
+      isFullBlock n   = length hss == n && length (hss!!(n-1)) == 16*(2^10)
+      l               = genericLength xs
+      h               = temporaryConvert . return . encodeNNBIntOctets
+      fullBlock       = do h (fromIntegral 4)
+                           f t (concat hss)
+                           encodeLargeLengthDeterminant f t (concat . concat $ tsss)
+      partialBlock n  = do h (fromIntegral n)
+                           f t (concat (take n hss))
+                           encodeLargeLengthDeterminant f t (concat (drop n hss))
+      possibleBlocks  = map (\n -> (isFullBlock n, partialBlock n)) [3..1]
+      doFirstTrue :: Monad m => [(Bool, m ())] -> m ()
+      doFirstTrue []          = return ()
+      doFirstTrue ((p,a):pas) = if p then a else doFirstTrue pas
+
+\end{code}
+ 
 \section{ENCODING THE SEQUENCE-OF TYPE}
 
-{\it I'm going to try and refactor this (Dom 28 Feb 2009).}
+\subsection{Dom's Refactored Version}
 
-\begin{enumerate}
+The type signature looks about right:
+take a constraint and a function which encodes a given number of {\it ASNType a}
+(or rather returns an encoding function or an "encoding")
+and return a function which takes the {\it ASNType a} and returns an "encoding".
 
-\item
-{\it The first thing we need is a generic way of encoding length
-determinants}
+\begin{code}
 
-\end{enumerate}
+{- FIXME: We may want this to be a rather than always () -}
+type DomsMonad = ErrorT ASNError (WriterT BitStream Identity) ()
+
+encodeSequenceOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> DomsMonad
+encodeSequenceOf t [] xs = error "FIXME: I can't handle unconstrained SEQUENCE OF yet"
+encodeSequenceOf t cs xs =
+   encodeSequenceOfAux t (errorize (effSeqOfCon cs)) (errorize (validSeqOfCon cs)) xs
+
+encodeSequenceOfAux t me mv xs =
+   do e <- me
+      v <- mv
+      let rc = conType . getBSRC $ e
+      encodeLengthDeterminant rc nSequenceOf t xs
+
+     
+constrainedWholeNumber :: IntegerConstraint -> Integer -> DomsMonad
+constrainedWholeNumber c v =
+   temporaryConvert (lEncodeInt [rangeConstraint (lb,ub)] (Val v))
+   where
+      ub = upper c
+      lb = lower c
+      rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
+      rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
+ 
+nSequenceOf :: ASNType a -> [a] -> DomsMonad
+nSequenceOf t xs = mapM_ (temporaryConvert . lEncode t []) xs
+
+\end{code}
+
+\subsection{Original Version}
 
 encodeSO implements the encoding of an unconstrained
 sequence-of value. This requires both the encoding of
@@ -1251,65 +1351,6 @@ lEncodeUncSeqOf encodes an unconstrained SEQUENCEOF value.
 
 lEncodeUncSeqOf :: ASNType a -> [a] -> PerEncoding
 lEncodeUncSeqOf t xs = mEncodeWithLength (encodeList t) xs
-
-\end{code}
-
-The type signature looks about right:
-take a constraint and a function which encodes a given number of {\it ASNType a}
-(or rather returns an encoding function or an "encoding")
-and return a function which takes the {\it ASNType a} and returns an "encoding".
-
-\begin{code}
-
-type DomsMonad = ErrorT ASNError (WriterT BitStream Identity) ()
-
-temporaryConvert :: PerEncoding -> DomsMonad
-temporaryConvert (Left s) = throwError (OtherError s)
-temporaryConvert (Right x) = tell x
-
-encodeSequenceOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> DomsMonad
-encodeSequenceOf t [] xs = error "FIXME: I can't handle unconstrained SEQUENCE OF yet"
-encodeSequenceOf t cs xs =
-   encodeSequenceOfAux t (errorize (effSeqOfCon cs)) (errorize (validSeqOfCon cs)) xs
-
-encodeSequenceOfAux t me mv xs =
-   do e <- me
-      v <- mv
-      let rc = conType . getBSRC $ e
-      encodeLengthDeterminant rc nSequenceOf t xs
-
-encodeLengthDeterminant :: IntegerConstraint -> (ASNType a -> [a] -> DomsMonad) -> (ASNType a -> [a] -> DomsMonad)
-encodeLengthDeterminant c f t xs
-   | ub /= maxBound &&
-     ub == lb &&
-     y <= 64*(2^10) = f t xs
-   | ub == maxBound = encodeLargeLengthDeterminant f t xs {- FIXME: A word of explanation as to why
-                                                             we test this here - it's because after
-                                                             here we know y is defined. -}
-   | y <= 64*(2^10) {- 10.9.1 -}
-       = do constrainedWholeNumber c y 
-            f t xs
-   | otherwise      = error "FIXME: encodeLengthDeterminant"
-   where
-      ub = upper c 
-      lb = lower c
-      y  = genericLength xs
-
-encodeLargeLengthDeterminant :: (ASNType a -> [a] -> DomsMonad) -> ASNType a -> [a] -> DomsMonad
-encodeLargeLengthDeterminant f t = undefined
-
-constrainedWholeNumber :: IntegerConstraint -> Integer -> DomsMonad
-constrainedWholeNumber c v =
-   temporaryConvert (lEncodeInt [rangeConstraint (lb,ub)] (Val v))
-   where
-      ub = upper c
-      lb = lower c
-      rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
-      rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
- 
-nSequenceOf :: ASNType a -> [a] -> DomsMonad
-nSequenceOf t xs = mapM_ (temporaryConvert . lEncode t []) xs
-
 
 --mEncodeWithLength :: ([t] -> PerEncoding) -> [t] -> PerEncoding
 mEncodeWithLength fun xs
