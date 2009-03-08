@@ -1252,6 +1252,16 @@ encodeLengthDeterminant c f t xs
       ub = upper c 
       lb = lower c
       y  = genericLength xs
+
+constrainedWholeNumber :: IntegerConstraint -> Integer -> DomsMonad
+constrainedWholeNumber c v =
+   temporaryConvert (lEncodeInt [rangeConstraint (lb,ub)] (Val v))
+   where
+      ub = upper c
+      lb = lower c
+      rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
+      rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
+ 
 \end{code}
 
 Note: We can use length safely (rather than genericLength) in the cases where we know
@@ -1292,11 +1302,6 @@ encodeLargeLengthDeterminant f t xs = doit
 
 \subsection{Dom's Refactored Version}
 
-The type signature looks about right:
-take a constraint and a function which encodes a given number of {\it ASNType a}
-(or rather returns an encoding function or an "encoding")
-and return a function which takes the {\it ASNType a} and returns an "encoding".
-
 \begin{code}
 
 {- FIXME: We may want this to be a rather than always () -}
@@ -1312,17 +1317,7 @@ encodeSequenceOfAux t me mv xs =
       v <- mv
       let rc = conType . getBSRC $ e
       encodeLengthDeterminant rc nSequenceOf t xs
-
      
-constrainedWholeNumber :: IntegerConstraint -> Integer -> DomsMonad
-constrainedWholeNumber c v =
-   temporaryConvert (lEncodeInt [rangeConstraint (lb,ub)] (Val v))
-   where
-      ub = upper c
-      lb = lower c
-      rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
-      rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
- 
 nSequenceOf :: ASNType a -> [a] -> DomsMonad
 nSequenceOf t xs = mapM_ (temporaryConvert . lEncode t []) xs
 
