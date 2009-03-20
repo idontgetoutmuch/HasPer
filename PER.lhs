@@ -102,6 +102,7 @@ import qualified Data.Binary.BitPut as BP
 import Language.ASN1.PER.Integer
    ( fromNonNegativeBinaryInteger'
    , from2sComplement'
+   , toNonNegativeBinaryInteger
    )
 import Data.Int
 import Data.Maybe
@@ -152,6 +153,11 @@ lEncode (BuiltinType t) cl v       = toPER t v cl
 lEncode (ReferencedType r t) cl v  = lEncode t cl v
 lEncode (ConstrainedType t c) cl v = lEncode t (c:cl) v
 
+lEncode' :: ASNType a -> SerialSubtypeConstraints a -> a -> DomsMonad
+lEncode' (BuiltinType t) cl v       = toPER' t v cl
+lEncode' (ReferencedType r t) cl v  = lEncode' t cl v
+lEncode' (ConstrainedType t c) cl v = lEncode' t (c:cl) v
+
 \end{code}
 
 need to deal with per-visible constraint list here.
@@ -178,6 +184,10 @@ toPER (SET s) x cl         = lEncodeSet s x -- no PER-Visible constraints
 toPER (CHOICE c) x cl      = lEncodeChoice c x -- no PER-visible constraints
 toPER (SETOF s) x cl       = lEncodeSeqOf cl s x -- no PER-visible constraints
 toPER (TAGGED tag t) x cl  = lEncode t cl x
+
+toPER' :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> DomsMonad
+toPER' BOOLEAN x cl         = lEncodeBool' cl x
+toPER' (SEQUENCEOF s) x cl  = encodeSequenceOf s cl x
 
 \end{code}
 
@@ -219,6 +229,12 @@ lEncodeBool :: [SubtypeConstraint Bool] -> Bool -> PerEncoding
 lEncodeBool t True = return ( [1])
 lEncodeBool t _    = return ( [0])
 
+{- I think this is as good as it's worth doing for now -}
+{- Clearly we want to just say e.g. tell 1             -}
+lEncodeBool' :: [SubtypeConstraint Bool] -> Bool -> DomsMonad
+lEncodeBool' t True = tell . return $ 1
+lEncodeBool' t _    = tell . return $ 0
+
 \end{code}
 
 \section{ENCODING THE INTEGER TYPE}
@@ -239,13 +255,14 @@ lEncodeBool t _    = return ( [0])
 
 \begin{code}
 
-myEncodeUInt (Val x)
-    = (encodeUInt . fromIntegral) x
-
 lEncodeInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PerEncoding
+
 lEncodeInt [] v = return (myEncodeUInt v)
-lEncodeInt cs v =
-   lEitherTest parentRoot validPR lc v
+   where
+      myEncodeUInt (Val x)
+         = (encodeUInt . fromIntegral) x
+
+lEncodeInt cs v = lEitherTest parentRoot validPR lc v
    where
       lc         = last cs
       ic         = init cs
@@ -253,6 +270,7 @@ lEncodeInt cs v =
       parentRoot = lRootIntCons top ic
       validPR :: Either String ValidIntegerConstraint
       validPR    = lRootIntCons top ic
+
 
 
 
@@ -421,31 +439,6 @@ encodeNSNNInt n lb
     = if n <= 63
         then 0:encodeNNBIntBits (n,63)
         else 1:encodeSCInt n lb
-
-\end{code}
-
-
- 10.3 Encoding as a non-negative-binary-integer
-
- encodeNNBIntBits encodes an integer in the minimum
- number of bits required for the range (assuming the range is at least 2).
-
-Note: we can do much better than put 1 bit a time!!! But this will do for
-now.
-
-\begin{code}
-
-encodeNNBIntBitsAux (_,0) = Nothing
-encodeNNBIntBitsAux (0,w) = Just (0, (0, w `div` 2))
-encodeNNBIntBitsAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
-
-\end{code}
-
-\begin{code}
-
-encodeNNBIntBits :: (Integer, Integer) -> BitStream
-encodeNNBIntBits
-    = reverse . (map fromInteger) . unfoldr encodeNNBIntBitsAux
 
 \end{code}
 
@@ -1229,6 +1222,34 @@ temporaryConvert :: PerEncoding -> DomsMonad
 temporaryConvert (Left s) = throwError (OtherError s)
 temporaryConvert (Right x) = tell x
 
+type DomsMonad' = ErrorT ASNError (WriterT Int Identity) ()
+
+runDomsMonad x = runIdentity . runWriterT . runErrorT $ x
+
+\end{code}
+
+
+What we'd like to do during refactoring is use the library
+functions from Language.ASN1.PER.Integer but there's
+no easy way of knowing how many bits got put! See below.
+So for now we have to stick with the old way of doing
+things :-(
+
+\begin{code}
+
+encodeNNBIntBits' :: (Integer, Integer) -> BitStream
+encodeNNBIntBits' (x, y) = undefined
+   where
+      foo = BP.runBitPut (toNonNegativeBinaryInteger x y)
+
+encodeNNBIntBits :: (Integer, Integer) -> BitStream
+encodeNNBIntBits
+   = reverse . (map fromInteger) . unfoldr encodeNNBIntBitsAux
+
+encodeNNBIntBitsAux (_,0) = Nothing
+encodeNNBIntBitsAux (0,w) = Just (0, (0, w `div` 2))
+encodeNNBIntBitsAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
+
 \end{code}
 
 \section{Length Determinants}
@@ -1274,11 +1295,11 @@ encodeLargeLengthDeterminant ::
 encodeLargeLengthDeterminant f t xs = doit
    where
       doit
-         | {- 10.9.3.6 -} l < 128       = h l >> f t xs
-         | {- 10.9.3.7 -} l < 16*(2^10) = h l >> f t xs
-         | {- 10.9.3.8 -} otherwise     = if isFullBlock 4
-                                             then fullBlock
-                                             else doFirstTrue possibleBlocks
+         | {- *** 10.9.3.6 -} l < 128       = h l >> f t xs
+         | {- *** 10.9.3.7 -} l < 16*(2^10) = h l >> f t xs
+         | {- *** 10.9.3.8 -} otherwise     = if isFullBlock 4
+                                                 then fullBlock
+                                                 else doFirstTrue possibleBlocks
       ysss            = groupBy 4 (groupBy (16*(2^10)) xs)
       (hsss, tsss)    = genericSplitAt 1 ysss
       hss             = concat hsss
@@ -1304,11 +1325,15 @@ encodeLargeLengthDeterminant f t xs = doit
 
 \begin{code}
 
-{- FIXME: We may want this to be a rather than always () -}
+{- FIXME: We may want this to be "a" rather than always () -}
 type DomsMonad = ErrorT ASNError (WriterT BitStream Identity) ()
 
+{- FIXME: I think SubtypeConstraint [a] needs a word of explanation that -}
+{- we are constraining the list not the type. Also, would it be better   -}
+{- have our own (Haskell) type rather than [a]?                          -}
 encodeSequenceOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> DomsMonad
-encodeSequenceOf t [] xs = error "FIXME: I can't handle unconstrained SEQUENCE OF yet"
+encodeSequenceOf t [] xs =
+   encodeLargeLengthDeterminant nSequenceOf t xs
 encodeSequenceOf t cs xs =
    encodeSequenceOfAux t (errorize (effSeqOfCon cs)) (errorize (validSeqOfCon cs)) xs
 
