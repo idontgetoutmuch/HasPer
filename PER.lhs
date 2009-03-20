@@ -241,6 +241,12 @@ lEncodeBool :: [SubtypeConstraint Bool] -> Bool -> PerEncoding
 lEncodeBool t True = return ( [1])
 lEncodeBool t _    = return ( [0])
 
+{- FIXME: I think this is as good as it's worth doing for now -}
+{- Clearly we want to just say e.g. tell 1                    -}
+lEncodeBool' :: [SubtypeConstraint Bool] -> Bool -> DomsMonad
+lEncodeBool' t True = tell . return $ 1
+lEncodeBool' t _    = tell . return $ 0
+
 \end{code}
 
 \section{ENCODING THE INTEGER TYPE}
@@ -1297,11 +1303,11 @@ encodeLargeLengthDeterminant ::
 encodeLargeLengthDeterminant f t xs = doit
    where
       doit
-         | {- 10.9.3.6 -} l < 128       = h l >> f t xs
-         | {- 10.9.3.7 -} l < 16*(2^10) = h l >> f t xs
-         | {- 10.9.3.8 -} otherwise     = if isFullBlock 4
-                                             then fullBlock
-                                             else doFirstTrue possibleBlocks
+         | {- X691REF: 10.9.3.6 -} l < 128       = h l >> f t xs
+         | {- X691REF: 10.9.3.7 -} l < 16*(2^10) = h l >> f t xs
+         | {- X691REF: 10.9.3.8 -} otherwise     = if isFullBlock 4
+                                                      then fullBlock
+                                                      else doFirstTrue possibleBlocks
       ysss            = groupBy 4 (groupBy (16*(2^10)) xs)
       (hsss, tsss)    = genericSplitAt 1 ysss
       hss             = concat hsss
@@ -1327,11 +1333,15 @@ encodeLargeLengthDeterminant f t xs = doit
 
 \begin{code}
 
-{- FIXME: We may want this to be a rather than always () -}
+{- FIXME: We may want this to be "a" rather than always () -}
 type DomsMonad = ErrorT ASNError (WriterT BitStream Identity) ()
 
+{- FIXME: I think SubtypeConstraint [a] needs a word of explanation that -}
+{- we are constraining the list not the type. Also, would it be better   -}
+{- have our own (Haskell) type rather than [a]?                          -}
 encodeSequenceOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> DomsMonad
-encodeSequenceOf t [] xs = error "FIXME: I can't handle unconstrained SEQUENCE OF yet"
+encodeSequenceOf t [] xs =
+   encodeLargeLengthDeterminant nSequenceOf t xs
 encodeSequenceOf t cs xs =
    encodeSequenceOfAux t (errorize (effSeqOfCon cs)) (errorize (validSeqOfCon cs)) xs
 
@@ -1340,8 +1350,6 @@ encodeSequenceOfAux t me mv xs =
       v <- mv
       let rc = conType . getBSRC $ e
       encodeLengthDeterminant rc nSequenceOf t xs
-
-
 
 nSequenceOf :: ASNType a -> [a] -> DomsMonad
 nSequenceOf t xs = mapM_ (lEncode t []) xs
