@@ -751,9 +751,33 @@ findN i []
 
 \end{code}
 
-\section{ENCODING THE BITSTRING TYPE}
+\section{ENCODING THE BIT STRING TYPE}
 
 \begin{code}
+
+encodeBitString ::  NamedBits -> [SubtypeConstraint BitString] -> BitString -> AMonad ()
+encodeBitString nbs [] x =
+   encodeLargeLengthDeterminant chunkBy1 undefined (bitString x) -- FIXME: We are ignoring named bits!
+   where
+      chunkBy1 _ x = mapM_ (tell . return) x -- FIXME: We shouldn't ultimately need "return".
+encodeBitString nbs cl x =
+   do Valid vcs <- validConstraint -- FIXME: Nasty pattern match. We should use something like data Valid = Valid { valid :: ... }
+                                   -- and then we could say e.g. vcs <- validConstraint >>= valid
+      if inSizeRange (bitString x) vcs
+         then undefined
+         else throwError (ConstraintError "Value out of range")
+
+   where effectiveConstraint :: AMonad IntegerConstraint
+         effectiveConstraint = constraints cl >>= return . conType . getBSRC
+         validConstraint :: AMonad ValidIntegerConstraint
+         validConstraint = constraints cl >>= return . conType . getBSRC
+
+inSizeRange _  [] = False
+inSizeRange p qs = inSizeRangeAux qs
+   where
+      l = genericLength p
+      inSizeRangeAux (x:rs) =
+         l >= (lower x) && l <= (upper x) || inSizeRangeAux rs
 
 lEncodeBS :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PerEncoding
 lEncodeBS nbs [] x = encodeBSNoSz nbs x
@@ -791,6 +815,7 @@ lEncNonExtBS nbs m n (BitString vs)
         vsc <- m
         ok  <- n
         let rc = conType . getBSRC $ vsc
+            okrc :: [IntegerConstraint]
             Valid okrc = conType . getBSRC $ ok
             emptyConstraint = rc == bottom
             inSizeRange []      = False
@@ -916,7 +941,7 @@ encodeBSNoSz nbs (BitString bs)
     = let rbs = reverse bs
           rem0 = if (not.null) nbs then strip0s rbs
             else rbs
-          ln = genericLength rem0
+          ln = genericLength rem0 
        in
         return (encodeBitsWithLength (reverse rem0))
 
@@ -1257,6 +1282,15 @@ we don't have to change everything all at once.
 temporaryConvert :: PerEncoding -> DomsMonad
 temporaryConvert (Left s) = throwError (OtherError s)
 temporaryConvert (Right x) = tell x
+
+type AMonad a = ErrorT ASNError (WriterT BitStream Identity) a
+
+constraints :: (Eq a, Show a, Lattice a, IC a) => [SubtypeConstraint BitString] -> AMonad (ExtBS (ConType a))
+constraints cs = errorize (lSerialEffCons lBSConE top cs)
+
+errorize :: (MonadError ASNError m) => Either String a -> m a
+errorize (Left e)  = throwError (ConstraintError e)
+errorize (Right x) = return x
 
 \end{code}
 
@@ -2169,10 +2203,6 @@ data ASNError =
 instance Error ASNError where
    noMsg = OtherError "The impossible happened"
 
-errorize :: (MonadError ASNError m) => Either String a -> m a
-errorize (Left e)  = throwError (ConstraintError e)
-errorize (Right x) = return x
-
 decodeInt3 :: ASNMonadTrans t => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
 decodeInt3 [] =
    lDecConsInt3 (return bottom) undefined (return bottom)
@@ -2192,10 +2222,10 @@ lDecConsInt3 mrc isExtensible mec =
       ec <- mec
       let extensionConstraint    = ec /= bottom
           tc                     = rc `ljoin` ec
-          extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- fromIntegral means there's an Int bug lurking here
+          extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
           rootConstraint         = rc /= bottom
           rootLower              = let Val x = lower rc in x
-          rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- fromIntegral means there's an Int bug lurking here
+          rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
           numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
           numOfExtensionBits     = genericLength (encodeNNBIntBits (extensionRange - 1, extensionRange - 1))
           emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
