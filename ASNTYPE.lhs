@@ -18,7 +18,7 @@ embedded code.
 %endif
 
 The module that hosts our Haskell representation of ASN.1 types is {\em ASNTYPE}. It uses the
-type {\em Word8}which is defined in the imported library module {\em Data.Word}.
+type {\em Word8} which is defined in the imported library module {\em Data.Word}.
 
 \begin{code}
 
@@ -161,8 +161,8 @@ data ASNBuiltin a where
 \end{code}
 
 The {\em ASNBuiltin} type includes several constructors which we describe in the following
-subsections. We have categorised the constructors as nullary - where that directly represent
-the type - and non-nullary where they require at least one input to construct the type.
+subsections. We have categorised the constructors as nullary - they are values of the type - and
+non-nullary where they require at least one input to construct a value of the type.
 
 \subsubsection{ASNBuiltin Nullary Constructors}
 
@@ -184,9 +184,13 @@ data Null = Null
 
 The expression {\em deriving Show}
 indicates that the type is being implicitly added to the built-in type class {\em Show}. A type class is simply a
-collection of types typcially with an explicit collection of associated functions, operators
-and/or values. For example, any value of a {\em Show} typpe may be converted to its printable form
-using a function {\em show}.
+collection of types typically with an explicit collection of associated functions, operators
+and/or values. For example, any value of a {\em Show} type may be converted to its printable form
+using a function {\em show}. This enables the overloading of the function, operator or value
+names of a type class. For example, each type of the type class {\em Show} has a function
+called {\em show}. This is not a single polymorphic function, but a collection of individually
+defined functions which share the same name. This is similar to the type of polymorphism
+common to object-oriented programming languages.
 
 The type {\em InfInteger} is our integer type augmented with maximum and minimum values. This
 is also added to types classes -- {\em Show}, {\em Eq} the equality testing class, and {\em
@@ -213,12 +217,13 @@ instance Num InfInteger where
    _ - PosInf = NegInf
    NegInf - _ = NegInf
    _ - NegInf = PosInf
+   fromInteger x = Val x
 
 \end{code}
 
 
 The restricted character string types and octetstring types are represented by
-new Haskell types. They are are each introduced by the keyword {\em newtype}.
+new Haskell types. They are each introduced by the keyword {\em newtype}.
 This is used in place of {\em data} when one wants a type which is the same as an existing
 type but is recognised as distinct from the existing type by the type system. Thus one is simply
 wrapping an existing type in a constructor to
@@ -228,7 +233,7 @@ into a string.
 
 Note that the {\em BitString} type mimics the type {\em BitStream} which is simply another
 name for a list of integers. This is indicated by the keyword {\em type} which does not
-introduce a new type, but simply provides declares an alias for an existing type. Similarly
+introduce a new type, but simply declares an alias for an existing type. Similarly
 the {\em OctetString} type mimics the type {\em OctetStream} which is a list of {\em Octet}s,
 an alias for {\em Word8}.
 
@@ -263,7 +268,7 @@ newtype BMPString = BMPString {bmpString :: String}
 
 \subsubsection{The Non-Nullary Constructors}
 
-The constructor {\em BITSTRING} requires the (possibly empty) collection of named bits to
+The constructor {\em BITSTRING} requires a (possibly empty) collection of named bits to
 construct a bitstring type.
 
 \begin{code}
@@ -275,7 +280,7 @@ type NamedBits = [NamedBit]
 \end{code}
 
 The constructors {\em SEQUENCE} and {\em SET} require a {\em Sequence} input to specify the
-particular type of sequence being represented. That is, different sequences may have different
+particular type of sequence or set being represented. That is, different sequences may have different
 types. For example, a sequence constructed from an integer and a boolean has a
 different type from one constructed from a couple of visible strings.
 We describe the type {\em Sequence} in section \ref{sequence}.
@@ -286,10 +291,10 @@ The return type for
 {\em SEQUENCEOF} and {\em SETOF} is a list type (denoted {\em [a]}), which is Haskell's built-in
 type for representing zero or more values of the same type.
 
-The {\em CHOICE} constructor because of the similarities of a choice type to a sequence type
+The {\em CHOICE} constructor, because of the similarities of a choice type to a sequence type,
 also requires an input that specifies the particular choices that are available. However, the
 return type needs to emphasise that only one value may actually be used. This is achieved by using
-a new type {\em ExactlyOne} which we describe later in this paper. This is also the approach used
+a new type {\em ExactlyOne} which we describe in section \ref{choice}. This is also the approach used
 for an enumerated type. The constructor {\em ENUMERATED} requires an input that represents the particular
 enumeration. Finally the {\em TAGGED} constructor creates a tagged value from an ASN.1 tag and
 a built-in type.
@@ -318,7 +323,7 @@ We present in table \ref{ASN1built-in} some examples of how we represent ASN.1 b
 {\tt BOOLEAN} & {\em BOOLEAN}\\
 {\tt INTEGER} & {\em INTEGER}\\
 {\tt SEQUENCE \{\}} & {\em SEQUENCE Nil}\\
-{\tt SEQUENCE \{a INTEGER, b BOOLEAN\}} & {\em SEQUENCE }\\
+{\tt SEQUENCE \{a INTEGER, b BOOLEAN\} & {\em SEQUENCE }\\
 & \hspace{0.2cm}{\em (AddComponent aComponent}\\
 & \hspace{0.4cm}{\em (AddComponent bComponent Nil))}
 \end{tabular}
@@ -641,11 +646,11 @@ In table \ref{sequenceEqs} we present some illustrative example sequences and th
 \hspace{0.2cm} {\em (AddComponent stringComp} & \\
 \hspace{0.4cm} {\em EmptySequence)} & {\em Sequence (Bool :*: String :*: Nil)}\\
 {\em AddComponent integerComp1} & \\
-\hspace{0.2cm} {\em (ExtensionMarker)} &\\
-\hspace{0.25cm} {\em (ExtensionAdditionGroup NoVersionNumber)} &\\
-\hspace{0.3cm} {\em (AddComponent integerComp2 EmptySequence)} &\\
+\hspace{0.2cm} {\em (ExtensionMarker &\\
+\hspace{0.25cm} {\em (ExtensionAdditionGroup NoVersionNumber &\\
+\hspace{0.3cm} {\em (AddComponent integerComp2 EmptySequence) &\\
 \hspace{0.35cm} {\em EmptySequence))} & {\em Sequence (InfInteger :*:}\\
-& \hspace{0.1cm} {(Maybe (InfInteger :*: Nil):*: Nil)}
+& \hspace{0.1cm}(Maybe (InfInteger :*: Nil):*: Nil))}
 \end{tabular}
 \end{table}
 To avoid providing a full representation of sequence components we have given them names

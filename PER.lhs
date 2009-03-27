@@ -140,21 +140,25 @@ import Data.Maybe
 
 
 
+The top-level PER encoding function is called {\em encode}. The function takes three inputs:
+the type of value being encoded; a list of subtype constraints which represents the
+(potentially) serially appolied constraints and will be converted into an effective constraint
+in advance of encoding; and the value to be encoded.
+It has three distinct
+cases which address the various forms of an ASNType.
+\begin{itemize}
+\item
+The input is a builtin type value. The function {\em toPer} is called on this value.
+\item
+The input is a referenced type value. The reference is dropped
+and {\em encode} is recursively called on the value.
+\item
+The input is a constrained type value. The constraint is added to the list of constraint and
+the function is called again on the type being constrained. This recursion will continue
+until we reach a non-constrained type. The associated list of constraints will then include all
+of the seraily applied constraints.
+\end{itemize}
 
-PER Top-Level encode function. There are three cases:
-i.   The input is a builtin type: toPer is called on this type.
-ii.  The input is a referenced type: the type has to be retrieved
-and encode recursively called on this type.
-iii. The input is a constrained type: the per-visible constraints
-are filtered and the function called again on the type that is
-constrained. Note that PER relies on effective constraints which
-may differ from the ASN.1 view of a constraint. For example, the
-serial application of (ALL EXCEPT (20..22)) and (10..30) on the
-Integer type results in Integer (10..19,23..30) in ASN.1 and
-Integer (10..30) in PER.
-
-See X.691 annex B for full details on combining PER-visible and
-non-PER-visible constraints.
 
 encode recurses through an ASNType value until it gets to a
 builtin type and then calls toPer. The final input to toPer is the
@@ -167,68 +171,83 @@ type PERMonad = ErrorT ASNError (WriterT BitStream Identity) ()
 type PerEncoding = Either String BitStream
 {-
 perEncode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad
-perEncode t cl v = temporaryConvert (lEncode t cl v)
+perEncode t cl v = temporaryConvert (encode t cl v)
 -}
 
-lEncode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad
-lEncode (BuiltinType t) cl v       = toPER t v cl
-lEncode (ReferencedType r t) cl v  = lEncode t cl v
-lEncode (ConstrainedType t c) cl v = lEncode t (c:cl) v
+encode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad
+encode (BuiltinType t) cl v       = toPER t v cl
+encode (ReferencedType r t) cl v  = encode t cl v
+encode (ConstrainedType t c) cl v = encode t (c:cl) v
 
 \end{code}
 
-need to deal with per-visible constraint list here.
-generate effective root and effective extension here.
+The function {\em toPER} takes an {\em ASNBuiltin} type, a value of the same builtin type and
+a list of subtype constraints, and encodes the value using PER. The first input is essential
+in determining the encoding algorithm to use. That is, it is a pointer to the appropriate
+encoding function for the value. For example, if the type is {\em INTEGER} then {\em
+encodeInt} is called, and if it is a {\em CHOICE} type then {\em encodeChoice} is used.
 
 \begin{code}
 
 toPER :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> PERMonad
 toPER NULL _ _             = temporaryConvert (Right [])
-toPER INTEGER x cl         = temporaryConvert (lEncodeInt cl x)
-toPER VISIBLESTRING x cl   = temporaryConvert (lEncodeRCS cl x)
-toPER PRINTABLESTRING x cl = temporaryConvert (lEncodeRCS cl x)
-toPER NUMERICSTRING x cl   = temporaryConvert (lEncodeRCS cl x)
-toPER IA5STRING x cl       = temporaryConvert (lEncodeRCS cl x)
-toPER BMPSTRING x cl       = temporaryConvert (lEncodeRCS cl x)
-toPER UNIVERSALSTRING x cl = temporaryConvert (lEncodeRCS cl x)
-toPER BOOLEAN x cl         = temporaryConvert (lEncodeBool cl x)
-toPER (ENUMERATED e) x cl  = temporaryConvert (lEncodeEnum e x) -- no PER-Visible constraints
-toPER (BITSTRING nbs) x cl = temporaryConvert (lEncodeBS nbs cl x)
-toPER (OCTETSTRING) x cl   = temporaryConvert (lEncodeOS cl x)
-toPER (SEQUENCE s) x cl    = temporaryConvert (lEncodeSeq s x) -- no PER-Visible constraints
-toPER (SEQUENCEOF s) x cl  = temporaryConvert (lEncodeSeqOf cl s x)
-toPER (SET s) x cl         = temporaryConvert (lEncodeSet s x) -- no PER-Visible constraints
-toPER (CHOICE c) x cl      = temporaryConvert (lEncodeChoice c x) -- no PER-visible constraints
-toPER (SETOF s) x cl       = temporaryConvert (lEncodeSeqOf cl s x) -- no PER-visible constraints
-toPER (TAGGED tag t) x cl  = lEncode t cl x
+toPER INTEGER x cl         = temporaryConvert (encodeInt cl x)
+toPER VISIBLESTRING x cl   = temporaryConvert (encodeRCS cl x)
+toPER PRINTABLESTRING x cl = temporaryConvert (encodeRCS cl x)
+toPER NUMERICSTRING x cl   = temporaryConvert (encodeRCS cl x)
+toPER IA5STRING x cl       = temporaryConvert (encodeRCS cl x)
+toPER BMPSTRING x cl       = temporaryConvert (encodeRCS cl x)
+toPER UNIVERSALSTRING x cl = temporaryConvert (encodeRCS cl x)
+toPER BOOLEAN x cl         = encodeBool cl x
+toPER (ENUMERATED e) x cl  = temporaryConvert (encodeEnum e x) -- no PER-Visible constraints
+toPER (BITSTRING nbs) x cl = temporaryConvert (encodeBS nbs cl x)
+toPER (OCTETSTRING) x cl   = temporaryConvert (encodeOS cl x)
+toPER (SEQUENCE s) x cl    = temporaryConvert (encodeSeq s x) -- no PER-Visible constraints
+toPER (SEQUENCEOF s) x cl  = temporaryConvert (encodeSeqOf cl s x)
+toPER (SET s) x cl         = temporaryConvert (encodeSet s x) -- no PER-Visible constraints
+toPER (CHOICE c) x cl      = temporaryConvert (encodeChoice c x) -- no PER-visible constraints
+toPER (SETOF s) x cl       = temporaryConvert (encodeSeqOf cl s x) -- no PER-visible constraints
+toPER (TAGGED tag t) x cl  = encode t cl x
+
+\end{code}
+
+\section{COMPLETE ENCODING}
+{- FIXME: Need a more efficient way to do this. Could carry the remainder with each encoding?
+-}
+{- X691REF: 10.1 -}
+\begin{code}
+
+extractValue = runIdentity . runWriterT . runErrorT
+
+completeEncode :: PERMonad -> PERMonad
+completeEncode m
+    = let (e,v) = extractValue m
+      in tell (padding v)
+
+padding enc
+    = let le  = length enc
+          bts = le `mod` 8
+          pad = if le == 0
+                        then [0,0,0,0,0,0,0,0]
+                        else if bts == 0
+                                then enc
+                                else enc ++ take (8-bts) [0,0..]
+          in pad
 
 \end{code}
 
 \section{ENCODING AN OPEN TYPE FIELD}
 
-lEncodeOpen encodes an open type value. That is:
-i. the value is encoded as ususal;
-ii. it is padded at the end with 0s so that it has a octet-multiple length; and
-iii. its length is added as a prefix using the fragmentation rules (10.9)
-The first case is required since an extension addition group is
-encoded as an open type sequence and lEncodeOpen is always called by
-toPer on an extension component (avoids encoding it as an open
-type open type sequence!)
+
+
+{\em encodeOpen} encodes an open type value.
 
 \begin{code}
 
-lEncodeOpen :: ASNType a -> a -> PERMonad
-lEncodeOpen t v
-   = let (err,enc) =  runIdentity (runWriterT (runErrorT (lEncode t [] v)))
-     in temporaryConvert (return (encodeOctetsWithLength (padding enc)))
-
-padding enc
-    = let le  = length enc
-          bts = le `mod` 8
-          pad = if bts == 0
-                   then enc
-                   else enc ++ take (8-bts) [0,0..]
-      in pad
+encodeOpen :: ASNType a -> a -> PERMonad
+encodeOpen t v
+{- X691REF: 10.2.1 -}   = let (err,enc) = extractValue (completeEncode (encode t [] v))
+{- X691REF: 10.2.2 -}     in   temporaryConvert (return (encodeOctetsWithLength enc))
 
 \end{code}
 
@@ -237,43 +256,29 @@ padding enc
 
 \begin{code}
 
-lEncodeBool :: [SubtypeConstraint Bool] -> Bool -> PerEncoding
-lEncodeBool t True = return ( [1])
-lEncodeBool t _    = return ( [0])
-
 {- FIXME: I think this is as good as it's worth doing for now -}
 {- Clearly we want to just say e.g. tell 1                    -}
-lEncodeBool' :: [SubtypeConstraint Bool] -> Bool -> DomsMonad
-lEncodeBool' t True = tell . return $ 1
-lEncodeBool' t _    = tell . return $ 0
+{- Or do we. It is meant to return a bit-field value and not just a bit -}
+{- So the following whould be fine. -}
+encodeBool :: [SubtypeConstraint Bool] -> Bool -> PERMonad
+encodeBool t True = tell [1]
+encodeBool t _    = tell [0]
 
 \end{code}
 
 \section{ENCODING THE INTEGER TYPE}
 
--- If the type is unconstrained (has an empty constraint list) then enccodeUInt
--- is called.
--- If the type has at least one (serial) constraint then the root
--- constraint of the final constrained type is evaluated and used
--- to evaluate the extension. That is, when constraints are
--- serially applied only the extension of the final constraint
--- (the last in the list of constraints)
--- is retained and its effective constraint is dependent on the root of
--- its parent type.
--- The effective root constraint is also evaluated and this and
--- the effective extension are inputs of the function encInt.
--- An Either type value is returned to deal with illegal
--- constraints.
+If the type is unconstrained -- as indicated by an empty constraint list --  then the value is
+encoded as an unconstrained integer using the function {\em encodeUnconsInt}. If the type has
+a constraint then the function {\em encodeConsInt} is called. The encoding depends on whether the constraint is entensible and whether the
+value lies within the extenstion root.
 
 \begin{code}
 
-myEncodeUInt (Val x)
-    = (encodeUInt . fromIntegral) x
 
-lEncodeInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PerEncoding
-lEncodeInt [] v = return (myEncodeUInt v)
-lEncodeInt cs v =
-   lEitherTest parentRoot validPR lc v
+encodeInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PerEncoding
+encodeInt [] v = return (encodeUnconsInt v)
+encodeInt cs v = encodeConsInt parentRoot validPR lc v
    where
       lc         = last cs
       ic         = init cs
@@ -282,38 +287,38 @@ lEncodeInt cs v =
       validPR :: Either String ValidIntegerConstraint
       validPR    = lRootIntCons top ic
 
-
-
-lEitherTest :: Either String IntegerConstraint -> Either String ValidIntegerConstraint
-               -> SubtypeConstraint InfInteger -> InfInteger -> PerEncoding
-lEitherTest pr vpr lc v =
-   lEncConsInt realRoot realExt effRoot effExt b v
-   where
-      (effExt,b)  = lApplyExt pr lc
-      effRoot     = lEvalC lc pr
-      (realExt,b2) = lApplyExt vpr lc
-      realRoot    = lEvalC lc vpr
-
 \end{code}
 
-See Section 12 of X.691 (Encoding the Integer type).
+{\em encodeConsInt} calls:
+\begin{itemize}
+\item
+{\em encodeNonExtConsInt} if the constraint is not extensible. This takes three inputs: the
+actual constraint which is used to test whether the value to be encoded is valid, the
+effective constraint which is used to encode the value, and the value to be encoded.
+The constraints are generated by functions defined in the module {\em ConstraintGeneration};
+\item
+and calls {\em encodeExtConsInt} if the constraint is extensible. This function takes five
+inputs. The three required for {\em encodeNonExtConsInt} and the two -- actual and effective
+-- extension constraints.
+\end{itemize}
+
 \begin{code}
 
-lEncConsInt :: (Eq t, Lattice t) =>
-               Either String ValidIntegerConstraint
-               -> Either String ValidIntegerConstraint
-               -> Either String IntegerConstraint
-               -> Either String t
-               -> Bool
-               -> InfInteger
-               -> PerEncoding
-lEncConsInt rootCon extCon effRootCon effExtCon extensible v
+encodeConsInt :: Either String IntegerConstraint -> Either String ValidIntegerConstraint
+                  -> SubtypeConstraint InfInteger -> InfInteger -> PerEncoding
+encodeConsInt pr vpr lc v
     = if (not extensible)
-        then lEncNonExtConsInt rootCon effRootCon v
-        else lEncExtConsInt rootCon extCon effRootCon effExtCon v
-
+        then {- X691REF: 12.2 -} encodeNonExtConsInt validRootCon effRootCon v
+        else {- X691REF: 12.1 -} encodeExtConsInt validRootCon validExtCon effRootCon effExtCon v
+      where
+        (effExtCon,extensible)  = lApplyExt pr lc
+        effRootCon              = lEvalC lc pr
+        (validExtCon,b2)        = lApplyExt vpr lc
+        validRootCon            = lEvalC lc vpr
 
 \end{code}
+
+
 
 \section{Dan: read this as an example of our paper for a formal executable specification of PER}
 
@@ -356,14 +361,14 @@ is consistent with the extension constraint then \ldots
 
 \begin{code}
 
-lEncExtConsInt :: (Eq t, Lattice t) =>
+encodeExtConsInt :: (Eq t, Lattice t) =>
                   Either String ValidIntegerConstraint
                   -> Either String ValidIntegerConstraint
                   -> Either String IntegerConstraint
                   -> Either String t
                   -> InfInteger
                   -> PerEncoding
-lEncExtConsInt realRC realEC effRC effEC n@(Val v) =
+encodeExtConsInt realRC realEC effRC effEC n@(Val v) =
    do
       Valid rrc <- realRC
       Valid rec <- realEC
@@ -390,23 +395,23 @@ lEncExtConsInt realRC realEC effRC effEC n@(Val v) =
                   = return $ do
                                 case constraintType erc of
                                    UnConstrained ->
-                                        0:encodeUInt (fromIntegral v)
+                                        0:encodeUnconsInt n
                                    SemiConstrained ->
                                         0:encodeSCInt (fromIntegral v) rootLower
                                    Constrained ->
                                         0:encodeNNBIntBits (fromIntegral (v - rootLower), fromIntegral (rootUpper - rootLower))
              | isNonEmptyEC && inRange rec
-                  = return (1:encodeUInt (fromIntegral v))
+                  = return (1:encodeUnconsInt n)
              | otherwise
                   = throwError "Value out of range"
       foobar
-lEncExtConsInt realRC realEC effRC effEC v = throwError "Cannot encode MAX or MIN."
+encodeExtConsInt realRC realEC effRC effEC v = throwError "Cannot encode MAX or MIN."
 
-lEncNonExtConsInt :: Either String ValidIntegerConstraint
+encodeNonExtConsInt :: Either String ValidIntegerConstraint
                      -> Either String IntegerConstraint
                      -> InfInteger
                      -> PerEncoding
-lEncNonExtConsInt realRC effRC n@(Val v) =
+encodeNonExtConsInt realRC effRC n@(Val v) =
    do Valid rrc <- realRC
       erc <- effRC
       let isNonEmptyRC           = erc /= bottom
@@ -429,7 +434,7 @@ lEncNonExtConsInt realRC effRC n@(Val v) =
                   = return $ do
                        case constraintType erc of
                                    UnConstrained ->
-                                      encodeUInt (fromIntegral v)
+                                      encodeUnconsInt n
                                    SemiConstrained ->
                                       encodeSCInt (fromIntegral v) rootLower
                                    Constrained ->
@@ -437,7 +442,7 @@ lEncNonExtConsInt realRC effRC n@(Val v) =
              | otherwise
                   = throwError "Value out of range"
       foobar
-lEncNonExtConsInt realRC effRC v = throwError "Cannot encode MAX or MIN."
+encodeNonExtConsInt realRC effRC v = throwError "Cannot encode MAX or MIN."
 \end{code}
 
  10.6 Encoding as a normally small non-negative whole number
@@ -510,8 +515,8 @@ encodeSCInt v lb
 
 \begin{code}
 
-encodeUInt :: Integer -> BitStream
-encodeUInt x = encodeOctetsWithLength (to2sComplement x)
+encodeUnconsInt :: InfInteger -> BitStream
+encodeUnconsInt (Val x) = encodeOctetsWithLength . to2sComplement $ x
 
 \end{code}
 
@@ -679,8 +684,8 @@ encoding.
 
 \begin{code}
 
-lEncodeEnum :: Enumerate a -> ExactlyOne a SelectionMade -> PerEncoding
-lEncodeEnum e x
+encodeEnum :: Enumerate a -> ExactlyOne a SelectionMade -> PerEncoding
+encodeEnum e x
     = let (b,inds) = assignIndex e
           no = genericLength inds
       in
@@ -779,9 +784,9 @@ inSizeRange p qs = inSizeRangeAux qs
       inSizeRangeAux (x:rs) =
          l >= (lower x) && l <= (upper x) || inSizeRangeAux rs
 
-lEncodeBS :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PerEncoding
-lEncodeBS nbs [] x = encodeBSNoSz nbs x
-lEncodeBS nbs cl x = encodeBSSz nbs cl x
+encodeBS :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PerEncoding
+encodeBS nbs [] x = encodeBSNoSz nbs x
+encodeBS nbs cl x = encodeBSSz nbs cl x
 
 
 encodeBSSz :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PerEncoding
@@ -941,7 +946,7 @@ encodeBSNoSz nbs (BitString bs)
     = let rbs = reverse bs
           rem0 = if (not.null) nbs then strip0s rbs
             else rbs
-          ln = genericLength rem0 
+          ln = genericLength rem0
        in
         return (encodeBitsWithLength (reverse rem0))
 
@@ -959,9 +964,9 @@ strip0s [] = []
 
 \begin{code}
 
-lEncodeOS :: [SubtypeConstraint OctetString] -> OctetString -> PerEncoding
-lEncodeOS [] x = encodeOSNoSz x
-lEncodeOS cl x = encodeOSSz cl x
+encodeOS :: [SubtypeConstraint OctetString] -> OctetString -> PerEncoding
+encodeOS [] x = encodeOSNoSz x
+encodeOS cl x = encodeOSSz cl x
 
 \end{code}
 
@@ -1096,8 +1101,8 @@ osExtCode rc ec xs
 
 \begin{code}
 
-lEncodeSeq :: Sequence a -> a -> PerEncoding
-lEncodeSeq s x
+encodeSeq :: Sequence a -> a -> PerEncoding
+encodeSeq s x
     =   do ((rp,rb),(ap,ab)) <- encodeSeqAux ([],[]) ([],[]) s x
            if null ap
               then
@@ -1160,25 +1165,25 @@ encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf _) as) (x:*:xs)
     = throwError "COMPONENTS OF can only be applied to a SEQUENCE."
 encodeSeqAux (ap,ab) (rp,rb) (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
     = do
-        (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncode a [] x))))
+        (err,bts) <- return (extractValue (encode a [] x))
         encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([]:rp,[]:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
     = do
-        (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncode a [] x))))
+        (err,bts) <- return (extractValue (encode a [] x))
         encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
     = do
-        (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncode a [] x))))
+        (err,bts) <- return (extractValue (encode a [] x))
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs) =
    encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
     = do
-        (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncode a [] x))))
+        (err,bts) <- return (extractValue (encode a [] x))
         encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
 encodeSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ _ _) _
     = throwError "Impossible case: Extension Addition Groups only appear within an extension"
@@ -1194,24 +1199,24 @@ encodeCO (rp,rb) (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:
 encodeCO (rp,rb) (AddComponent (ComponentsOf _) as) (x:*:xs)
     = throwError "COMPONENTS OF can only be applied to a SEQUENCE"
 encodeCO (rp,rb) (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
-    = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncode a [] x))))
+    = do (err,bts) <- return (extractValue (encode a [] x))
          encodeCO ([]:rp,bts:rb) as xs
 encodeCO (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeCO ([]:rp,[]:rb) as xs
 encodeCO (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
-    = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncode a [] x))))
+    = do (err,bts) <- return (extractValue (encode a [] x))
          encodeCO ([]:rp,bts:rb) as xs
 encodeCO (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeCO ([0]:rp,[]:rb) as xs
 encodeCO (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
     = do
-        (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncode a [] x))))
+        (err,bts) <- return (extractValue (encode a [] x))
         encodeCO ([1]:rp,bts:rb) as xs
 encodeCO (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs) =
    encodeCO ([0]:rp,[]:rb) as xs
 encodeCO (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
     = do
-        (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncode a [] x))))
+        (err,bts) <- return (extractValue (encode a [] x))
         encodeCO ([1]:rp,bts:rb) as xs
 encodeCO (rp,rb) (ExtensionAdditionGroup _ _ _) _
     = throwError "Impossible case: Extension Addition Groups only appear in an extension."
@@ -1232,7 +1237,7 @@ encodeExtCO (rp,rb) (ExtensionAdditionGroup _ _ as) (x:*:xs)
 encodeExtSeqAux adds the encoding of any extension additions to
 the encoding of the extension root. If an addition is present a
 1 is added to a bitstream prefix and the value is encoded as an
-open type (using lEncodeOpen). If an addition is not present then a
+open type (using encodeOpen). If an addition is not present then a
 0 is added to the prefix.
 
 \begin{code}
@@ -1249,22 +1254,22 @@ encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ a as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ a as) (Just x:*:xs)
     = do (err,bts) <- return (runIdentity (runWriterT (runErrorT
-                            (lEncodeOpen (BuiltinType (SEQUENCE a)) x))))
+                            (encodeOpen (BuiltinType (SEQUENCE a)) x))))
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
-    = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncodeOpen a x))))
+    = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (encodeOpen a x))))
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
-    = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncodeOpen a x))))
+    = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (encodeOpen a x))))
          encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs) =
    encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
-   = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncodeOpen a x))))
+   = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (encodeOpen a x))))
         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
 encodeExtSeqAux (ap,ab) (rp,rb) _ _
     = throwError "Impossible case for extension addition."
@@ -1318,7 +1323,7 @@ encodeLengthDeterminant c f t xs
 
 constrainedWholeNumber :: IntegerConstraint -> Integer -> DomsMonad
 constrainedWholeNumber c v =
-   temporaryConvert (lEncodeInt [rangeConstraint (lb,ub)] (Val v))
+   temporaryConvert (encodeInt [rangeConstraint (lb,ub)] (Val v))
    where
       ub = upper c
       lb = lower c
@@ -1386,7 +1391,7 @@ encodeSequenceOfAux t me mv xs =
       encodeLengthDeterminant rc nSequenceOf t xs
 
 nSequenceOf :: ASNType a -> [a] -> DomsMonad
-nSequenceOf t xs = mapM_ (lEncode t []) xs
+nSequenceOf t xs = mapM_ (encode t []) xs
 
 \end{code}
 
@@ -1400,19 +1405,19 @@ fragmentation into 64K blocks).
 
 \begin{code}
 
-lEncodeSeqOf :: [SubtypeConstraint [a]] -> ASNType a -> [a] -> PerEncoding
-lEncodeSeqOf [] t x = lEncodeUncSeqOf t x
-lEncodeSeqOf cl t x = lEncodeConSeqOf t cl x
+encodeSeqOf :: [SubtypeConstraint [a]] -> ASNType a -> [a] -> PerEncoding
+encodeSeqOf [] t x = encodeUncSeqOf t x
+encodeSeqOf cl t x = encodeConSeqOf t cl x
 
 
 \end{code}
 
-lEncodeUncSeqOf encodes an unconstrained SEQUENCEOF value.
+encodeUncSeqOf encodes an unconstrained SEQUENCEOF value.
 
 \begin{code}
 
-lEncodeUncSeqOf :: ASNType a -> [a] -> PerEncoding
-lEncodeUncSeqOf t xs = mEncodeWithLength (encodeList t) xs
+encodeUncSeqOf :: ASNType a -> [a] -> PerEncoding
+encodeUncSeqOf t xs = mEncodeWithLength (encodeList t) xs
 
 --mEncodeWithLength :: ([t] -> PerEncoding) -> [t] -> PerEncoding
 mEncodeWithLength fun xs
@@ -1457,8 +1462,8 @@ mAddUncLen encFun (x:xs)
 
 \begin{code}
 
-lEncodeConSeqOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> PerEncoding
-lEncodeConSeqOf t cl xs = lEncValidSeqOf t (effSeqOfCon cl) (validSeqOfCon cl) xs
+encodeConSeqOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> PerEncoding
+encodeConSeqOf t cl xs = lEncValidSeqOf t (effSeqOfCon cl) (validSeqOfCon cl) xs
 
 effSeqOfCon ::[SubtypeConstraint [a]] -> Either String (ExtBS (ConType IntegerConstraint))
 effSeqOfCon cs = lSerialEffCons lSeqOfConE top cs
@@ -1549,7 +1554,7 @@ encodeList t (f:r)
 
 encodeAll t (f:r)
     = do
-        (err,x) <- return (runIdentity (runWriterT (runErrorT (lEncode t [] f))))
+        (err,x) <- return (extractValue (encode t [] f))
         r <- encodeAll t r
         return (x ++ r)
 encodeAll t [] = return []
@@ -1600,8 +1605,8 @@ components.
 
 \begin{code}
 
-lEncodeSet :: Sequence a -> a -> PerEncoding
-lEncodeSet s x
+encodeSet :: Sequence a -> a -> PerEncoding
+encodeSet s x
     =   do
             ((rp,rb),(ap,ab)) <- encodeSeqAux ([],[]) ([],[]) s x
             let ts  = getTags s
@@ -1658,8 +1663,8 @@ that only one choice value is encoded.
 
 \begin{code}
 
-lEncodeChoice :: Choice a -> ExactlyOne a SelectionMade -> PerEncoding
-lEncodeChoice c x
+encodeChoice :: Choice a -> ExactlyOne a SelectionMade -> PerEncoding
+encodeChoice c x
     =   do ts  <- return (getCTags c)
            (ea, ec) <- (encodeChoiceAux [] [] c x)
            if length ec == 1
@@ -1723,7 +1728,7 @@ encodeChoiceAux ext body (ChoiceOption a as) (AddNoValue x xs) =
    encodeChoiceAux ext ([]:body) as xs
 encodeChoiceAux ext body (ChoiceOption (NamedType t a) as) (AddAValue x xs)
     = do
-        (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncode a [] x))))
+        (err,bts) <- return (extractValue (encode a [] x))
         encodeChoiceAux' ext (bts:body) as xs
 encodeChoiceAux _ _ (ChoiceExtensionAdditionGroup _ _) _
     = throwError "Impossible case: EXTENSION ADDITON GROUP only appears in an extension."
@@ -1750,7 +1755,7 @@ encodeChoiceExtAux ext body (ChoiceExtensionAdditionGroup _ as) xs =
 encodeChoiceExtAux ext body (ChoiceOption a as) (AddNoValue x xs) =
    encodeChoiceExtAux ext ([]:body) as xs
 encodeChoiceExtAux ext body (ChoiceOption (NamedType t a) as) (AddAValue x xs)
-    = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (lEncodeOpen a x))))
+    = do (err,bts) <- return (extractValue (encodeOpen a x))
          encodeChoiceExtAux' [1](bts:body) as xs
 
 encodeChoiceExtAux' :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n -> Either String ([Int], [BitStream])
@@ -1782,14 +1787,14 @@ Note that a check on the validity of the string value is made
 before any encoding.
 \begin{code}
 
-lEncodeRCS :: (Eq a, RS a, Lattice a)
+encodeRCS :: (Eq a, RS a, Lattice a)
               => SerialSubtypeConstraints a -> a -> PerEncoding
-lEncodeRCS [] vs
+encodeRCS [] vs
         | rcsMatch vs top
             = return (encodeResString vs)
         | otherwise
             = throwError "Invalid value!"
-lEncodeRCS cs vs
+encodeRCS cs vs
         | rcsMatch vs top
             = lEncValidRCS (effCon cs) (validCon cs) vs
         | otherwise
@@ -1864,11 +1869,11 @@ lEncNonExtRCS m n vs
                 | emptyConstraint
                     = throwError "Empty constraint"
                 | not noSC && not noPAC && inPA pac && inSizeRange oksc
-                    = return (lEncodeRCSSzF sc pac vs)
+                    = return (encodeRCSSzF sc pac vs)
                 | noSC && not noPAC && inPA pac
-                    = return (lEncodeRCSF pac vs)
+                    = return (encodeRCSF pac vs)
                 | noPAC && not noSC && inSizeRange oksc
-                    = return (lEncodeRCSSz sc vs)
+                    = return (encodeRCSSz sc vs)
                 | otherwise
                     = throwError "Value out of range"
         foobar
@@ -1922,29 +1927,29 @@ lEncExtRCS m n vs
                 | otherwise = foobarBoth
             foobarRC
                 | noRSC && inPA rpac
-                    = return (0:lEncodeRCSF rpac vs)
+                    = return (0:encodeRCSF rpac vs)
                 | noRPAC && inSizeRange okrsc
-                    = return (0:lEncodeRCSSz rsc vs)
+                    = return (0:encodeRCSSz rsc vs)
                 | inPA rpac && inSizeRange okrsc
-                    = return (0:lEncodeRCSSzF rsc rpac vs)
+                    = return (0:encodeRCSSzF rsc rpac vs)
                 | otherwise
                     = throwError "Value out of range"
             foobarEC
                 | noESC && inPA epac
-                    = return (1:lEncodeRCSF top vs)
+                    = return (1:encodeRCSF top vs)
                 | noEPAC && inSizeRange okesc
                     = return (1:encodeResString vs)
                 | inPA epac && inSizeRange okesc
-                    = return (1:lEncodeRCSF top vs)
+                    = return (1:encodeRCSF top vs)
                 | otherwise
                     = throwError "Value out of range"
             foobarBoth
                 | not noRPAC && inPA rpac && not noRSC && inSizeRange okrsc
-                    = return (0:lEncodeRCSSzF rsc rpac vs)
+                    = return (0:encodeRCSSzF rsc rpac vs)
                 | noRPAC && noEPAC && not noRSC && inSizeRange okrsc
-                    = return (0:lEncodeRCSSz rsc vs)
+                    = return (0:encodeRCSSz rsc vs)
                 | noRSC && noESC && not noRPAC && inPA rpac
-                    = return (0:lEncodeRCSF rpac vs)
+                    = return (0:encodeRCSF rpac vs)
                 | noRPAC && noEPAC && not noESC && inSizeRange okesc
                      = return (1:encodeResString vs)
                 | (not noRSC && inSizeRange okrsc && noRPAC && not noEPAC && inPA epac) ||
@@ -1954,13 +1959,13 @@ lEncExtRCS m n vs
                   (not noESC && inSizeRange okesc && not noRPAC && not noEPAC && not (inPA epac) && inPA expac) ||
                   (noRSC && noESC && ((noRPAC && not noEPAC && inPA epac) ||
                   (not noRPAC && not noEPAC && not (inPA epac) && inPA expac)))
-                     =  return (1:lEncodeRCSF top vs)
+                     =  return (1:encodeRCSF top vs)
                 | otherwise
                      = throwError "Value out of range"
         foobar
 
-lEncodeRCSSz :: (RS a, Lattice a) => IntegerConstraint -> a -> BitStream
-lEncodeRCSSz (IntegerConstraint l u) v
+encodeRCSSz :: (RS a, Lattice a) => IntegerConstraint -> a -> BitStream
+encodeRCSSz (IntegerConstraint l u) v
     = let t = getTop v
           gl = genericLength (getString t)
        in
@@ -1997,13 +2002,13 @@ encS i s  = (concat . map (encC i)) s
 
 \begin{code}
 
-lEncodeRCSSzF :: (RS a) => IntegerConstraint -> a -> a -> BitStream
-lEncodeRCSSzF (IntegerConstraint l u) rcs1 rcs2
+encodeRCSSzF :: (RS a) => IntegerConstraint -> a -> a -> BitStream
+encodeRCSSzF (IntegerConstraint l u) rcs1 rcs2
         =  manageExtremes (encSF (getString rcs1))
-                          (lEncodeRCSF rcs1 . makeString) l u (getString rcs2)
+                          (encodeRCSF rcs1 . makeString) l u (getString rcs2)
 
-lEncodeRCSF :: (RS a) => a -> a -> BitStream
-lEncodeRCSF rcs1 rcs2 = encodeWithLength (encSF (getString rcs1)) (getString rcs2)
+encodeRCSF :: (RS a) => a -> a -> BitStream
+encodeRCSF rcs1 rcs2 = encodeWithLength (encSF (getString rcs1)) (getString rcs2)
 
 
 encSF p str
