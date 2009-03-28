@@ -763,19 +763,34 @@ findN i []
 encodeBitString ::  NamedBits -> [SubtypeConstraint BitString] -> BitString -> AMonad ()
 encodeBitString nbs [] x =
    encodeLargeLengthDeterminant chunkBy1 undefined (bitString x) -- FIXME: We are ignoring named bits!
-   where
-      chunkBy1 _ x = mapM_ (tell . return) x -- FIXME: We shouldn't ultimately need "return".
+                                                                 -- FIXME: Should we use encodeLengthDeterminant?
 encodeBitString nbs cl x =
    do Valid vcs <- validConstraint -- FIXME: Nasty pattern match. We should use something like data Valid = Valid { valid :: ... }
                                    -- and then we could say e.g. vcs <- validConstraint >>= valid
       if inSizeRange (bitString x) vcs
-         then undefined
+         then do a <- isExtensibleConstraint
+                 if a
+                    then undefined
+                    else do ec <- effectiveConstraint
+                            if ec == bottom
+                               then throwError (OtherError "encodeBitString: Empty constraint")
+                               else encodeLengthDeterminant ec chunkBy1 undefined (bitString x)
+                            undefined
          else throwError (ConstraintError "Value out of range")
 
-   where effectiveConstraint :: AMonad IntegerConstraint
+   where effectiveConstraint :: AMonad IntegerConstraint -- FIXME: These probably shouldn't be monadic; they can and should be pure.
+                                                         -- Or maybe not since "constraints" is monadic!!!
          effectiveConstraint = constraints cl >>= return . conType . getBSRC
          validConstraint :: AMonad ValidIntegerConstraint
          validConstraint = constraints cl >>= return . conType . getBSRC
+         isExtensibleConstraint ::  AMonad Bool
+         isExtensibleConstraint = integerConstraints cl >>= return . extensibleBS
+         -- FIXME: This is slightly odd having to pick a type by hand.
+         -- We really shouldn't need to do this.
+         integerConstraints :: [SubtypeConstraint BitString] -> AMonad (ExtBS (ConType IntegerConstraint))
+         integerConstraints = constraints
+
+chunkBy1 _ x = mapM_ (tell . return) x -- FIXME: We shouldn't ultimately need "return".
 
 inSizeRange _  [] = False
 inSizeRange p qs = inSizeRangeAux qs
