@@ -179,6 +179,11 @@ encode (BuiltinType t) cl v       = toPER t v cl
 encode (ReferencedType r t) cl v  = encode t cl v
 encode (ConstrainedType t c) cl v = encode t (c:cl) v
 
+encode' :: ASNType a -> SerialSubtypeConstraints a -> a -> AMonad ()
+encode' (BuiltinType t) cl v       = toPER' t v cl
+encode' (ReferencedType r t) cl v  = encode' t cl v
+encode' (ConstrainedType t c) cl v = encode' t (c:cl) v
+
 \end{code}
 
 The function {\em toPER} takes an {\em ASNBuiltin} type, a value of the same builtin type and
@@ -209,6 +214,9 @@ toPER (CHOICE c) x cl      = temporaryConvert (encodeChoice c x) -- no PER-visib
 toPER (SETOF s) x cl       = temporaryConvert (encodeSeqOf cl s x) -- no PER-visible constraints
 toPER (TAGGED tag t) x cl  = encode t cl x
 
+toPER' :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> AMonad ()
+toPER' (BITSTRING nbs) x cl = encodeBitString nbs cl x
+
 \end{code}
 
 \section{COMPLETE ENCODING}
@@ -218,6 +226,8 @@ toPER (TAGGED tag t) x cl  = encode t cl x
 \begin{code}
 
 extractValue = runIdentity . runWriterT . runErrorT
+
+extractValue' = runIdentity . runWriterT . runErrorT
 
 completeEncode :: PERMonad -> PERMonad
 completeEncode m
