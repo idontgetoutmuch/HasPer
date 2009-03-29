@@ -48,7 +48,7 @@ FooBar {1 2 3 4 5 6} DEFINITIONS ::=
     Type12 ::=
       CHOICE {
         c1 [0] IMPLICIT SEQUENCE {
-          one INTEGER,
+                  one INTEGER,
           two INTEGER
         },
         c2 [1] IMPLICIT SEQUENCE {
@@ -761,22 +761,24 @@ findN i []
 \begin{code}
 
 encodeBitString ::  NamedBits -> [SubtypeConstraint BitString] -> BitString -> AMonad ()
+
 encodeBitString nbs [] x =
    encodeLargeLengthDeterminant chunkBy1 undefined (bitString x) -- FIXME: We are ignoring named bits!
-                                                                 -- FIXME: Should we use encodeLengthDeterminant?
+
 encodeBitString nbs cl x =
-   do Valid vcs <- validConstraint -- FIXME: Nasty pattern match. We should use something like data Valid = Valid { valid :: ... }
-                                   -- and then we could say e.g. vcs <- validConstraint >>= valid
-      if inSizeRange (bitString x) vcs
-         then do a <- isExtensibleConstraint
-                 if a
-                    then undefined
-                    else do ec <- effectiveConstraint
-                            if ec == bottom
-                               then throwError (OtherError "encodeBitString: Empty constraint")
-                               else encodeLengthDeterminant ec chunkBy1 undefined (bitString x)
-                            undefined
-         else throwError (ConstraintError "Value out of range")
+   do Valid vc  <- validConstraint -- FIXME: Nasty pattern match. We should use something like data Valid = Valid { valid :: ... }
+                                    -- and then we could say e.g. vc <- validConstraint >>= valid
+      Valid vec <- validExtensionConstraint
+      ec  <- effectiveConstraint
+      eec <- effectiveExtensionConstraint
+      isE <- isExtensibleConstraint
+      let bs = bitString x
+          doit
+             | inSizeRange bs vc = throwError (ConstraintError "encodeBitString: Value out of range")
+             | isE               = error "encodeBitString: missing alternative" -- FIXME
+             | ec == bottom      = throwError (OtherError "encodeBitString: Empty constraint")
+             | otherwise         = encodeLengthDeterminant ec chunkBy1 undefined bs
+      doit
 
    where effectiveConstraint :: AMonad IntegerConstraint -- FIXME: These probably shouldn't be monadic; they can and should be pure.
                                                          -- Or maybe not since "constraints" is monadic!!!
@@ -789,6 +791,11 @@ encodeBitString nbs cl x =
          -- We really shouldn't need to do this.
          integerConstraints :: [SubtypeConstraint BitString] -> AMonad (ExtBS (ConType IntegerConstraint))
          integerConstraints = constraints
+         effectiveExtensionConstraint :: AMonad IntegerConstraint
+         effectiveExtensionConstraint = constraints cl >>= return . conType . getBSEC
+         validExtensionConstraint :: AMonad ValidIntegerConstraint
+         validExtensionConstraint = constraints cl >>= return . conType . getBSEC
+
 
 chunkBy1 _ x = mapM_ (tell . return) x -- FIXME: We shouldn't ultimately need "return".
 
