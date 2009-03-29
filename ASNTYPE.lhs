@@ -320,10 +320,10 @@ We present in table \ref{ASN1built-in} some examples of how we represent ASN.1 b
 \label{ASN1built-in}
 \begin{tabular}{ll}
 {\bf ASN.1 built-in Type} & {\bf Haskell Representation}  \\
-{\tt BOOLEAN} & {\em BOOLEAN}\\
+{\tt BOOLEAN} & {\em BOOLEAN} \\
 {\tt INTEGER} & {\em INTEGER}\\
 {\tt SEQUENCE \{\}} & {\em SEQUENCE Nil}\\
-{\tt SEQUENCE \{a INTEGER, b BOOLEAN\} & {\em SEQUENCE }\\
+{\tt SEQUENCE \{a INTEGER, b BOOLEAN\}} & {\em SEQUENCE}\\
 & \hspace{0.2cm}{\em (AddComponent aComponent}\\
 & \hspace{0.4cm}{\em (AddComponent bComponent Nil))}
 \end{tabular}
@@ -646,11 +646,11 @@ In table \ref{sequenceEqs} we present some illustrative example sequences and th
 \hspace{0.2cm} {\em (AddComponent stringComp} & \\
 \hspace{0.4cm} {\em EmptySequence)} & {\em Sequence (Bool :*: String :*: Nil)}\\
 {\em AddComponent integerComp1} & \\
-\hspace{0.2cm} {\em (ExtensionMarker &\\
-\hspace{0.25cm} {\em (ExtensionAdditionGroup NoVersionNumber &\\
-\hspace{0.3cm} {\em (AddComponent integerComp2 EmptySequence) &\\
+\hspace{0.2cm} {\em (ExtensionMarker} &\\
+\hspace{0.25cm} {\em (ExtensionAdditionGroup NoVersionNumber} &\\
+\hspace{0.3cm} {\em (AddComponent integerComp2 EmptySequence)} &\\
 \hspace{0.35cm} {\em EmptySequence))} & {\em Sequence (InfInteger :*:}\\
-& \hspace{0.1cm}(Maybe (InfInteger :*: Nil):*: Nil))}
+& \hspace{0.1cm}(Maybe (InfInteger :*: Nil):*: Nil))
 \end{tabular}
 \end{table}
 To avoid providing a full representation of sequence components we have given them names
