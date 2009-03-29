@@ -6,5 +6,6 @@ import ASNTYPE
 import NewPretty
 
 t = encode sibDataVariableType [] sibDataVariableValue
+t' = encode' sibDataVariableType [] sibDataVariableValue
 
 main = undefined
