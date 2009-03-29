@@ -758,6 +758,8 @@ findN i []
 
 \section{ENCODING THE BIT STRING TYPE}
 
+\subsection{First Refactoring}
+
 \begin{code}
 
 encodeBitString ::  NamedBits -> [SubtypeConstraint BitString] -> BitString -> AMonad ()
@@ -772,12 +774,26 @@ encodeBitString nbs cl x =
       ec  <- effectiveConstraint
       eec <- effectiveExtensionConstraint
       isE <- isExtensibleConstraint
-      let bs = bitString x
+      let bs            = bitString x
+          isInRoot      = inSizeRange bs vc
+          isInExtension = inSizeRange bs vec
           doit
-             | inSizeRange bs vc = throwError (ConstraintError "encodeBitString: Value out of range")
-             | isE               = error "encodeBitString: missing alternative" -- FIXME
-             | ec == bottom      = throwError (OtherError "encodeBitString: Empty constraint")
-             | otherwise         = encodeLengthDeterminant ec chunkBy1 undefined bs
+             | isE && (ec == bottom || eec== bottom) =
+                  throwError (OtherError "encodeBitString: Empty constraint")
+             | isE && isInRoot =
+                  do tell . return $ 0
+                     encodeLengthDeterminant (ec `ljoin` eec) chunkBy1 undefined bs
+             | isE && isInExtension =
+                  do tell . return $ 1
+                     encodeLengthDeterminant (ec `ljoin` eec) chunkBy1 undefined bs
+             | isE =
+                  throwError (ConstraintError "encodeBitString: Value out of range")           
+             | ec == bottom =
+                  throwError (OtherError "encodeBitString: Empty constraint")
+             | isInRoot =
+                  encodeLengthDeterminant ec chunkBy1 undefined bs
+             | otherwise =
+                  throwError (ConstraintError "encodeBitString: Value out of range")
       doit
 
    where effectiveConstraint :: AMonad IntegerConstraint -- FIXME: These probably shouldn't be monadic; they can and should be pure.
@@ -805,6 +821,12 @@ inSizeRange p qs = inSizeRangeAux qs
       l = genericLength p
       inSizeRangeAux (x:rs) =
          l >= (lower x) && l <= (upper x) || inSizeRangeAux rs
+
+\end{code}
+
+\subsection{Original Code}
+
+\begin{code}
 
 encodeBS :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PerEncoding
 encodeBS nbs [] x = encodeBSNoSz nbs x
