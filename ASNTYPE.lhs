@@ -217,6 +217,7 @@ instance Num InfInteger where
    _ - PosInf = NegInf
    NegInf - _ = NegInf
    _ - NegInf = PosInf
+   (Val x) - (Val y) = Val (x-y)
    fromInteger x = Val x
 
 \end{code}
@@ -540,6 +541,15 @@ the type which represents the actual elements of a set combination of constraint
 typically non-contiguous. These are required to test the validity of a value. Since they are
 non-contiguous we represent their values as a list of contiguous sets.
 
+We also introduce another type {\em IntegerConstraintType} which is an enumerated type with
+three values: {\em Constrained}, {\em SemiConstrained} and {\em Unconstrained}. These values
+are used to classify a constraint when encoding an integer. We have also implemented the
+function {\em constraintType} which tests the form of a constraint an allocates the
+appropriate value of the type {\em IntegerConstraintType}.
+
+These functions and the type are used in the encoding of integer values as specified in section
+\ref{intEnc}.
+
 \begin{code}
 
 data IntegerConstraint = IntegerConstraint {lower :: InfInteger, upper :: InfInteger}
@@ -548,15 +558,33 @@ data IntegerConstraint = IntegerConstraint {lower :: InfInteger, upper :: InfInt
 data ValidIntegerConstraint = Valid [IntegerConstraint]
     deriving (Show, Eq)
 
+
+data IntegerConstraintType =
+   Constrained     |
+   SemiConstrained |
+   UnConstrained
+
+constraintType :: IntegerConstraint -> IntegerConstraintType
+constraintType x
+             | unconstrained x   = UnConstrained
+             | semiconstrained x = SemiConstrained
+             | otherwise         = Constrained
+
+unconstrained,semiconstrained,constrained :: IntegerConstraint -> Bool
+unconstrained x     = (lower x) == minBound
+semiconstrained x   = (upper x) == maxBound
+constrained x       = not (unconstrained x) && not (semiconstrained x)
+
 \end{code}
+
 
 The type {\em ResStringConstraint} represents the distinct components --
 the permitted alphabet constraint and the size constraint -- of a root or extension
 constraint of a restricted character string type. It is a polymorphic type to allow for the
 various restricted character string types. {\em ExtResStringConstraint} supports the
 combination of root and extension constraints. The boolean component indicates whether an
-extension constraint exists. NOTE: could this be replaced by ExtBS?
-
+extension constraint exists.
+{- FIXME: could this be replaced by ExtBS? -}
 \begin{code}
 
 data ResStringConstraint a i = ResStringConstraint a i

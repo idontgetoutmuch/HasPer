@@ -160,21 +160,17 @@ of the seraily applied constraints.
 \end{itemize}
 
 
-encode recurses through an ASNType value until it gets to a
-builtin type and then calls toPer. The final input to toPer is the
-list of perVisible constraints of the layers of the type. The
-first element in the list is the inner-most constraint.
 
 \begin{code}
-type PERMonad = ErrorT ASNError (WriterT BitStream Identity) ()
+type PERMonad a = ErrorT ASNError (WriterT BitStream Identity) a
 
 type PerEncoding = Either String BitStream
 {-
-perEncode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad
+perEncode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad ()
 perEncode t cl v = temporaryConvert (encode t cl v)
 -}
 
-encode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad
+encode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad ()
 encode (BuiltinType t) cl v       = toPER t v cl
 encode (ReferencedType r t) cl v  = encode t cl v
 encode (ConstrainedType t c) cl v = encode t (c:cl) v
@@ -194,24 +190,24 @@ encodeInt} is called, and if it is a {\em CHOICE} type then {\em encodeChoice} i
 
 \begin{code}
 
-toPER :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> PERMonad
-toPER NULL _ _             = temporaryConvert (Right [])
-toPER INTEGER x cl         = temporaryConvert (encodeInt cl x)
-toPER VISIBLESTRING x cl   = temporaryConvert (encodeRCS cl x)
-toPER PRINTABLESTRING x cl = temporaryConvert (encodeRCS cl x)
-toPER NUMERICSTRING x cl   = temporaryConvert (encodeRCS cl x)
-toPER IA5STRING x cl       = temporaryConvert (encodeRCS cl x)
-toPER BMPSTRING x cl       = temporaryConvert (encodeRCS cl x)
-toPER UNIVERSALSTRING x cl = temporaryConvert (encodeRCS cl x)
+toPER :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> PERMonad ()
+toPER NULL _ _             = tell []
+toPER INTEGER x cl         = encodeInt cl x
+toPER VISIBLESTRING x cl   = encodeRCS cl x
+toPER PRINTABLESTRING x cl = encodeRCS cl x
+toPER NUMERICSTRING x cl   = encodeRCS cl x
+toPER IA5STRING x cl       = encodeRCS cl x
+toPER BMPSTRING x cl       = encodeRCS cl x
+toPER UNIVERSALSTRING x cl = encodeRCS cl x
 toPER BOOLEAN x cl         = encodeBool cl x
-toPER (ENUMERATED e) x cl  = temporaryConvert (encodeEnum e x) -- no PER-Visible constraints
-toPER (BITSTRING nbs) x cl = temporaryConvert (encodeBS nbs cl x)
-toPER (OCTETSTRING) x cl   = temporaryConvert (encodeOS cl x)
-toPER (SEQUENCE s) x cl    = temporaryConvert (encodeSeq s x) -- no PER-Visible constraints
-toPER (SEQUENCEOF s) x cl  = temporaryConvert (encodeSeqOf cl s x)
+toPER (ENUMERATED e) x cl  = encodeEnum e x -- no PER-Visible constraints
+toPER (BITSTRING nbs) x cl = encodeBS nbs cl x
+toPER (OCTETSTRING) x cl   = encodeOS cl x
+toPER (SEQUENCE s) x cl    = encodeSeq s x -- no PER-Visible constraints
+toPER (SEQUENCEOF s) x cl  = encodeSeqOf cl s x
 toPER (SET s) x cl         = temporaryConvert (encodeSet s x) -- no PER-Visible constraints
-toPER (CHOICE c) x cl      = temporaryConvert (encodeChoice c x) -- no PER-visible constraints
-toPER (SETOF s) x cl       = temporaryConvert (encodeSeqOf cl s x) -- no PER-visible constraints
+toPER (CHOICE c) x cl      = encodeChoice c x -- no PER-visible constraints
+toPER (SETOF s) x cl       = encodeSeqOf cl s x -- no PER-visible constraints
 toPER (TAGGED tag t) x cl  = encode t cl x
 
 toPER' :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> AMonad ()
@@ -229,7 +225,7 @@ extractValue = runIdentity . runWriterT . runErrorT
 
 extractValue' = runIdentity . runWriterT . runErrorT
 
-completeEncode :: PERMonad -> PERMonad
+completeEncode :: PERMonad () -> PERMonad ()
 completeEncode m
     = let (e,v) = extractValue m
       in tell (padding v)
@@ -254,10 +250,10 @@ padding enc
 
 \begin{code}
 
-encodeOpen :: ASNType a -> a -> PERMonad
+encodeOpen :: ASNType a -> a -> PERMonad ()
 encodeOpen t v
 {- X691REF: 10.2.1 -}   = let (err,enc) = extractValue (completeEncode (encode t [] v))
-{- X691REF: 10.2.2 -}     in   temporaryConvert (return (encodeOctetsWithLength enc))
+{- X691REF: 10.2.2 -}     in  encodeOctetsWithLength enc
 
 \end{code}
 
@@ -270,25 +266,26 @@ encodeOpen t v
 {- Clearly we want to just say e.g. tell 1                    -}
 {- Or do we. It is meant to return a bit-field value and not just a bit -}
 {- So the following whould be fine. -}
-encodeBool :: [SubtypeConstraint Bool] -> Bool -> PERMonad
+encodeBool :: [SubtypeConstraint Bool] -> Bool -> PERMonad ()
 encodeBool t True = tell [1]
 encodeBool t _    = tell [0]
 
 \end{code}
 
 \section{ENCODING THE INTEGER TYPE}
+\label{intEnc}
 
 If the type is unconstrained -- as indicated by an empty constraint list --  then the value is
 encoded as an unconstrained integer using the function {\em encodeUnconsInt}. If the type has
-a constraint then the function {\em encodeConsInt} is called. The encoding depends on whether the constraint is entensible and whether the
-value lies within the extenstion root.
+a constraint then the function {\em encodeIntWithConstraint} is called. The encoding depends on
+whether the constraint is extensible and whether the value lies within the extenstion root.
 
 \begin{code}
 
 
-encodeInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PerEncoding
-encodeInt [] v = return (encodeUnconsInt v)
-encodeInt cs v = encodeConsInt parentRoot validPR lc v
+encodeInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
+encodeInt [] v = {- X691REF: 12.2.4 -} encodeUnconsInt v
+encodeInt cs v = encodeIntWithConstraint parentRoot validPR lc v
    where
       lc         = last cs
       ic         = init cs
@@ -299,7 +296,21 @@ encodeInt cs v = encodeConsInt parentRoot validPR lc v
 
 \end{code}
 
-{\em encodeConsInt} calls:
+
+{\em encodeUnconsInt} encodes an integer value as a 2's-complement-binary-integer
+into a minimum number of octects using {\em to2sComplement}. This is prefixed by an explicit
+length encoding using {\em encodeOctetsWithLength}.
+
+\begin{code}
+
+encodeUnconsInt :: InfInteger -> PERMonad ()
+encodeUnconsInt (Val x) = encodeOctetsWithLength . to2sComplement $ x
+encodeUnconsInt v  = throwError (BoundsError ("Cannot encode " ++ show v))
+
+\end{code}
+
+
+{\em encodeIntWithConstraint} calls:
 \begin{itemize}
 \item
 {\em encodeNonExtConsInt} if the constraint is not extensible. This takes three inputs: the
@@ -314,9 +325,9 @@ inputs. The three required for {\em encodeNonExtConsInt} and the two -- actual a
 
 \begin{code}
 
-encodeConsInt :: Either String IntegerConstraint -> Either String ValidIntegerConstraint
-                  -> SubtypeConstraint InfInteger -> InfInteger -> PerEncoding
-encodeConsInt pr vpr lc v
+encodeIntWithConstraint :: Either String IntegerConstraint -> Either String ValidIntegerConstraint
+                  -> SubtypeConstraint InfInteger -> InfInteger -> PERMonad ()
+encodeIntWithConstraint pr vpr lc v
     = if (not extensible)
         then {- X691REF: 12.2 -} encodeNonExtConsInt validRootCon effRootCon v
         else {- X691REF: 12.1 -} encodeExtConsInt validRootCon validExtCon effRootCon effExtCon v
@@ -330,176 +341,133 @@ encodeConsInt pr vpr lc v
 
 
 
-\section{Dan: read this as an example of our paper for a formal executable specification of PER}
+The functions {\em isNonEmptyConstraint} and {\em isEmptyConstraint} simply test whether the
+combination of PER-visible constraints associated with an integer type results in an actual
+constraint or no constraint. For example, the intersection of two mutually exclusive
+constraints results in no constraint. This will then mean that their can be no valid values
+and an error must be reported.
 
-For the purpose of encoding in PER, we can classify an INTEGER type as
-constrained, semi-constrained or unconstrained.
+The function {\em inRange} simply tests with a value sits within the constraint. It is tested
+against the actual constraint and not agianst the effective constraint which is used for
+encoding.
 
 \begin{code}
 
-data IntegerConstraintType =
-   Constrained     |
-   SemiConstrained |
-   UnConstrained
+isNonEmptyConstraint,isEmptyConstraint :: (Eq t, Lattice t) => t -> Bool
+isNonEmptyConstraint x  = x /= bottom
+isEmptyConstraint       = (not . isNonEmptyConstraint)
+
+inRange :: InfInteger -> ValidIntegerConstraint -> Bool
+inRange _ (Valid [])       = False
+inRange n (Valid (x:rs))   = n >= (lower x) && n <= (upper x) || inRange n (Valid rs)
 
 \end{code}
 
-First, the type signature tells us that we are using constraints which are \lq\lq lifted\rq\rq.
-The type constructor $m$ takes a type $a$ and constructs a new type $m a$, a \lq\lq lifting\rq\rq
-of the base type. This monad allows us to handle invalid serial application of constraints without
-cluttering up the specification with \lq\lq plumbing\rq\rq. The Haskell constraint to the left of the $\Rightarrow$ tells us that the
-type constructor is a monad with extra structure. This extra structure allows us to signal an
-error using {\tt throwError}, for example in the case of values which are not in range given by the constraints and then
-handle it using {\tt catchError}.
-
-We can now read off the specificiation:
-
-\begin{enumerate}
-
+{\em encodeNonExtConsInt} has to deal with five cases.
+\begin{itemize}
 \item
-Extract the values from the monad.
-
+The constraint is empty and thus no values can be encoded. An appropriate error is thrown.
 \item
-If there is a root constraint and an extension constraint and the value
-is consistent with the root constraint then \ldots
-
+The constraint does not restrict the integer to be either constrained or semi-constrained. The
+value is encoded as an unconstrained integer using {\em encodeUnconsInt}.
 \item
-If there is a root constraint and an extension constraint and the value
-is consistent with the extension constraint then \ldots
-
-\end{enumerate}
+The constraint restricts the integer to be a semi-constrained integer and the value satisfies
+the constraint. The value is encoded
+using {\em encodeSemiConsInt}.
+\item
+The constraint restricts the integer to be a constrained integer and the value satisfies the
+constraint. The value is encoded using
+{\em encodeConstrainedInt}.
+\item
+The value does not satisfy the constraint. An appropriate error is thrown.
+\end{itemize}
 
 \begin{code}
-
-encodeExtConsInt :: (Eq t, Lattice t) =>
-                  Either String ValidIntegerConstraint
-                  -> Either String ValidIntegerConstraint
-                  -> Either String IntegerConstraint
-                  -> Either String t
-                  -> InfInteger
-                  -> PerEncoding
-encodeExtConsInt realRC realEC effRC effEC n@(Val v) =
-   do
-      Valid rrc <- realRC
-      Valid rec <- realEC
-      erc <- effRC
-      eec <- effEC
-      let isNonEmptyEC           = eec /= bottom
-          isNonEmptyRC           = erc /= bottom
-          emptyConstraint        = (not isNonEmptyRC) && (not isNonEmptyEC)
-          inRange []             = False
-          inRange (x:rs)         = n >= (lower x) && n <= (upper x) || inRange rs
-          unconstrained x        = (lower x) == minBound
-          semiconstrained x      = (upper x) == maxBound
-          constrained x          = not (unconstrained x) && not (semiconstrained x)
-          constraintType x
-             | unconstrained x   = UnConstrained
-             | semiconstrained x = SemiConstrained
-             | otherwise         = Constrained
-          Val rootLower              = lower erc
-          Val rootUpper              = upper erc
-          foobar
-             | emptyConstraint
-                  = throwError "Empty constraint"
-             | isNonEmptyRC && inRange rrc
-                  = return $ do
-                                case constraintType erc of
-                                   UnConstrained ->
-                                        0:encodeUnconsInt n
-                                   SemiConstrained ->
-                                        0:encodeSCInt (fromIntegral v) rootLower
-                                   Constrained ->
-                                        0:encodeNNBIntBits (fromIntegral (v - rootLower), fromIntegral (rootUpper - rootLower))
-             | isNonEmptyEC && inRange rec
-                  = return (1:encodeUnconsInt n)
-             | otherwise
-                  = throwError "Value out of range"
-      foobar
-encodeExtConsInt realRC realEC effRC effEC v = throwError "Cannot encode MAX or MIN."
-
 encodeNonExtConsInt :: Either String ValidIntegerConstraint
                      -> Either String IntegerConstraint
                      -> InfInteger
-                     -> PerEncoding
-encodeNonExtConsInt realRC effRC n@(Val v) =
-   do Valid rrc <- realRC
-      erc <- effRC
-      let isNonEmptyRC           = erc /= bottom
-          emptyConstraint        = not isNonEmptyRC
-          inRange []             = False
-          inRange (x:rs)         = n >= (lower x) && n <= (upper x) || inRange rs
-          unconstrained x        = (lower x) == minBound
-          semiconstrained x      = (upper x) == maxBound
-          constrained x          = not (unconstrained x) && not (semiconstrained x)
-          constraintType x
-             | unconstrained x   = UnConstrained
-             | semiconstrained x = SemiConstrained
-             | otherwise         = Constrained
-          Val rootLower          = lower erc
-          Val rootUpper          = upper erc
-          foobar
-             | emptyConstraint
-                  = throwError "Empty constraint"
-             | isNonEmptyRC && inRange rrc
-                  = return $ do
-                       case constraintType erc of
-                                   UnConstrained ->
-                                      encodeUnconsInt n
-                                   SemiConstrained ->
-                                      encodeSCInt (fromIntegral v) rootLower
-                                   Constrained ->
-                                      encodeNNBIntBits (fromIntegral (v - rootLower), fromIntegral (rootUpper - rootLower))
+                     -> PERMonad ()
+encodeNonExtConsInt (Right validRootCon) (Right effRootCon) n
+    | isEmptyConstraint effRootCon
+         = throwError (ConstraintError "Empty constraint")
+    | isNonEmptyConstraint effRootCon && inRange n validRootCon
+         = case constraintType effRootCon of
+                 UnConstrained
+                        -> {- X691REF: 12.2.4 -} encodeUnconsInt n
+                 SemiConstrained
+                        -> {- X691REF: 12.2.3 -} encodeSemiConsInt n rootLower
+                 Constrained
+                        -> {- X691REF: 12.2.2 -} encodeConstrainedInt ((n - rootLower), rootUpper - rootLower)
+    | otherwise
+        = throwError (BoundsError "Value out of range")
+          where
+          rootLower          = lower effRootCon
+          rootUpper          = upper effRootCon
+
+\end{code}
+
+
+{\em encodeExtConsInt} is similar to {\em encodeNonExtConsInt}. It has the five cases
+described for {\em encodeNonExtConsInt} -- where any encoding is prefixed by the bit 0 --
+plus the case when the value satisfies the constraint
+but is not within the extension root. In this case the value is encoded as an unconstrained
+integer using {\em encodeUnconsInt} prefixed by the bit 1.
+
+\begin{code}
+
+encodeExtConsInt :: Either String ValidIntegerConstraint
+                  -> Either String ValidIntegerConstraint
+                  -> Either String IntegerConstraint
+                  -> Either String IntegerConstraint
+                  -> InfInteger
+                  -> PERMonad ()
+encodeExtConsInt (Right validRootCon) (Right validExtCon)
+                 (Right effRootCon) (Right effExtCon) n
+             | isEmptyConstraint effRootCon && isEmptyConstraint effExtCon
+                  = throwError (ConstraintError "Empty constraint")
+             | isNonEmptyConstraint effRootCon && inRange n validRootCon
+                  = case constraintType effRootCon of
+                            UnConstrained -> {- X691REF: 12.1 and 12.2.4 -}
+                                 do tell [0]
+                                    encodeUnconsInt n
+                            SemiConstrained -> {- X691REF: 12.1 and 12.2.3 -}
+                                 do tell [0]
+                                    encodeSemiConsInt n rootLower
+                            Constrained -> {- X691REF: 12.1 and 12.2.4 -}
+                                 do tell [0]
+                                    encodeConstrainedInt ((n - rootLower), (rootUpper - rootLower))
+             | isNonEmptyConstraint effExtCon && inRange n validExtCon
+                  = do  {- X691REF: 12.1 -}
+                        tell [1]
+                        encodeUnconsInt n
              | otherwise
-                  = throwError "Value out of range"
-      foobar
-encodeNonExtConsInt realRC effRC v = throwError "Cannot encode MAX or MIN."
-\end{code}
+                  = throwError (BoundsError "Value out of range")
+                    where
+                         rootLower          = lower effRootCon
+                         rootUpper          = upper effRootCon
 
- 10.6 Encoding as a normally small non-negative whole number
-
-\begin{code}
-
-encodeNSNNInt :: Integer -> Integer -> BitStream
-encodeNSNNInt n lb
-    = if n <= 63
-        then 0:encodeNNBIntBits (n,63)
-        else 1:encodeSCInt n lb
 
 \end{code}
 
-
- 10.3 Encoding as a non-negative-binary-integer
-
- encodeNNBIntBits encodes an integer in the minimum
- number of bits required for the range (assuming the range is at least 2).
-
-Note: we can do much better than put 1 bit a time!!! But this will do for
-now.
+{\em encodeSemiConsInt} encodes a semi-constrained integer. The difference between the value and the
+lower bound is encoded as a non-negative-binary-integer in the mininum number of octets using
+{\em encodeNonNegBinaryIntInOctets}. This is prefixed by an encoding of the length of the
+octeys using {\em encodeOctetsWithLength}.
 
 \begin{code}
 
-encodeNNBIntBitsAux (_,0) = Nothing
-encodeNNBIntBitsAux (0,w) = Just (0, (0, w `div` 2))
-encodeNNBIntBitsAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
+encodeSemiConsInt :: InfInteger -> InfInteger -> PERMonad ()
+encodeSemiConsInt x@(Val v) y@(Val lb)
+    = encodeOctetsWithLength (encodeNonNegBinaryIntInOctets (x-y))
+encodeSemiConsInt n (Val lb)
+    = throwError (BoundsError ("Cannot encode " ++ show n ++ "."))
+encodeSemiConsInt _ _
+    = throwError (ConstraintError "No lower bound.")
 
-\end{code}
 
-\begin{code}
-
-encodeNNBIntBits :: (Integer, Integer) -> BitStream
-encodeNNBIntBits
-    = reverse . (map fromInteger) . unfoldr encodeNNBIntBitsAux
-
-\end{code}
-
- encodeNNBIntOctets encodes an integer in the minimum number of
- octets.
-
-\begin{code}
-
-encodeNNBIntOctets :: Integer -> BitStream
-encodeNNBIntOctets =
-   reverse . (map fromInteger) . flip (curry (unfoldr (uncurry g))) 8 where
+encodeNonNegBinaryIntInOctets :: InfInteger -> BitStream
+encodeNonNegBinaryIntInOctets (Val x) =
+   (reverse . (map fromInteger) . flip (curry (unfoldr (uncurry g))) 8) x where
       g 0 0 = Nothing
       g 0 p = Just (0,(0,p-1))
       g n 0 = Just (n `mod` 2,(n `div` 2,7))
@@ -507,45 +475,57 @@ encodeNNBIntOctets =
 
 \end{code}
 
- 10.7 Encoding of a semi-constrained whole number. The integer
- is encoded in the minimum number of octets with an explicit
- length encoding.
+{\em encodeOctetsWithLength} encodes a collection of octets with
+unconstrained length. {\em encodeBitsWithLength does} the same except
+for a collection of bits.
 
 \begin{code}
 
-encodeSCInt :: Integer -> Integer -> BitStream
-encodeSCInt v lb
-    = encodeOctetsWithLength (encodeNNBIntOctets (v-lb))
+encodeOctetsWithLength :: [Int] -> PERMonad ()
+encodeOctetsWithLength = encodeWithLength (mapM_ tell . id) . groupBy 8
+
+
+encodeBitsWithLength :: [Int] -> PERMonad ()
+encodeBitsWithLength = encodeWithLength (tell.id)
 
 \end{code}
 
- 10.8 Encoding of an unconstrained integer. The integer is
- encoded as a 2's-complement-binary-integer with an explicit
- length encoding.
+
+{\em encodeConstrainedInt} encodes an integer in the minimum
+number of bits required for the range specified by the constraint
+(assuming the range is at least 2). The value encoded is the offset from the lower bound of
+the constraint.
+
 
 \begin{code}
 
-encodeUnconsInt :: InfInteger -> BitStream
-encodeUnconsInt (Val x) = encodeOctetsWithLength . to2sComplement $ x
+encodeConstrainedInt :: (InfInteger, InfInteger) -> PERMonad ()
+encodeConstrainedInt (Val val, Val range)
+    = tell $ (reverse . (map fromInteger) . unfoldr encodeConstrainedIntAux) (val,range)
+
+encodeConstrainedIntAux (_,0) = Nothing
+encodeConstrainedIntAux (0,w) = Just (0, (0, w `div` 2))
+encodeConstrainedIntAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
 
 \end{code}
+
 
 \section{Length Determinants}
 
 10.9 General rules for encoding a length determinant
 10.9.4, 10.9.4.2 and 10.9.3.4 to 10.9.3.8.4.
 
-encodeWithLength takes a list of values (could be bits, octets or
+{\em encodeWithLength} takes a list of values (could be bits, octets or
 any ASN.1 type), and groups them first in 16k batches, and then in
 batches of 4. The input value-encoding function is then supplied as
-an input to the function addUncLen which manages the interleaving of
+an input to the function {\em addUncLen} which manages the interleaving of
 length and value encodings -- it encodes the length and values of
 each batch and concatenates their resulting bitstreams together.
 Note the values are encoded using the input function.
 
 \begin{code}
 
-encodeWithLength :: ([t] -> [Int]) -> [t] -> [Int]
+encodeWithLength :: ([t] -> PERMonad ()) -> [t] -> PERMonad ()
 encodeWithLength fun = addUncLen fun . groupBy 4 . groupBy (16*(2^10))
 
 groupBy :: Int -> [t] -> [[t]]
@@ -557,61 +537,64 @@ groupBy n =
 
 \end{code}
 
-addUncLen is a HOF which encodes a value with an unconstrained
+{\em addUncLen} is a higher order function which encodes a value with an unconstrained
 length i.e. it either has no upper bound on the size of the value,
 or the upper bound is at least 64k. The inputs are the value encoding
 function and the value represented as a collection of 4*16k
 blocks.
 
-lastLen encodes the length remainder modulo 16k and blocklen
+{\em lastLen} encodes the length remainder modulo 16k and {\em blocklen}
 encodes the length of a block (1 to 4).
 
 \begin{code}
 
-addUncLen :: ([b] -> [Int]) -> [[[b]]] -> [Int]
+addUncLen :: ([b] -> PERMonad ()) -> [[[b]]] -> PERMonad ()
 addUncLen encFun [] = lastLen k16 0
 addUncLen encFun (x:xs)
-    | l == 4 && last16 == k16 = blockLen 4 63 ++ (concat . map encFun) x
-                                              ++ addUncLen encFun xs
-    | l == 1 && last16 < k16  = lastLen k16 ((genericLength . head) x) ++ encFun (head x)
-    | otherwise               = if last16 == k16
-                                    then blockLen l 63 ++ (concat . map encFun) x ++ lastLen k16 0
-                                    else blockLen (l-1) 63 ++ (concat . map encFun) (init x)
-                                                           ++ lastLen k16 ((genericLength.last) x)
-                                                           ++ encFun (last x)
+    | l == 4 && last16 == k16
+        = do blockLen 4 63
+             mapM_ encFun x
+             addUncLen encFun xs
+    | l == 1 && last16 < k16
+        = do lastLen k16 ((genericLength . head) x)
+             encFun (head x)
+    | otherwise
+        = if last16 == k16
+             then do blockLen l 63
+                     mapM_ encFun x
+                     lastLen k16 0
+             else do blockLen (l-1) 63
+                     mapM_ encFun (init x)
+                     lastLen k16 ((genericLength.last) x)
+                     encFun (last x)
     where
         l      = genericLength x
         last16 = (genericLength . last) x
 
-k16 :: Integer
+k16 :: InfInteger
 k16    = 16*(2^10)
 
 
-lastLen :: Integer -> Integer -> [Int]
+lastLen :: InfInteger -> InfInteger -> PERMonad ()
 lastLen r n
-   | n <= 127       = 0:(encodeNNBIntBits (n, 127))
-   | n < r          = 1:0:(encodeNNBIntBits (n, (r-1)))
-   | otherwise      = error "Length is out of range."
+   | n <= 127
+        = do tell [0]
+             encodeConstrainedInt (n, 127)
+   | n < r
+        = do tell [1]
+             tell [0]
+             encodeConstrainedInt (n, (r-1))
+   | otherwise
+        = throwError (BoundsError "Length is out of range.")
 
-blockLen :: Integer -> Integer -> [Int]
-blockLen x y = (1:1:(encodeNNBIntBits (x,y)))
-
-\end{code}
-
-encodeOctetsWithLength encodes a collection of octets with
-unconstrained length. encodeBitsWithLength does the same except
-for a collection of bits.
-
-\begin{code}
-
-encodeOctetsWithLength :: [Int] -> [Int]
-encodeOctetsWithLength = encodeWithLength (concat . id) . groupBy 8
-
-
-encodeBitsWithLength :: [Int] -> [Int]
-encodeBitsWithLength = encodeWithLength id
+blockLen :: InfInteger -> InfInteger -> PERMonad ()
+blockLen x y
+    = do tell [1]
+         tell [1]
+         encodeConstrainedInt (x,y)
 
 \end{code}
+
 
 \begin{enumerate}
 
@@ -641,7 +624,7 @@ by the encoding of its length using encodeOctetsWithLength
 to2sComplement :: Integer -> BitStream
 to2sComplement n
    | n >= 0 = 0:(h n)
-   | otherwise = encodeNNBIntOctets (2^p + n)
+   | otherwise = encodeNonNegBinaryIntInOctets (fromInteger $ 2^p + n)
    where
       p = length (h (-n-1)) + 1
 
@@ -656,6 +639,19 @@ h n = (reverse . map fromInteger) (flip (curry (unfoldr g)) 7 n)
 
 \end{code}
 
+ 10.6 Encoding as a normally small non-negative whole number
+
+\begin{code}
+
+encodeNSNNInt :: Integer -> Integer -> PERMonad ()
+encodeNSNNInt n lb
+    = if n <= 63
+        then do tell [0]
+                encodeConstrainedInt (fromInteger n, fromInteger 63)
+        else do tell [1]
+                encodeSemiConsInt (fromInteger n) (fromInteger lb)
+
+\end{code}
 
 
 \section{ENCODING THE ENUMERATED TYPE}
@@ -694,7 +690,7 @@ encoding.
 
 \begin{code}
 
-encodeEnum :: Enumerate a -> ExactlyOne a SelectionMade -> PerEncoding
+encodeEnum :: Enumerate a -> ExactlyOne a SelectionMade -> PERMonad ()
 encodeEnum e x
     = let (b,inds) = assignIndex e
           no = genericLength inds
@@ -702,25 +698,27 @@ encodeEnum e x
         encodeEnumAux b no inds e x
 
 encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> ExactlyOne a n
-                 -> PerEncoding
+                 -> PERMonad ()
 encodeEnumAux b no (f:r) (AddEnumeration  _ es) (AddAValue a rest)
     = if not b
-        then return (encodeNNBIntBits (f, no-1))
-        else return (0: encodeNNBIntBits (f, no-1))
+        then encodeConstrainedInt (fromInteger f, fromInteger (no-1))
+        else do tell [0]
+                encodeConstrainedInt (fromInteger f, fromInteger (no-1))
 encodeEnumAux b no (f:r) (AddEnumeration  _ es) (AddNoValue a rest)
     = encodeEnumAux b no r es rest
 encodeEnumAux b no inds (EnumerationExtensionMarker   ex) x
     = let el = noEnums ex
       in encodeEnumExtAux 0 el ex x
-encodeEnumAux _ _ _ _ _ = throwError "No enumerated value!"
+encodeEnumAux _ _ _ _ _ = throwError (OtherError "No enumerated value!")
 
 encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> ExactlyOne a n
-                    -> PerEncoding
+                    -> PERMonad ()
 encodeEnumExtAux i l (AddEnumeration  _ es) (AddAValue a rest)
-    = return (1:encodeNSNNInt i 0)
+    = do tell [1]
+         encodeNSNNInt i 0
 encodeEnumExtAux i l (AddEnumeration  _ es) (AddNoValue a rest)
     = encodeEnumExtAux (i+1) l es rest
-encodeEnumExtAux i l _ _ = throwError "No enumerated extension value!"
+encodeEnumExtAux i l _ _ = throwError (OtherError "No enumerated extension value!")
 
 assignIndex :: Enumerate a -> (Bool, [Integer])
 assignIndex en
@@ -797,7 +795,7 @@ encodeBitString nbs cl x =
                   do tell . return $ 1
                      encodeLengthDeterminant (ec `ljoin` eec) chunkBy1 undefined bs
              | isE =
-                  throwError (ConstraintError "encodeBitString: Value out of range")           
+                  throwError (ConstraintError "encodeBitString: Value out of range")
              | ec == bottom =
                   throwError (OtherError "encodeBitString: Empty constraint")
              | isInRoot =
@@ -838,12 +836,12 @@ inSizeRange p qs = inSizeRangeAux qs
 
 \begin{code}
 
-encodeBS :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PerEncoding
+encodeBS :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PERMonad ()
 encodeBS nbs [] x = encodeBSNoSz nbs x
 encodeBS nbs cl x = encodeBSSz nbs cl x
 
 
-encodeBSSz :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PerEncoding
+encodeBSSz :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PERMonad ()
 encodeBSSz nbs cl xs = lEncValidBS nbs (effBSCon cl) (validBSCon cl) xs
 
 effBSCon ::[SubtypeConstraint BitString] -> Either String (ExtBS (ConType IntegerConstraint))
@@ -856,51 +854,44 @@ validBSCon cs = lSerialEffCons lBSConE top cs
 
 lEncValidBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
                -> Either String (ExtBS (ConType ValidIntegerConstraint))
-               -> BitString -> PerEncoding
-lEncValidBS nbs m n v
-    = do
-        vsc <- m
-        if extensibleBS vsc
+               -> BitString -> PERMonad ()
+lEncValidBS nbs m@(Right c) n v
+    = if extensibleBS c
             then lEncExtBS nbs m n v
             else lEncNonExtBS nbs m n v
+lEncValidBS nbs (Left s) _ _ = throwError (ConstraintError s)
 
 
 lEncNonExtBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> BitString
-                -> PerEncoding
-lEncNonExtBS nbs m n (BitString vs)
-    = do
-        vsc <- m
-        ok  <- n
-        let rc = conType . getBSRC $ vsc
-            okrc :: [IntegerConstraint]
-            Valid okrc = conType . getBSRC $ ok
-            emptyConstraint = rc == bottom
-            inSizeRange []      = False
-            inSizeRange (x:rs)
-                = let l = genericLength vs
-                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
-            foobar
-                | emptyConstraint
-                    = throwError "Empty constraint"
-                | null nbs && inSizeRange okrc || (not . null) nbs
-                    = do bs <- bsCode nbs rc vs
-                         return bs
-                | otherwise
-                    = throwError "Value out of range"
-        foobar
+                -> PERMonad ()
+lEncNonExtBS nbs (Right vsc) (Right ok) (BitString vs)
+    | emptyConstraint
+           = throwError (ConstraintError "Empty constraint")
+    | null nbs && inSizeRange okrc || (not . null) nbs
+           = let (_,bs) = extractValue (bsCode nbs rc vs)
+              in  tell bs
+    | otherwise
+           = throwError (BoundsError "Value out of range")
+             where
+                rc = conType . getBSRC $ vsc
+                okrc :: [IntegerConstraint]
+                Valid okrc = conType . getBSRC $ ok
+                emptyConstraint = rc == bottom
+                inSizeRange []      = False
+                inSizeRange (x:rs)
+                    = let l = genericLength vs
+                      in l >= (lower x) && l <= (upper x) || inSizeRange rs
+
 
 
 lEncExtBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> BitString
-                -> PerEncoding
-lEncExtBS nbs m n (BitString vs)
-    = do
-        vsc <- m
-        ok  <- n
-        let rc = conType . getBSRC $ vsc
+                -> PERMonad()
+lEncExtBS nbs (Right vsc) (Right ok) (BitString vs)
+    =   let rc = conType . getBSRC $ vsc
             Valid okrc = conType . getBSRC $ ok
             ec = conType . getBSEC $ vsc
             Valid okec = conType . getBSEC $ ok
@@ -911,63 +902,61 @@ lEncExtBS nbs m n (BitString vs)
                   in l >= (lower x) && l <= (upper x) || inSizeRange rs
             foobar
                 | emptyConstraint
-                    = throwError "Empty constraint"
+                    = throwError (ConstraintError "Empty constraint")
                 | inSizeRange okrc
-                    = do
-                        bs <- bsCode nbs rc vs
-                        return (0:bs)
+                    = let (_,bs) = extractValue $ bsCode nbs rc vs
+                      in do tell [0]
+                            tell bs
                 | inSizeRange okec
-                    = do
-                        bs <- bsExtCode nbs rc ec vs
-                        return (1:bs)
+                     = let (_,bs) = extractValue $ bsExtCode nbs rc ec vs
+                       in do tell [1]
+                             tell bs
                 | otherwise
-                    = throwError "Value out of range"
-        foobar
+                    = throwError (BoundsError "Value out of range")
+         in foobar
 
 
---bsCode :: NamedBits ->
+bsCode :: NamedBits -> IntegerConstraint -> BitStream -> PERMonad ()
 bsCode nbs rc xs
       =  let l  = lower rc
              u  = upper rc
              exs = if (not.null) nbs then editBS l u xs
-                     else return xs
+                     else tell xs
          in
              if u == 0
-             then return []
+             then tell []
              else if u == l && u <= 65536
                        then exs
                        else if u <= 65536
                             then let Val ub = u
                                      Val lb = l
-                                 in do
-                                     ls <- exs
-                                     ln <- return (genericLength ls)
-                                     return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ ls)
-                            else do
-                                    ls <- exs
-                                    return (encodeBitsWithLength ls)
+                                     (_,ls) = extractValue $ exs
+                                 in do encodeConstrainedInt (fromInteger (genericLength ls - lb), u-l)
+                                       tell ls
+                            else let
+                                    (_,ls) = extractValue $ exs
+                                 in encodeBitsWithLength ls
 
-
+bsExtCode :: NamedBits -> IntegerConstraint -> IntegerConstraint -> BitStream -> PERMonad ()
 bsExtCode nbs rc ec xs
     = let nc = rc `ljoin` ec
           l  = lower nc
           u  = upper nc
           exs = if (not.null) nbs then editBS l u xs
-                     else return xs
+                     else tell xs
       in
           if u <= 65536
              then let Val ub = u
                       Val lb = l
+                      (_,ls) = extractValue $ exs
                   in do
-                        ls <- exs
-                        ln <- return (genericLength ls)
-                        return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ ls)
-             else do
-                     ls <- exs
-                     return (encodeBitsWithLength ls)
+                        encodeConstrainedInt (fromInteger (genericLength ls -lb), u-l)
+                        tell ls
+             else let (_,ls) = extractValue $ exs
+                  in encodeBitsWithLength ls
 
 
-editBS :: InfInteger -> InfInteger -> BitStream -> PerEncoding
+editBS :: InfInteger -> InfInteger -> BitStream -> PERMonad ()
 editBS l u xs
     = let lxs = genericLength xs
       in if lxs < l
@@ -975,34 +964,36 @@ editBS l u xs
         else
             if lxs > u
              then rem0s (lxs-u) xs
-             else return xs
+             else tell xs
 
-add0s :: InfInteger -> BitStream -> PerEncoding
-add0s (Val n) xs = return (xs ++ take (fromInteger n) [0,0..])
-add0s _ _        = throwError "Invalid number input -- MIN or MAX."
+add0s :: InfInteger -> BitStream -> PERMonad ()
+add0s (Val n) xs = do
+                     tell xs
+                     tell $ take (fromInteger n) [0,0..]
+add0s _ _        = throwError (OtherError "Invalid number input -- MIN or MAX.")
 
-rem0s :: InfInteger -> BitStream -> PerEncoding
+rem0s :: InfInteger -> BitStream -> PERMonad ()
 rem0s (Val (n+1)) xs
     = if last xs == 0
            then rem0s (Val n) (init xs)
-           else throwError "Last value is not 0"
-rem0s (Val 0) xs = return xs
-rem0s _ _  = throwError "Cannot remove a negative, MIN or MAX number of 0s."
+           else throwError (OtherError "Last value is not 0")
+rem0s (Val 0) xs = tell xs
+rem0s _ _  = throwError (OtherError "Cannot remove a negative, MIN or MAX number of 0s.")
 
 \end{code}
 
 
 \begin{code}
-encodeBSNoSz :: NamedBits -> BitString -> PerEncoding
+encodeBSNoSz :: NamedBits -> BitString -> PERMonad ()
 encodeBSNoSz nbs (BitString [])
-    = return ([])
+    = tell []
 encodeBSNoSz nbs (BitString bs)
     = let rbs = reverse bs
           rem0 = if (not.null) nbs then strip0s rbs
             else rbs
           ln = genericLength rem0
        in
-        return (encodeBitsWithLength (reverse rem0))
+        encodeBitsWithLength (reverse rem0)
 
 
 
@@ -1018,7 +1009,7 @@ strip0s [] = []
 
 \begin{code}
 
-encodeOS :: [SubtypeConstraint OctetString] -> OctetString -> PerEncoding
+encodeOS :: [SubtypeConstraint OctetString] -> OctetString -> PERMonad ()
 encodeOS [] x = encodeOSNoSz x
 encodeOS cl x = encodeOSSz cl x
 
@@ -1028,14 +1019,14 @@ encodeOctS encodes an unconstrained SEQUENCEOF value.
 
 \begin{code}
 
-encodeOSNoSz :: OctetString -> PerEncoding
+encodeOSNoSz :: OctetString -> PERMonad ()
 encodeOSNoSz (OctetString xs)
-    = let foo x = encodeNNBIntBits ((fromIntegral x),255)
+    = let foo x = encodeConstrainedInt ((fromIntegral x),255)
       in
-        return (encodeWithLength (concat . map foo) xs)
+        encodeWithLength (mapM_ foo) xs
 
 
-encodeOSSz :: [SubtypeConstraint OctetString] -> OctetString -> PerEncoding
+encodeOSSz :: [SubtypeConstraint OctetString] -> OctetString -> PERMonad ()
 encodeOSSz cl xs = lEncValidOS (effOSCon cl) (validOSCon cl) xs
 
 effOSCon ::[SubtypeConstraint OctetString] -> Either String (ExtBS (ConType IntegerConstraint))
@@ -1048,106 +1039,91 @@ validOSCon cs = lSerialEffCons lOSConE top cs
 
 lEncValidOS :: Either String (ExtBS (ConType IntegerConstraint))
                -> Either String (ExtBS (ConType ValidIntegerConstraint))
-               -> OctetString -> PerEncoding
-lEncValidOS m n v
-    = do
-        vsc <- m
-        if extensibleBS vsc
+               -> OctetString -> PERMonad ()
+lEncValidOS m@(Right vsc) n v
+    = if extensibleBS vsc
             then lEncExtOS m n v
             else lEncNonExtOS m n v
+lEncValidOS (Left s) _ _
+    = throwError (ConstraintError s)
+
 
 
 lEncNonExtOS :: Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> OctetString
-                -> PerEncoding
-lEncNonExtOS m n (OctetString vs)
-    = do
-        vsc <- m
-        ok  <- n
-        let rc = conType . getBSRC $ vsc
-            Valid okrc = conType . getBSRC $ ok
-            emptyConstraint = rc == bottom
-            inSizeRange []      = False
-            inSizeRange (x:rs)
-                = let l = genericLength vs
-                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
-            foobar
-                | emptyConstraint
-                    = throwError "Empty constraint"
-                | inSizeRange okrc
-                    = do bs <- osCode rc vs
-                         return bs
-                | otherwise
-                    = throwError "Value out of range"
-        foobar
+                -> PERMonad ()
+lEncNonExtOS (Right vsc) (Right ok) (OctetString vs)
+        | isEmptyConstraint rc
+              = throwError (ConstraintError "Empty constraint")
+        | inSizeRange vs okrc
+             = let (_,bs) = extractValue $ osCode rc vs
+               in tell bs
+        | otherwise
+             = throwError (BoundsError "Value out of range")
+               where
+                rc = conType . getBSRC $ vsc
+                Valid okrc = conType . getBSRC $ ok
 
 
 lEncExtOS :: Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> OctetString
-                -> PerEncoding
-lEncExtOS m n (OctetString vs)
-    = do
-        vsc <- m
-        ok  <- n
-        let rc = conType . getBSRC $ vsc
-            Valid okrc = conType . getBSRC $ ok
-            ec = conType . getBSEC $ vsc
-            Valid okec = conType . getBSEC $ ok
-            emptyConstraint = rc == bottom && ec == bottom
-            inSizeRange []      = False
-            inSizeRange (x:rs)
-                = let l = genericLength vs
-                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
-            foobar
-                | emptyConstraint
-                    = throwError "Empty constraint"
-                | inSizeRange okrc
-                    = do
-                        bs <- osCode rc vs
-                        return (0:bs)
-                | inSizeRange okec
-                    = do
-                        bs <- osExtCode rc ec vs
-                        return (1:bs)
+                -> PERMonad ()
+lEncExtOS (Right vsc) (Right ok) (OctetString vs)
+         | isEmptyConstraint rc
+               = throwError (ConstraintError "Empty constraint")
+         | inSizeRange vs okrc
+               = let (_,bs) = extractValue $ osCode rc vs
+                 in do tell [0]
+                       tell bs
+                | inSizeRange vs okec
+                    = let (_,bs) = extractValue $ osExtCode rc ec vs
+                      in do tell [1]
+                            tell bs
                 | otherwise
-                    = throwError "Value out of range"
-        foobar
+                    = throwError (BoundsError "Value out of range")
+                      where
+                        rc = conType . getBSRC $ vsc
+                        Valid okrc = conType . getBSRC $ ok
+                        ec = conType . getBSEC $ vsc
+                        Valid okec = conType . getBSEC $ ok
 
-osCode :: IntegerConstraint -> [Octet] -> PerEncoding
+
+osCode :: IntegerConstraint -> [Octet] -> PERMonad ()
 osCode rc xs
       =  let l  = lower rc
              u  = upper rc
-             octetToBits x = encodeNNBIntBits ((fromIntegral x),255)
-             octetsToBits  = (concat . map octetToBits)
+             octetToBits x = encodeConstrainedInt ((fromIntegral x),255)
+             octetsToBits  = mapM_ octetToBits
          in
              if u == 0
-             then return []
+             then tell []
              else if u == l && u <= 65536
-                       then return (octetsToBits xs)
+                       then octetsToBits xs
                        else if u <= 65536
                             then let Val ub = u
                                      Val lb = l
                                  in do
-                                     ln <- return (genericLength xs)
-                                     return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ octetsToBits xs)
-                            else return (encodeWithLength octetsToBits xs)
+                                     encodeConstrainedInt (((fromInteger.genericLength) xs -l),
+                                                                    (u-l))
+                                     octetsToBits xs
+                            else encodeWithLength octetsToBits xs
 
-osExtCode :: IntegerConstraint -> IntegerConstraint -> [Octet] -> PerEncoding
+osExtCode :: IntegerConstraint -> IntegerConstraint -> [Octet] -> PERMonad ()
 osExtCode rc ec xs
     = let nc = rc `ljoin` ec
           l  = lower nc
           u  = upper nc
-          octetToBits x = encodeNNBIntBits ((fromIntegral x),255)
-          octetsToBits  = (concat . map octetToBits)
+          octetToBits x = encodeConstrainedInt ((fromIntegral x),255)
+          octetsToBits  = mapM_ octetToBits
       in if u <= 65536
          then let Val ub = u
                   Val lb = l
               in do
-                   ln <- return (genericLength xs)
-                   return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ octetsToBits xs)
-         else return (encodeWithLength octetsToBits xs)
+                   encodeConstrainedInt ((fromInteger.genericLength) xs - l, (u-l))
+                   octetsToBits xs
+         else encodeWithLength octetsToBits xs
 
 \end{code}
 
@@ -1155,14 +1131,23 @@ osExtCode rc ec xs
 
 \begin{code}
 
-encodeSeq :: Sequence a -> a -> PerEncoding
+encodeSeq :: Sequence a -> a -> PERMonad ()
 encodeSeq s x
-    =   do ((rp,rb),(ap,ab)) <- encodeSeqAux ([],[]) ([],[]) s x
-           if null ap
-              then
-                 return (concat rp ++ concat rb ++ concat ap ++ concat ab)
-              else
-                 return (concat rp ++ concat rb ++ lengthAdds ap ++ concat ab)
+    = case encodeSeqAux ([],[]) ([],[]) s x
+        of Right ((rp,rb),(ap,ab))  ->
+                if null ap
+                    then
+                     do mapM_ tell rp
+                        mapM_ tell rb
+                        mapM_ tell ap
+                        mapM_ tell ab
+                    else
+                     do mapM_ tell rp
+                        mapM_ tell rb
+                        lengthAdds ap
+                        mapM_ tell ab
+           Left s ->
+                throwError (OtherError s)
 
 \end{code}
 
@@ -1177,8 +1162,12 @@ small length (10.9.3.4)
 lengthAdds ap
     = let la = genericLength ap
        in if la <= 63
-        then 0:encodeNNBIntBits (la-1, 63) ++ concat ap
-        else 1:encodeOctetsWithLength (encodeNNBIntOctets la) ++ concat ap
+        then do tell [0]
+                encodeConstrainedInt (la-1, 63)
+                mapM_ tell ap
+        else do tell [1]
+                encodeOctetsWithLength (encodeNonNegBinaryIntInOctets la)
+                mapM_ tell ap
 
 \end{code}
 
@@ -1338,7 +1327,7 @@ we don't have to change everything all at once.
 
 \begin{code}
 
-temporaryConvert :: PerEncoding -> DomsMonad
+temporaryConvert :: Monoid x => Either String x -> ErrorT ASNError (WriterT x Identity) ()
 temporaryConvert (Left s) = throwError (OtherError s)
 temporaryConvert (Right x) = tell x
 
@@ -1377,7 +1366,7 @@ encodeLengthDeterminant c f t xs
 
 constrainedWholeNumber :: IntegerConstraint -> Integer -> DomsMonad
 constrainedWholeNumber c v =
-   temporaryConvert (encodeInt [rangeConstraint (lb,ub)] (Val v))
+   encodeInt [rangeConstraint (lb,ub)] (Val v)
    where
       ub = upper c
       lb = lower c
@@ -1406,7 +1395,7 @@ encodeLargeLengthDeterminant f t xs = doit
       hss             = concat hsss
       isFullBlock n   = length hss == n && length (hss!!(n-1)) == 16*(2^10)
       l               = genericLength xs
-      h               = temporaryConvert . return . encodeNNBIntOctets
+      h               = temporaryConvert . return . encodeNonNegBinaryIntInOctets
       fullBlock       = do h (fromIntegral 4)
                            f t (concat hss)
                            encodeLargeLengthDeterminant f t (concat . concat $ tsss)
@@ -1459,7 +1448,7 @@ fragmentation into 64K blocks).
 
 \begin{code}
 
-encodeSeqOf :: [SubtypeConstraint [a]] -> ASNType a -> [a] -> PerEncoding
+encodeSeqOf :: [SubtypeConstraint [a]] -> ASNType a -> [a] -> PERMonad ()
 encodeSeqOf [] t x = encodeUncSeqOf t x
 encodeSeqOf cl t x = encodeConSeqOf t cl x
 
@@ -1470,43 +1459,38 @@ encodeUncSeqOf encodes an unconstrained SEQUENCEOF value.
 
 \begin{code}
 
-encodeUncSeqOf :: ASNType a -> [a] -> PerEncoding
+encodeUncSeqOf :: ASNType a -> [a] -> PERMonad ()
 encodeUncSeqOf t xs = mEncodeWithLength (encodeList t) xs
 
---mEncodeWithLength :: ([t] -> PerEncoding) -> [t] -> PerEncoding
+mEncodeWithLength :: ([[t]] -> PERMonad ()) -> [t] -> PERMonad ()
 mEncodeWithLength fun xs
-    = do
-           ls <- return ((groupBy 4 . groupBy (16*(2^10))) xs)
-           mAddUncLen fun ls
+    = let ls = (groupBy 4 . groupBy (16*(2^10))) xs
+      in  mAddUncLen fun ls
 
 
---mAddUncLen :: ([b] -> PerEncoding) -> [[[b]]] -> PerEncoding
-mAddUncLen encFun [] = return (lastLen k16 0)
+mAddUncLen :: ([[b]] -> PERMonad ()) -> [[[b]]] -> PERMonad ()
+mAddUncLen encFun [] = lastLen k16 0
 mAddUncLen encFun (x:xs)
     | l == 4 && last16 == k16
         = do
-            bl <- return (blockLen 4 63)
-            bs <- encFun x
-            ls <- mAddUncLen encFun xs
-            return (bl ++ bs ++ ls)
+            blockLen 4 63
+            encFun x
+            mAddUncLen encFun xs
     | l == 1 && last16 < k16
         = do
-            ll <- return (lastLen k16 ((genericLength . head) x))
-            bs <- encFun ([head x])
-            return (ll ++ bs)
+            lastLen k16 ((genericLength . head) x)
+            encFun ([head x])
     | last16 == k16
         = do
-            bl <- return (blockLen l 63)
-            bs <- encFun x
-            ll <- return (lastLen k16 0)
-            return (bl ++ bs ++ ll)
+            blockLen l 63
+            encFun x
+            lastLen k16 0
     | otherwise
         = do
-            bl <- return (blockLen (l-1) 63)
-            bs <- encFun (init x)
-            ll <- return (lastLen k16 ((genericLength.last) x))
-            ls <- encFun ([last x])
-            return (bl ++ bs ++ ll ++ ls)
+            blockLen (l-1) 63
+            encFun (init x)
+            lastLen k16 ((genericLength.last) x)
+            encFun ([last x])
     where
         l      = genericLength x
         last16 = (genericLength . last) x
@@ -1516,7 +1500,7 @@ mAddUncLen encFun (x:xs)
 
 \begin{code}
 
-encodeConSeqOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> PerEncoding
+encodeConSeqOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> PERMonad ()
 encodeConSeqOf t cl xs = lEncValidSeqOf t (effSeqOfCon cl) (validSeqOfCon cl) xs
 
 effSeqOfCon ::[SubtypeConstraint [a]] -> Either String (ExtBS (ConType IntegerConstraint))
@@ -1529,55 +1513,40 @@ validSeqOfCon cs = lSerialEffCons lSeqOfConE top cs
 
 lEncValidSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
                -> Either String (ExtBS (ConType ValidIntegerConstraint))
-               -> [a] -> PerEncoding
-lEncValidSeqOf t m n v
-    = do
-        vsc <- m
-        if extensibleBS vsc
+               -> [a] -> PERMonad ()
+lEncValidSeqOf t m@(Right vsc) n v
+    = if extensibleBS vsc
             then lEncExtSeqOf t m n v
             else lEncNonExtSeqOf t m n v
+lEncValidSeqOf _ (Left s) _ _
+    = throwError (ConstraintError s)
 
 lEncNonExtSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> [a]
-                -> PerEncoding
-lEncNonExtSeqOf t m n vs
-    = do
-        vsc <- m
-        ok  <- n
-        let rc = conType . getBSRC $ vsc
-            Valid okrc = conType . getBSRC $ ok
-            emptyConstraint = rc == bottom
-            inSizeRange []      = False
-            inSizeRange (x:rs)
-                = let l = genericLength vs
-                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
-            foobar
-                | emptyConstraint
-                    = throwError "Empty constraint"
-                | inSizeRange okrc
-                    = do bs <- soCode rc t vs
-                         return bs
-                | otherwise
-                    = throwError "Value out of range"
-        foobar
-
+                -> PERMonad ()
+lEncNonExtSeqOf t (Right vsc) (Right ok) vs
+       | isEmptyConstraint rc
+            = throwError (ConstraintError "Empty constraint")
+       | inSizeRange vs okrc
+            = soCode rc t vs
+       | otherwise
+            = throwError (BoundsError "Value out of range")
+              where rc = conType . getBSRC $ vsc
+                    Valid okrc = conType . getBSRC $ ok
 
 soCode rc t xs
       =  let l  = lower rc
              u  = upper rc
          in
-             if u == 0 -- FIXME: I believe this will raise an error as we have no fromInteger for InfInteger
-             then return [] -- FIXME: Is this right or should we raise an error (invalid constraint?)
-             else if u == l && u <= 65536
+             if u == l && u <= 65536
                        then encodeAll t xs
                        else if u <= 65536
                             then let Val ub = u
                                      Val lb = l
                                  in do
-                                     ln <- return (genericLength xs)
-                                     bs <- encodeAll t xs
-                                     return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ bs)
+                                     encodeConstrainedInt (((fromInteger.genericLength) xs-l), (u-l))
+                                     encodeAll t xs
                             else do
                                     mEncodeWithLength (encodeList t) xs
 
@@ -1591,60 +1560,48 @@ soExtCode rc ec t xs
                             then let Val ub = u
                                      Val lb = l
                                  in do
-                                     ln <- return (genericLength xs)
-                                     bs <- encodeAll t xs
-                                     return (encodeNNBIntBits ((ln-lb), (ub-lb)) ++ bs)
+                                     encodeConstrainedInt (((fromInteger.genericLength) xs-l), (u-l))
+                                     encodeAll t xs
                             else do
                                     mEncodeWithLength (encodeList t) xs
 
 
-encodeList t [] = return []
+encodeList :: ASNType a -> [[a]] -> PERMonad ()
+encodeList t []
+    = tell []
 encodeList t (f:r)
     = do
-        bs <- encodeAll t f
-        rs <- encodeList t r
-        return (bs ++ rs)
+        encodeAll t f
+        encodeList t r
 
-
+encodeAll :: ASNType a -> [a] -> PERMonad ()
 encodeAll t (f:r)
-    = do
-        (err,x) <- return (extractValue (encode t [] f))
-        r <- encodeAll t r
-        return (x ++ r)
-encodeAll t [] = return []
+    = let (_,x) = extractValue (encode t [] f)
+      in do tell x
+            encodeAll t r
+encodeAll t [] = tell []
 
 
 lEncExtSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
                 -> Either String (ExtBS (ConType ValidIntegerConstraint))
                 -> [a]
-                -> PerEncoding
-lEncExtSeqOf t m n vs
-    = do
-        vsc <- m
-        ok  <- n
-        let rc = conType . getBSRC $ vsc
-            Valid okrc = conType . getBSRC $ ok
-            ec = conType . getBSEC $ vsc
-            Valid okec = conType . getBSEC $ ok
-            emptyConstraint = rc == bottom && ec == bottom
-            inSizeRange []      = False
-            inSizeRange (x:rs)
-                = let l = genericLength vs
-                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
-            foobar
-                | emptyConstraint
-                    = throwError "Empty constraint"
-                | inSizeRange okrc
-                    = do
-                        bs <- soCode rc t vs
-                        return (0:bs)
-                | inSizeRange okec
-                    = do
-                        bs <- soExtCode rc ec t vs
-                        return (1:bs)
-                | otherwise
-                    = throwError "Value out of range"
-        foobar
+                -> PERMonad ()
+lEncExtSeqOf t (Right vsc) (Right ok) vs
+        | isEmptyConstraint rc
+              = throwError (ConstraintError "Empty constraint")
+        | inSizeRange vs okrc
+              = do
+                  tell [0]
+                  soCode rc t vs
+        | inSizeRange vs okec
+              = do tell [1]
+                   soExtCode rc ec t vs
+        | otherwise
+              = throwError (BoundsError "Value out of range")
+                where rc = conType . getBSRC $ vsc
+                      Valid okrc = conType . getBSRC $ ok
+                      ec = conType . getBSEC $ vsc
+                      Valid okec = conType . getBSEC $ ok
 
 \end{code}
 
@@ -1717,13 +1674,14 @@ that only one choice value is encoded.
 
 \begin{code}
 
-encodeChoice :: Choice a -> ExactlyOne a SelectionMade -> PerEncoding
+encodeChoice :: Choice a -> ExactlyOne a SelectionMade -> PERMonad ()
 encodeChoice c x
-    =   do ts  <- return (getCTags c)
-           (ea, ec) <- (encodeChoiceAux [] [] c x)
+   = let ts = getCTags c
+     in case (encodeChoiceAux [] [] c x) of
+         Right (ea, ec) ->
            if length ec == 1
-               then return (concat ec)
-               else
+             then mapM_ tell ec
+             else
                 let ps  = zip ts ec
                     os  = mergesort choicePred ps
                     pps = zip [0..] os
@@ -1731,11 +1689,19 @@ encodeChoice c x
                     ls  = genericLength os
                 in
                  if null ea
-                 then return (encodeNNBIntBits (fst fr,ls-1) ++ (snd .snd) fr)
+                    then do encodeConstrainedInt (fromInteger $ fst fr,fromInteger $ ls-1)
+                            tell $ (snd .snd) fr
                     else
-                    if length ec <= 63
-                    then return (ea ++ 0:encodeNNBIntBits (fst fr, 63) ++ (snd.snd) fr)
-                    else return (ea ++ 1:encodeOctetsWithLength (encodeNNBIntOctets (fst fr)) ++ (snd.snd) fr)
+                       if length ec <= 63
+                       then do tell ea
+                               tell [0]
+                               encodeConstrainedInt (fromInteger $ fst fr, fromInteger 63)
+                               tell $ (snd.snd) fr
+                       else do tell ea
+                               tell [1]
+                               encodeOctetsWithLength (encodeNonNegBinaryIntInOctets (fromInteger $ fst fr))
+                               tell $ (snd.snd) fr
+         Left s -> throwError (OtherError s)
 
 \end{code}
 
@@ -1842,17 +1808,17 @@ before any encoding.
 \begin{code}
 
 encodeRCS :: (Eq a, RS a, Lattice a)
-              => SerialSubtypeConstraints a -> a -> PerEncoding
+              => SerialSubtypeConstraints a -> a -> PERMonad ()
 encodeRCS [] vs
         | rcsMatch vs top
-            = return (encodeResString vs)
+            = encodeResString vs
         | otherwise
-            = throwError "Invalid value!"
+            = throwError (BoundsError "Invalid value!")
 encodeRCS cs vs
         | rcsMatch vs top
             = lEncValidRCS (effCon cs) (validCon cs) vs
         | otherwise
-            = throwError "Invalid value!"
+            = throwError (BoundsError "Invalid value!")
 
 
 effCon :: (RS a, Lattice a, Eq a)
@@ -1879,13 +1845,13 @@ stringMatch (f:r) s = elem f s && stringMatch r s
 lEncValidRCS :: (RS a, Eq a, Lattice a) =>
                  Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
                  -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
-                 -> a -> PerEncoding
-lEncValidRCS m n v
-    = do
-        vsc <- m
-        if extensible vsc
+                 -> a -> PERMonad ()
+lEncValidRCS m@(Right vsc) n v
+    = if extensible vsc
             then lEncExtRCS m n v
             else lEncNonExtRCS m n v
+lEncValidRCS (Left s) n v
+    = throwError (ConstraintError s)
 
 
 {-
@@ -1900,49 +1866,36 @@ lEncNonExtRCS :: (RS a, Eq a, Lattice a) =>
                 Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
                 -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
                 -> a
-                -> PerEncoding
-lEncNonExtRCS m n vs
-    = do
-        vsc <- m
-        ok  <- n
-        let rc = getRC vsc
-            okrc = getRC ok
-            sc = getSC rc
-            Valid oksc = getSC okrc
-            pac = getPAC rc
-            emptyConstraint = rc == bottom
-            noSC  = sc == top
-            noPAC = pac == top
-            inSizeRange []      = False
-            inSizeRange (x:rs)
-                = let l = genericLength v
-                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
-            v = getString vs
-            inPA x  = stringMatch v (getString x)
-            foobar
-                | emptyConstraint
-                    = throwError "Empty constraint"
-                | not noSC && not noPAC && inPA pac && inSizeRange oksc
-                    = return (encodeRCSSzF sc pac vs)
-                | noSC && not noPAC && inPA pac
-                    = return (encodeRCSF pac vs)
-                | noPAC && not noSC && inSizeRange oksc
-                    = return (encodeRCSSz sc vs)
-                | otherwise
-                    = throwError "Value out of range"
-        foobar
+                -> PERMonad ()
+lEncNonExtRCS (Right vsc) (Right ok) vs
+     | isEmptyConstraint rc
+         = throwError (ConstraintError "Empty constraint")
+     | not noSC && not noPAC && inPA pac && inSizeRange (getString vs) oksc
+         = encodeRCSSzF sc pac vs
+     | noSC && not noPAC && inPA pac
+         = encodeRCSF pac vs
+     | noPAC && not noSC && inSizeRange (getString vs) oksc
+         = encodeRCSSz sc vs
+     | otherwise
+         = throwError (BoundsError "Value out of range")
+           where
+                rc = getRC vsc
+                okrc = getRC ok
+                sc = getSC rc
+                Valid oksc = getSC okrc
+                pac = getPAC rc
+                noSC  = sc == top
+                noPAC = pac == top
+                inPA x  = stringMatch (getString vs) (getString x)
 
 
 lEncExtRCS :: (RS a, Eq a, Lattice a) =>
               Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
               -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
               -> a
-              -> PerEncoding
-lEncExtRCS m n vs
-    = do
-        vsc <- m
-        ok <- n
-        let rc = getRC vsc
+              -> PERMonad ()
+lEncExtRCS (Right vsc) (Right ok) vs
+    =   let rc = getRC vsc
             ec = getEC vsc
             okrc = getRC ok
             okec = getEC ok
@@ -1959,21 +1912,16 @@ lEncExtRCS m n vs
                         e = (getString . getPAC) ec
                     in makeString (r++e)
             expac = concStrs rc ec
-            emptyConstraint = vsc == bottom
             noRC  = rc == top
             noEC  = ec == top
             noRSC  = rsc == top
             noRPAC = rpac == top
             noESC  = esc == top
             noEPAC = epac == top
-            inSizeRange []      = False
-            inSizeRange (x:rs)
-                = let l = genericLength (getString vs)
-                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
             inPA x  = stringMatch (getString vs) (getString x)
             foobar
-                | emptyConstraint
-                    = throwError "Empty constraint"
+                | isEmptyConstraint rc
+                    = throwError (ConstraintError "Empty constraint")
                 | otherwise = foobarREC
             foobarREC
                 | noEC = foobarRC
@@ -1981,44 +1929,59 @@ lEncExtRCS m n vs
                 | otherwise = foobarBoth
             foobarRC
                 | noRSC && inPA rpac
-                    = return (0:encodeRCSF rpac vs)
-                | noRPAC && inSizeRange okrsc
-                    = return (0:encodeRCSSz rsc vs)
-                | inPA rpac && inSizeRange okrsc
-                    = return (0:encodeRCSSzF rsc rpac vs)
+                    = do tell [0]
+                         encodeRCSF rpac vs
+                | noRPAC && inSizeRange (getString vs) okrsc
+                    = do tell [0]
+                         encodeRCSSz rsc vs
+                | inPA rpac && inSizeRange (getString vs) okrsc
+                    = do tell [0]
+                         encodeRCSSzF rsc rpac vs
                 | otherwise
-                    = throwError "Value out of range"
+                    = throwError (BoundsError "Value out of range")
             foobarEC
                 | noESC && inPA epac
-                    = return (1:encodeRCSF top vs)
-                | noEPAC && inSizeRange okesc
-                    = return (1:encodeResString vs)
-                | inPA epac && inSizeRange okesc
-                    = return (1:encodeRCSF top vs)
+                    = do tell [1]
+                         encodeRCSF top vs
+                | noEPAC && inSizeRange (getString vs) okesc
+                    = do tell [1]
+                         encodeResString vs
+                | inPA epac && inSizeRange (getString vs) okesc
+                    = do tell [1]
+                         encodeRCSF top vs
                 | otherwise
-                    = throwError "Value out of range"
+                    = throwError (BoundsError "Value out of range")
             foobarBoth
-                | not noRPAC && inPA rpac && not noRSC && inSizeRange okrsc
-                    = return (0:encodeRCSSzF rsc rpac vs)
-                | noRPAC && noEPAC && not noRSC && inSizeRange okrsc
-                    = return (0:encodeRCSSz rsc vs)
+                | not noRPAC && inPA rpac && not noRSC && inSizeRange (getString vs) okrsc
+                    = do tell [0]
+                         encodeRCSSzF rsc rpac vs
+                | noRPAC && noEPAC && not noRSC && inSizeRange (getString vs) okrsc
+                    = do tell [0]
+                         encodeRCSSz rsc vs
                 | noRSC && noESC && not noRPAC && inPA rpac
-                    = return (0:encodeRCSF rpac vs)
-                | noRPAC && noEPAC && not noESC && inSizeRange okesc
-                     = return (1:encodeResString vs)
-                | (not noRSC && inSizeRange okrsc && noRPAC && not noEPAC && inPA epac) ||
-                  (not noRSC && inSizeRange okrsc && not noRPAC && not noEPAC && not (inPA epac) && inPA expac) ||
-                  (not noESC && inSizeRange okesc && not noRPAC && inPA rpac) ||
-                  (not noESC && inSizeRange okesc && noRPAC && not noEPAC && inPA epac) ||
-                  (not noESC && inSizeRange okesc && not noRPAC && not noEPAC && not (inPA epac) && inPA expac) ||
+                    = do tell [0]
+                         encodeRCSF rpac vs
+                | noRPAC && noEPAC && not noESC && inSizeRange (getString vs) okesc
+                    = do tell [1]
+                         encodeResString vs
+                | (not noRSC && inSizeRange (getString vs) okrsc && noRPAC && not noEPAC &&
+                   inPA epac) ||
+                  (not noRSC && inSizeRange (getString vs) okrsc && not noRPAC && not noEPAC &&
+                   not (inPA epac) && inPA expac) ||
+                  (not noESC && inSizeRange (getString vs) okesc && not noRPAC && inPA rpac) ||
+                  (not noESC && inSizeRange (getString vs) okesc && noRPAC && not noEPAC &&
+                  inPA epac) ||
+                  (not noESC && inSizeRange (getString vs) okesc && not noRPAC && not noEPAC &&
+                  not (inPA epac) && inPA expac) ||
                   (noRSC && noESC && ((noRPAC && not noEPAC && inPA epac) ||
                   (not noRPAC && not noEPAC && not (inPA epac) && inPA expac)))
-                     =  return (1:encodeRCSF top vs)
+                     =  do tell [1]
+                           encodeRCSF top vs
                 | otherwise
-                     = throwError "Value out of range"
-        foobar
+                     = throwError (BoundsError "Value out of range")
+        in foobar
 
-encodeRCSSz :: (RS a, Lattice a) => IntegerConstraint -> a -> BitStream
+encodeRCSSz :: (RS a, Lattice a) => IntegerConstraint -> a -> PERMonad ()
 encodeRCSSz (IntegerConstraint l u) v
     = let t = getTop v
           gl = genericLength (getString t)
@@ -2026,14 +1989,14 @@ encodeRCSSz (IntegerConstraint l u) v
         manageRCS (encSF (getString t)) makeString encodeResString getString l u v
 
 
-manageRCS :: (RS a, Lattice a) => (String -> BitStream) -> (String -> a) ->
-                       (a -> BitStream) -> (a -> String) -> InfInteger
-                        -> InfInteger -> a -> BitStream
+manageRCS :: (RS a, Lattice a) => (String -> PERMonad ()) -> (String -> a) ->
+                       (a -> PERMonad ()) -> (a -> String) -> InfInteger
+                        -> InfInteger -> a -> PERMonad ()
 manageRCS e f g h l u v
     = manageExtremes e (g . f) l u (h v)
 
 
-encodeResString :: (RS a, Lattice a) => a -> BitStream
+encodeResString :: (RS a, Lattice a) => a -> PERMonad ()
 encodeResString vs
     = let t = getTop vs
           l = genericLength (getString t)
@@ -2043,11 +2006,11 @@ encodeResString vs
 getTop :: (RS a, Lattice a) => a -> a
 getTop m = top
 
-encC :: Integer -> Char -> BitStream
-encC i c = encodeNNBIntBits ((fromIntegral.ord) c, i)
+encC :: Integer -> Char -> PERMonad ()
+encC i c = encodeConstrainedInt (fromInteger $ (fromIntegral.ord) c, fromInteger i)
 
-encS :: Integer -> String -> BitStream
-encS i s  = (concat . map (encC i)) s
+encS :: Integer -> String -> PERMonad ()
+encS i s  = mapM_ (encC i) s
 
 \end{code}
 
@@ -2056,12 +2019,12 @@ encS i s  = (concat . map (encC i)) s
 
 \begin{code}
 
-encodeRCSSzF :: (RS a) => IntegerConstraint -> a -> a -> BitStream
+encodeRCSSzF :: (RS a) => IntegerConstraint -> a -> a -> PERMonad ()
 encodeRCSSzF (IntegerConstraint l u) rcs1 rcs2
         =  manageExtremes (encSF (getString rcs1))
                           (encodeRCSF rcs1 . makeString) l u (getString rcs2)
 
-encodeRCSF :: (RS a) => a -> a -> BitStream
+encodeRCSF :: (RS a) => a -> a -> PERMonad ()
 encodeRCSF rcs1 rcs2 = encodeWithLength (encSF (getString rcs1)) (getString rcs2)
 
 
@@ -2075,7 +2038,7 @@ encSF p str
             then
                 encS lp str
             else
-                concat (canEnc (lp-1) sp str)
+                canEnc (fromInteger $ lp-1) sp str
 
 
 minExp n e p
@@ -2086,8 +2049,8 @@ minExp n e p
 -- The first two cases are described in X.691 27.5.6 and 25.5.7
 -- and the last case by 10.9 Note 3.
 
-manageExtremes :: ([a] -> BitStream) -> ([a] -> BitStream) -> InfInteger
-                        -> InfInteger -> [a] -> BitStream
+manageExtremes :: ([a] -> PERMonad ()) -> ([a] -> PERMonad ()) -> InfInteger
+                        -> InfInteger -> [a] -> PERMonad ()
 manageExtremes fn1 fn2 l u x
     = let range = u - l + 1
         in
@@ -2098,7 +2061,8 @@ manageExtremes fn1 fn2 l u x
                     else
                         let Val r = range
                             Val v = l
-                        in encodeNNBIntBits ((genericLength x - v), r-1) ++ fn1 x
+                        in do encodeConstrainedInt ((fromInteger $ genericLength x - v), fromInteger $ r-1)
+                              fn1 x
 
 \end{code}
 
@@ -2107,10 +2071,11 @@ Clause 38.8 in X680 encoding based on canonical ordering of restricted character
 \begin{code}
 
 
-canEnc b sp [] = []
+canEnc b sp [] = tell []
 canEnc b sp (f:r)
         = let v = (genericLength . findV f) sp
-           in encodeNNBIntBits (v,b) : canEnc b sp r
+           in do encodeConstrainedInt (v,b)
+                 canEnc b sp r
 
 findV m []  = []
 findV m (a:rs)
@@ -2122,10 +2087,14 @@ findV m (a:rs)
 
 \end{code}
 
+{-FIXME: Have commented out the decoding stuff for now. -}
+
 
 \begin{code}
 
 type ElementSetSpecs a = SubtypeConstraint a
+
+\end{code}
 
 fromPER x = decode4 x []
 
@@ -2141,7 +2110,7 @@ fromPer3 t@(TAGGED _ u) cl = decode4 u cl
 fromPer3 t@(SEQUENCEOF s) cl = decodeSequenceOf s cl
 fromPer3 t@(BITSTRING _) cl = decodeBitString cl
 
-\end{code}
+
 
 \section{Decoding Length Determinants}
 
@@ -2153,7 +2122,7 @@ For example, if the upper bound of the size constraint ("ub") is 0 and the
 lower bound ("lb") is negative, then the result is undefined.
 
 
-\begin{code}
+
 
 decodeLengthDeterminant ::
    ASNMonadTrans t =>
@@ -2176,7 +2145,7 @@ decodeLengthDeterminant c f t
       rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
       rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
 
-\end{code}
+
 
 This function decodes the length determinant for unconstrained length or large "ub".
 See 10.9.4 and 10.9.3.4 -- 10.9.3.8.4 for further details. Note that we don't currently
@@ -2184,7 +2153,6 @@ cover 10.9.3.4!!! It does so by taking a function which itself takes an iteratio
 an ASN.1 type and returns a (monadic) list of decoded values which may or may not be
 values of the ASN.1 type.
 
-\begin{code}
 
 decodeLargeLengthDeterminant3 f t =
    do p <- lift BG.getBit
@@ -2236,7 +2204,7 @@ decodeLargeLengthDeterminant3' f t =
                         where
                            fragError = "Unable to decode with fragment size of "
 
-\end{code}
+
 
 \section {INTEGER Decoding}
 
@@ -2262,6 +2230,8 @@ data ASNError =
 instance Error ASNError where
    noMsg = OtherError "The impossible happened"
 
+\end{code}
+
 decodeInt3 :: ASNMonadTrans t => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
 decodeInt3 [] =
    lDecConsInt3 (return bottom) undefined (return bottom)
@@ -2285,8 +2255,8 @@ lDecConsInt3 mrc isExtensible mec =
           rootConstraint         = rc /= bottom
           rootLower              = let Val x = lower rc in x
           rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
-          numOfRootBits          = genericLength (encodeNNBIntBits (rootRange - 1, rootRange - 1))
-          numOfExtensionBits     = genericLength (encodeNNBIntBits (extensionRange - 1, extensionRange - 1))
+          numOfRootBits          = genericLength (encodeConstrainedInt (rootRange - 1, rootRange - 1))
+          numOfExtensionBits     = genericLength (encodeConstrainedInt (extensionRange - 1, extensionRange - 1))
           emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
           inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
           unconstrained x        = (lower x) == minBound
@@ -2352,11 +2322,11 @@ decodeUInt3 =
       octets   = decodeLargeLengthDeterminant3 chunkBy8 undefined
 
 
-\end{code}
+
 
 \section{SEQUENCE Decoding}
 
-\begin{code}
+
 
 decodeSEQUENCE s =
    do ps <- lift $ bitMask (l s)
@@ -2378,9 +2348,9 @@ decodeSEQUENCEAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) 
       xs <- decodeSEQUENCEAux bitmap ts
       return (x :*: xs)
 
-\end{code}
 
-\begin{code}
+
+
 
 forget :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => Either String (t BG.BitGet a) -> t BG.BitGet a
 forget (Left e) = throwError e
@@ -2390,11 +2360,10 @@ swap :: (Functor m, Monad m) => Either String (m a) -> m (Either String a)
 swap (Left s) = return (Left s)
 swap (Right x) = fmap Right x
 
-\end{code}
+
 
 \section{SEQUENCE OF Decoding}
 
-\begin{code}
 
 nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
 
@@ -2414,7 +2383,7 @@ decodeSequenceOfAux t me mv =
       let rc = conType . getBSRC $ e
       decodeLengthDeterminant rc (flip nSequenceOfElements []) t
 
-\end{code}
+
 
 \subsection{BIT STRING --- Clause 15}
 
@@ -2426,7 +2395,6 @@ decode the individual components merely takes 1 bit at a time.
 The above may now be rubbish and the code below could well be
 highly inefficient.
 
-\begin{code}
 
 class (MonadError ASNError (t BG.BitGet), MonadTrans t) => ASNMonadTrans t
 
@@ -2450,7 +2418,9 @@ getBits n =
       xs <- getBits (n-1)
       return (fromEnum x:xs)
 
-\end{code}
+
+
+
 
 \section{Bibliography}
 
