@@ -122,6 +122,7 @@ import LatticeMod
 import ConstraintGeneration
 import Language.ASN1.PER.Integer
    ( fromNonNegativeBinaryInteger'
+   , toNonNegativeBinaryInteger
    , from2sComplement'
    )
 import Data.List hiding (groupBy)
@@ -2096,6 +2097,8 @@ type ElementSetSpecs a = SubtypeConstraint a
 
 \end{code}
 
+\begin{code}
+
 fromPER x = decode4 x []
 
 decode4 (BuiltinType t) cl = fromPer3 t cl
@@ -2110,7 +2113,7 @@ fromPer3 t@(TAGGED _ u) cl = decode4 u cl
 fromPer3 t@(SEQUENCEOF s) cl = decodeSequenceOf s cl
 fromPer3 t@(BITSTRING _) cl = decodeBitString cl
 
-
+\end{code}
 
 \section{Decoding Length Determinants}
 
@@ -2121,8 +2124,7 @@ Note that it assumes that the ASN.1 type makes semantic sense.
 For example, if the upper bound of the size constraint ("ub") is 0 and the
 lower bound ("lb") is negative, then the result is undefined.
 
-
-
+\begin{code}
 
 decodeLengthDeterminant ::
    ASNMonadTrans t =>
@@ -2145,7 +2147,7 @@ decodeLengthDeterminant c f t
       rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
       rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
 
-
+\end{code}
 
 This function decodes the length determinant for unconstrained length or large "ub".
 See 10.9.4 and 10.9.3.4 -- 10.9.3.8.4 for further details. Note that we don't currently
@@ -2153,6 +2155,7 @@ cover 10.9.3.4!!! It does so by taking a function which itself takes an iteratio
 an ASN.1 type and returns a (monadic) list of decoded values which may or may not be
 values of the ASN.1 type.
 
+\begin{code}
 
 decodeLargeLengthDeterminant3 f t =
    do p <- lift BG.getBit
@@ -2204,7 +2207,7 @@ decodeLargeLengthDeterminant3' f t =
                         where
                            fragError = "Unable to decode with fragment size of "
 
-
+\end{code}
 
 \section {INTEGER Decoding}
 
@@ -2230,8 +2233,6 @@ data ASNError =
 instance Error ASNError where
    noMsg = OtherError "The impossible happened"
 
-\end{code}
-
 decodeInt3 :: ASNMonadTrans t => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
 decodeInt3 [] =
    lDecConsInt3 (return bottom) undefined (return bottom)
@@ -2255,8 +2256,8 @@ lDecConsInt3 mrc isExtensible mec =
           rootConstraint         = rc /= bottom
           rootLower              = let Val x = lower rc in x
           rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
-          numOfRootBits          = genericLength (encodeConstrainedInt (rootRange - 1, rootRange - 1))
-          numOfExtensionBits     = genericLength (encodeConstrainedInt (extensionRange - 1, extensionRange - 1))
+          numOfRootBits          = undefined -- genericLength (encodeConstrainedInt (rootRange - 1, rootRange - 1))
+          numOfExtensionBits     = undefined -- genericLength (encodeConstrainedInt (extensionRange - 1, extensionRange - 1))
           emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
           inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
           unconstrained x        = (lower x) == minBound
@@ -2321,12 +2322,11 @@ decodeUInt3 =
       chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
       octets   = decodeLargeLengthDeterminant3 chunkBy8 undefined
 
-
-
+\end{code}
 
 \section{SEQUENCE Decoding}
 
-
+\begin{code}
 
 decodeSEQUENCE s =
    do ps <- lift $ bitMask (l s)
@@ -2348,22 +2348,11 @@ decodeSEQUENCEAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) 
       xs <- decodeSEQUENCEAux bitmap ts
       return (x :*: xs)
 
-
-
-
-
-forget :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => Either String (t BG.BitGet a) -> t BG.BitGet a
-forget (Left e) = throwError e
-forget (Right x) = x
-
-swap :: (Functor m, Monad m) => Either String (m a) -> m (Either String a)
-swap (Left s) = return (Left s)
-swap (Right x) = fmap Right x
-
-
+\end{code}
 
 \section{SEQUENCE OF Decoding}
 
+\begin{code}
 
 nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
 
@@ -2383,6 +2372,7 @@ decodeSequenceOfAux t me mv =
       let rc = conType . getBSRC $ e
       decodeLengthDeterminant rc (flip nSequenceOfElements []) t
 
+\end{code}
 
 
 \subsection{BIT STRING --- Clause 15}
@@ -2395,6 +2385,7 @@ decode the individual components merely takes 1 bit at a time.
 The above may now be rubbish and the code below could well be
 highly inefficient.
 
+\begin{code}
 
 class (MonadError ASNError (t BG.BitGet), MonadTrans t) => ASNMonadTrans t
 
@@ -2418,9 +2409,27 @@ getBits n =
       xs <- getBits (n-1)
       return (fromEnum x:xs)
 
+\end{code}
 
+\section{Object Identifier}
 
+\begin{code}
 
+newtype OID = OID {subIds :: [Int]}
+   deriving Show
+
+-- type BMonad = ErrorT ASNError BP.BitPut' ()
+
+-- encodeOID :: OID -> BMonad ()
+encodeOID x = undefined
+   where
+      encodeOIDAux []       = undefined -- throwError (BoundsError "encodeOID: an OID must contain at least two object identifier components")
+      encodeOIDAux (x:[])   = undefined -- throwError (BoundsError "encodeOID: an OID must contain at least two object identifier components")
+      encodeOIDAux (x:y:zs) = if (x >= 0 && x <= 2) && (y >=0 && y <= 39)
+                                 then toNonNegativeBinaryInteger 8 ((x*40) + y)
+                                 else undefined -- throwError (BoundsError ("encodeOID: invalide oid components: " ++ show x))
+
+\end{code}
 
 \section{Bibliography}
 
