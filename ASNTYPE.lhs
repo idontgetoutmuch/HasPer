@@ -218,6 +218,12 @@ instance Num InfInteger where
    NegInf - _ = NegInf
    _ - NegInf = PosInf
    (Val x) - (Val y) = Val (x-y)
+   NegInf * NegInf = PosInf
+   _ * NegInf = NegInf
+   NegInf * _ = NegInf
+   PosInf * _ = PosInf
+   _ * PosInf = PosInf
+   (Val x) * (Val y) = Val (x*y)
    fromInteger x = Val x
 
 \end{code}

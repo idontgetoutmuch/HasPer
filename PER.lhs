@@ -122,7 +122,6 @@ import LatticeMod
 import ConstraintGeneration
 import Language.ASN1.PER.Integer
    ( fromNonNegativeBinaryInteger'
-   , toNonNegativeBinaryInteger
    , from2sComplement'
    )
 import Data.List hiding (groupBy)
@@ -258,6 +257,134 @@ encodeOpen t v
 
 \end{code}
 
+\section{ENCODING A LENGTH DETERMINANT}
+
+Several PER encodings require the encoding of a length determinant. If the item to be encoded
+is very large or, in the case of integer encoding, the number of bits produced by the encoding
+is very large, then some fragmenting may be required in which length and value encodings are
+interleaved.
+
+{\em encodeWithLength} is a higher order function which takes a constraint, an encoding function and a list of
+values (could be bits, octets or any ASN.1 type). The approach to encoding depends on whether
+the constraint imposes an upper bound which is less than 64K. If it does then no interleaving is required and
+the value is encoded with a length prefix if the upper bound differs from the lower bound, and
+with no length encoding otherwise.
+
+If the upper bound is at least 64K then {\em encodeUnconstrainedLength} is called. the items are grouped first in 16k batches, and then
+in batches of 4. The input encoding function is then supplied as
+an input to the function {\em encodeUnconstrainedLength} which manages the interleaving of
+length and value encodings -- it encodes the length and values of
+each batch and concatenates their resulting bitstreams together.
+Note the values are encoded using the input function.
+
+Note that {\em encodeWithLength} is not used to encode {\bf normally small length} length
+determinants (see X691: 10.9.3.4} which are only used with the bitmap that prefixes the
+extension addition values of a set or sequence type.
+
+\begin{code}
+
+encodeWithLength :: IntegerConstraint -> (t -> PERMonad ()) -> [t] -> PERMonad ()
+encodeWithLength ic fun ls
+    = if constrained ic && ub < k64
+          then {- X691REF: 10.9.4.1 -}
+                if lb == ub
+                    then
+                         do tell []
+                            mapM_ fun ls
+                    else
+                        do encodeConstrainedInt (fromInteger (genericLength ls) - lb, ub-lb)
+                           mapM_ fun ls
+          else {- X691REF: 10.9.4.2 -}
+               encodeUnconstrainedLength fun ls
+      where
+       lb = lower ic
+       ub = upper ic
+
+groupBy :: Int -> [t] -> [[t]]
+groupBy n =
+   unfoldr k
+      where
+         k [] = Nothing
+         k p = Just (splitAt n p)
+
+k64 :: InfInteger
+k64 = 64 * 2^10
+\end{code}
+
+{\em encodeUnconstrainedLength} is a higher order function which encodes a value with an
+unconstrained length i.e. it either has no upper bound on the size of the value,
+or the upper bound is at least 64k. The inputs are the value encoding
+function and the list of values to be encoded. If the length of the input value is less than
+16K then the length is encoded followed by the value. Otherwise the auxiliary function {\em
+encodeUnocnstrainedLengthAux} is called. This function manages the fragmenting of the input
+value into blocks of at most four 16K blocks. These are each encoded -- their block length
+followed by the encoding of the block of values -- and the if the block contains four 16k
+blocks the process is repeated with the next block of 16K values.
+
+{\em lengthLessThan16K} encodes the length of a list of less than 16K values and {\em blockLen}
+encodes the length of a block (1 to 4).
+
+\begin{code}
+
+encodeUnconstrainedLength :: (b -> PERMonad ()) -> [b] -> PERMonad ()
+encodeUnconstrainedLength encFun [] = lengthLessThan16K 0 {- FIXME: Is this only the case when there is at least 16k values? 10.9.3.8.3 -}
+encodeUnconstrainedLength encFun xs
+    | l < k16
+    {- X691REF: 10.9.3.6 AND 10.9.3.7 -}
+        = do lengthLessThan16K l
+             mapM_ encFun xs
+    | otherwise
+    {- X691REF: 10.9.3.8 -}
+       = encodeUnconstrainedLengthAux encFun xs
+         where l = genericLength xs
+
+encodeUnconstrainedLengthAux :: (b -> PERMonad ()) -> [b] -> PERMonad ()
+encodeUnconstrainedLengthAux encFun [] = throwError (OtherError "Nothing to encode")
+encodeUnconstrainedLengthAux encFun xs
+    | l == 4 && last16 == k16
+        = do blockLen 4 63
+             mapM_ (mapM_ encFun) x
+             encodeUnconstrainedLength encFun (drop (64*(2^10)) xs)
+    | otherwise
+        = if last16 == k16
+             then do blockLen l 63
+                     mapM_ (mapM_ encFun) x
+                     lengthLessThan16K 0
+             else do blockLen (l-1) 63
+                     mapM_ (mapM_ encFun) (init x)
+                     lengthLessThan16K ((genericLength.last) x)
+                     mapM_ encFun (last x)
+    where
+        (x:xss)    = (groupBy 4 . groupBy (16*(2^10))) $ xs
+        l          = genericLength x
+        last16     = (genericLength . last) x
+
+k16 :: InfInteger
+k16    = 16*(2^10)
+
+
+lengthLessThan16K :: InfInteger -> PERMonad ()
+lengthLessThan16K n
+   | n <= 127
+     {- X691REF: 10.9.3.6 -}
+        = do tell [0]
+             encodeConstrainedInt (n, 127)
+   | n < k16
+     {- X691REF: 10.9.3.7 -}
+        = do tell [1]
+             tell [0]
+             encodeConstrainedInt (n, (k16-1))
+   | otherwise
+        = throwError (BoundsError "Length is out of range.")
+
+blockLen :: InfInteger -> InfInteger -> PERMonad ()
+blockLen x y
+    = do tell [1]
+         tell [1]
+         encodeConstrainedInt (x,y)
+
+\end{code}
+
 
 \section{ENCODING THE BOOLEAN TYPE}
 
@@ -319,7 +446,7 @@ actual constraint which is used to test whether the value to be encoded is valid
 effective constraint which is used to encode the value, and the value to be encoded.
 The constraints are generated by functions defined in the module {\em ConstraintGeneration};
 \item
-and calls {\em encodeExtConsInt} if the constraint is extensible. This function takes five
+{\em encodeExtConsInt} if the constraint is extensible. This function takes five
 inputs. The three required for {\em encodeNonExtConsInt} and the two -- actual and effective
 -- extension constraints.
 \end{itemize}
@@ -394,11 +521,14 @@ encodeNonExtConsInt (Right validRootCon) (Right effRootCon) n
     | isNonEmptyConstraint effRootCon && inRange n validRootCon
          = case constraintType effRootCon of
                  UnConstrained
-                        -> {- X691REF: 12.2.4 -} encodeUnconsInt n
+                        -> {- X691REF: 12.2.4 -}
+                            encodeUnconsInt n
                  SemiConstrained
-                        -> {- X691REF: 12.2.3 -} encodeSemiConsInt n rootLower
+                        -> {- X691REF: 12.2.3 -}
+                            encodeSemiConsInt n rootLower
                  Constrained
-                        -> {- X691REF: 12.2.2 -} encodeConstrainedInt ((n - rootLower), rootUpper - rootLower)
+                        -> {- X691REF: 12.2.2 -}
+                            encodeConstrainedInt ((n - rootLower), rootUpper - rootLower)
     | otherwise
         = throwError (BoundsError "Value out of range")
           where
@@ -483,11 +613,11 @@ for a collection of bits.
 \begin{code}
 
 encodeOctetsWithLength :: [Int] -> PERMonad ()
-encodeOctetsWithLength = encodeWithLength (mapM_ tell . id) . groupBy 8
+encodeOctetsWithLength = encodeWithLength top tell . groupBy 8
 
 
 encodeBitsWithLength :: [Int] -> PERMonad ()
-encodeBitsWithLength = encodeWithLength (tell.id)
+encodeBitsWithLength = encodeWithLength top (tell . return)
 
 \end{code}
 
@@ -511,106 +641,7 @@ encodeConstrainedIntAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `d
 \end{code}
 
 
-\section{Length Determinants}
 
-10.9 General rules for encoding a length determinant
-10.9.4, 10.9.4.2 and 10.9.3.4 to 10.9.3.8.4.
-
-{\em encodeWithLength} takes a list of values (could be bits, octets or
-any ASN.1 type), and groups them first in 16k batches, and then in
-batches of 4. The input value-encoding function is then supplied as
-an input to the function {\em addUncLen} which manages the interleaving of
-length and value encodings -- it encodes the length and values of
-each batch and concatenates their resulting bitstreams together.
-Note the values are encoded using the input function.
-
-\begin{code}
-
-encodeWithLength :: ([t] -> PERMonad ()) -> [t] -> PERMonad ()
-encodeWithLength fun = addUncLen fun . groupBy 4 . groupBy (16*(2^10))
-
-groupBy :: Int -> [t] -> [[t]]
-groupBy n =
-   unfoldr k
-      where
-         k [] = Nothing
-         k p = Just (splitAt n p)
-
-\end{code}
-
-{\em addUncLen} is a higher order function which encodes a value with an unconstrained
-length i.e. it either has no upper bound on the size of the value,
-or the upper bound is at least 64k. The inputs are the value encoding
-function and the value represented as a collection of 4*16k
-blocks.
-
-{\em lastLen} encodes the length remainder modulo 16k and {\em blocklen}
-encodes the length of a block (1 to 4).
-
-\begin{code}
-
-addUncLen :: ([b] -> PERMonad ()) -> [[[b]]] -> PERMonad ()
-addUncLen encFun [] = lastLen k16 0
-addUncLen encFun (x:xs)
-    | l == 4 && last16 == k16
-        = do blockLen 4 63
-             mapM_ encFun x
-             addUncLen encFun xs
-    | l == 1 && last16 < k16
-        = do lastLen k16 ((genericLength . head) x)
-             encFun (head x)
-    | otherwise
-        = if last16 == k16
-             then do blockLen l 63
-                     mapM_ encFun x
-                     lastLen k16 0
-             else do blockLen (l-1) 63
-                     mapM_ encFun (init x)
-                     lastLen k16 ((genericLength.last) x)
-                     encFun (last x)
-    where
-        l      = genericLength x
-        last16 = (genericLength . last) x
-
-k16 :: InfInteger
-k16    = 16*(2^10)
-
-
-lastLen :: InfInteger -> InfInteger -> PERMonad ()
-lastLen r n
-   | n <= 127
-        = do tell [0]
-             encodeConstrainedInt (n, 127)
-   | n < r
-        = do tell [1]
-             tell [0]
-             encodeConstrainedInt (n, (r-1))
-   | otherwise
-        = throwError (BoundsError "Length is out of range.")
-
-blockLen :: InfInteger -> InfInteger -> PERMonad ()
-blockLen x y
-    = do tell [1]
-         tell [1]
-         encodeConstrainedInt (x,y)
-
-\end{code}
-
-
-\begin{enumerate}
-
-\item
-The first guard implements 10.9.4.2, 10.9.3.5, 10.9.3.6. Note this is
-not very efficient since we know $log_2 128 = 7$
-
-\item
-The second guard implements 10.9.3.7. Note this is
-not very efficient since we know $log_2 16*(2^{10}) = 14$
-
-\item
-Note there is no clause for $>= 16*(2^10)$ as we have groupBy $16*(2^10)$
-
-\end{enumerate}
 
 \section{Two's Complement Arithmetic}
 
@@ -1007,6 +1038,7 @@ strip0s [] = []
 \end{code}
 
 \section{ENCODING THE OCTETSTRING TYPE}
+{- FIXME: Not sure if length encoding is correct when not in extension root -}
 
 \begin{code}
 
@@ -1024,7 +1056,7 @@ encodeOSNoSz :: OctetString -> PERMonad ()
 encodeOSNoSz (OctetString xs)
     = let foo x = encodeConstrainedInt ((fromIntegral x),255)
       in
-        encodeWithLength (mapM_ foo) xs
+        encodeWithLength top foo xs
 
 
 encodeOSSz :: [SubtypeConstraint OctetString] -> OctetString -> PERMonad ()
@@ -1092,39 +1124,14 @@ lEncExtOS (Right vsc) (Right ok) (OctetString vs)
 
 
 osCode :: IntegerConstraint -> [Octet] -> PERMonad ()
-osCode rc xs
-      =  let l  = lower rc
-             u  = upper rc
-             octetToBits x = encodeConstrainedInt ((fromIntegral x),255)
-             octetsToBits  = mapM_ octetToBits
-         in
-             if u == 0
-             then tell []
-             else if u == l && u <= 65536
-                       then octetsToBits xs
-                       else if u <= 65536
-                            then let Val ub = u
-                                     Val lb = l
-                                 in do
-                                     encodeConstrainedInt (((fromInteger.genericLength) xs -l),
-                                                                    (u-l))
-                                     octetsToBits xs
-                            else encodeWithLength octetsToBits xs
+osCode rc xs = encodeWithLength rc octetToBits xs
+
+octetToBits x = encodeConstrainedInt ((fromIntegral x),255)
 
 osExtCode :: IntegerConstraint -> IntegerConstraint -> [Octet] -> PERMonad ()
 osExtCode rc ec xs
     = let nc = rc `ljoin` ec
-          l  = lower nc
-          u  = upper nc
-          octetToBits x = encodeConstrainedInt ((fromIntegral x),255)
-          octetsToBits  = mapM_ octetToBits
-      in if u <= 65536
-         then let Val ub = u
-                  Val lb = l
-              in do
-                   encodeConstrainedInt ((fromInteger.genericLength) xs - l, (u-l))
-                   octetsToBits xs
-         else encodeWithLength octetsToBits xs
+      in encodeWithLength nc octetToBits xs
 
 \end{code}
 
@@ -1352,11 +1359,11 @@ encodeLengthDeterminant ::
 encodeLengthDeterminant c f t xs
    | ub /= maxBound &&
      ub == lb &&
-     y <= 64*(2^10) = f t xs
-   | ub == maxBound = encodeLargeLengthDeterminant f t xs {- FIXME: A word of explanation as to why
+     ub <= 64*(2^10) = f t xs
+   | ub > 64*(2^10) = encodeLargeLengthDeterminant f t xs {- FIXME: A word of explanation as to why
                                                              we test this here - it's because after
                                                              here we know y is defined. -}
-   | y <= 64*(2^10) {- 10.9.1 -}
+   | ub <= 64*(2^10) {- 10.9.1 -}
         = do constrainedWholeNumber c y
              f t xs
    | otherwise      = error "FIXME: encodeLengthDeterminant"
@@ -1466,31 +1473,31 @@ encodeUncSeqOf t xs = mEncodeWithLength (encodeList t) xs
 mEncodeWithLength :: ([[t]] -> PERMonad ()) -> [t] -> PERMonad ()
 mEncodeWithLength fun xs
     = let ls = (groupBy 4 . groupBy (16*(2^10))) xs
-      in  mAddUncLen fun ls
+      in  mencodeUnconstrainedLength fun ls
 
 
-mAddUncLen :: ([[b]] -> PERMonad ()) -> [[[b]]] -> PERMonad ()
-mAddUncLen encFun [] = lastLen k16 0
-mAddUncLen encFun (x:xs)
+mencodeUnconstrainedLength :: ([[b]] -> PERMonad ()) -> [[[b]]] -> PERMonad ()
+mencodeUnconstrainedLength encFun [] = lengthLessThan16K 0
+mencodeUnconstrainedLength encFun (x:xs)
     | l == 4 && last16 == k16
         = do
             blockLen 4 63
             encFun x
-            mAddUncLen encFun xs
+            mencodeUnconstrainedLength encFun xs
     | l == 1 && last16 < k16
         = do
-            lastLen k16 ((genericLength . head) x)
+            lengthLessThan16K ((genericLength . head) x)
             encFun ([head x])
     | last16 == k16
         = do
             blockLen l 63
             encFun x
-            lastLen k16 0
+            lengthLessThan16K 0
     | otherwise
         = do
             blockLen (l-1) 63
             encFun (init x)
-            lastLen k16 ((genericLength.last) x)
+            lengthLessThan16K ((genericLength.last) x)
             encFun ([last x])
     where
         l      = genericLength x
@@ -2002,7 +2009,7 @@ encodeResString vs
     = let t = getTop vs
           l = genericLength (getString t)
       in
-         encodeWithLength (encSF (getString t))  (getString vs)
+         encodeWithLength top (encSF (getString t))  [(getString vs)] {- FIXME check top here -}
 
 getTop :: (RS a, Lattice a) => a -> a
 getTop m = top
@@ -2026,7 +2033,7 @@ encodeRCSSzF (IntegerConstraint l u) rcs1 rcs2
                           (encodeRCSF rcs1 . makeString) l u (getString rcs2)
 
 encodeRCSF :: (RS a) => a -> a -> PERMonad ()
-encodeRCSF rcs1 rcs2 = encodeWithLength (encSF (getString rcs1)) (getString rcs2)
+encodeRCSF rcs1 rcs2 = encodeWithLength top (encSF (getString rcs1)) [(getString rcs2)] {- FIXME check top here -}
 
 
 encSF p str
@@ -2095,10 +2102,6 @@ findV m (a:rs)
 
 type ElementSetSpecs a = SubtypeConstraint a
 
-\end{code}
-
-\begin{code}
-
 fromPER x = decode4 x []
 
 decode4 (BuiltinType t) cl = fromPer3 t cl
@@ -2123,6 +2126,7 @@ It does not currently cover 10.9.3.4: the determinant being a normally small len
 Note that it assumes that the ASN.1 type makes semantic sense.
 For example, if the upper bound of the size constraint ("ub") is 0 and the
 lower bound ("lb") is negative, then the result is undefined.
+
 
 \begin{code}
 
@@ -2233,6 +2237,10 @@ data ASNError =
 instance Error ASNError where
    noMsg = OtherError "The impossible happened"
 
+\end{code}
+
+\begin{code}
+
 decodeInt3 :: ASNMonadTrans t => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
 decodeInt3 [] =
    lDecConsInt3 (return bottom) undefined (return bottom)
@@ -2256,8 +2264,8 @@ lDecConsInt3 mrc isExtensible mec =
           rootConstraint         = rc /= bottom
           rootLower              = let Val x = lower rc in x
           rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
-          numOfRootBits          = undefined -- genericLength (encodeConstrainedInt (rootRange - 1, rootRange - 1))
-          numOfExtensionBits     = undefined -- genericLength (encodeConstrainedInt (extensionRange - 1, extensionRange - 1))
+          numOfRootBits          = (genericLength . snd . extractValue) $ (encodeConstrainedInt (rootRange - 1, rootRange - 1))
+          numOfExtensionBits     = (genericLength . snd . extractValue) $ (encodeConstrainedInt (extensionRange - 1, extensionRange - 1))
           emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
           inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
           unconstrained x        = (lower x) == minBound
@@ -2324,6 +2332,7 @@ decodeUInt3 =
 
 \end{code}
 
+
 \section{SEQUENCE Decoding}
 
 \begin{code}
@@ -2348,10 +2357,21 @@ decodeSEQUENCEAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) 
       xs <- decodeSEQUENCEAux bitmap ts
       return (x :*: xs)
 
+
+
+
+
+forget :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => Either String (t BG.BitGet a) -> t BG.BitGet a
+forget (Left e) = throwError e
+forget (Right x) = x
+
+swap :: (Functor m, Monad m) => Either String (m a) -> m (Either String a)
+swap (Left s) = return (Left s)
+swap (Right x) = fmap Right x
+
 \end{code}
 
 \section{SEQUENCE OF Decoding}
-
 \begin{code}
 
 nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
@@ -2373,7 +2393,6 @@ decodeSequenceOfAux t me mv =
       decodeLengthDeterminant rc (flip nSequenceOfElements []) t
 
 \end{code}
-
 
 \subsection{BIT STRING --- Clause 15}
 
@@ -2411,25 +2430,6 @@ getBits n =
 
 \end{code}
 
-\section{Object Identifier}
-
-\begin{code}
-
-newtype OID = OID {subIds :: [Int]}
-   deriving Show
-
--- type BMonad = ErrorT ASNError BP.BitPut' ()
-
--- encodeOID :: OID -> BMonad ()
-encodeOID x = undefined
-   where
-      encodeOIDAux []       = undefined -- throwError (BoundsError "encodeOID: an OID must contain at least two object identifier components")
-      encodeOIDAux (x:[])   = undefined -- throwError (BoundsError "encodeOID: an OID must contain at least two object identifier components")
-      encodeOIDAux (x:y:zs) = if (x >= 0 && x <= 2) && (y >=0 && y <= 39)
-                                 then toNonNegativeBinaryInteger 8 ((x*40) + y)
-                                 else undefined -- throwError (BoundsError ("encodeOID: invalide oid components: " ++ show x))
-
-\end{code}
 
 \section{Bibliography}
 
