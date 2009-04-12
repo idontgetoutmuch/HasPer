@@ -4,8 +4,38 @@ import NewTestData
 import PER
 import ASNTYPE
 import NewPretty
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
+import Data.Binary.BitPut
+import Data.Binary.Strict.BitGet
+import Control.Monad.Error
+import Data.Bits
+import Test.HUnit
 
-t = encode sibDataVariableType [] sibDataVariableValue
-t' = encode' sibDataVariableType [] sibDataVariableValue
+{- FIXME: This will do for now until we have the correct               -}
+{- decoding monad (with the using a custom class constraint).          -}
+decodeEncode :: ASNType a -> a -> a
+decodeEncode t x =
+   do let (possibleError, encoding) = extractValue (encode t [] x)
+      case possibleError of
+         Left e -> error (show e)
+         Right y -> let bs = B.pack . BL.unpack . runBitPut . mapM_ (putNBits 1) $ encoding
+                    in 
+                       case runBitGet bs (runErrorT (fromPER t)) of
+                       Left s -> error s
+                       Right x -> case x of
+                                  Left f -> error (show f)
+                                  Right y -> y
 
-main = undefined
+dESibDataVariableValue = decodeEncode sibDataVariableType sibDataVariableValue
+
+bitStringConsTest1 =
+   TestCase (
+      assertEqual "Constrained BIT STRING Test 1" sibDataVariableValue dESibDataVariableValue
+   )
+
+tests =
+   [ bitStringConsTest1
+   ]
+
+main = runTestTT (TestList tests)
