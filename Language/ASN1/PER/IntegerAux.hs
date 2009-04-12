@@ -8,9 +8,12 @@
 -- Stability   : experimental
 --
 -- TBD
+--
+-- FIXME: This now needs a tidy up, retesting and recoveraging.
+--
 -----------------------------------------------------------------------------
 {-# 
-OPTIONS_GHC -fwarn-unused-imports
+OPTIONS_GHC -fwarn-unused-imports -fwarn-unused-binds
 #-}
 
 module Language.ASN1.PER.IntegerAux
@@ -19,6 +22,7 @@ module Language.ASN1.PER.IntegerAux
    , fromNonNegativeBinaryInteger'
    , to2sComplementUsingReverse
    , to2sComplement
+   , to2sComplementM
    , from2sComplement
    , from2sComplement'
    , nnbIterator
@@ -32,6 +36,19 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.Binary.BitPut
 import Control.Monad.State
+
+to2sComplement :: Num a => Integer -> [a]
+to2sComplement n
+   | n >= 0 = 0:(k 7 n)
+   | otherwise = k 8 (fromInteger $ 2^p + n)
+   where
+      p = length (k 7 (-n-1)) + 1
+
+infixr 5 $$
+($$) = (.).(.)
+
+k :: Num a => Integer -> Integer -> [a]
+k = reverse $$ (map fromInteger) $$ flip (curry (unfoldr nnbIterator)) 
 
 nnbIterator :: (Integer, Integer) -> Maybe (Integer, (Integer, Integer))
 nnbIterator (0,0) = Nothing
@@ -77,8 +94,8 @@ h'' n =
                h'' (n `div` 2)
                lift $ putNBits 1 (n `mod` 2)
 
-to2sComplement :: Integer -> BitPut
-to2sComplement n
+to2sComplementM :: Integer -> BitPut
+to2sComplementM n
    | n >= 0    = putNBits 1 (0::Word8) >> runStateT (h'' n) 7             >> return ()
    | otherwise =                          runStateT (h'' (2^(l n) + n)) 8 >> return ()
 

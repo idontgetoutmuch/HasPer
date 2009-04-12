@@ -8,12 +8,16 @@
 -- Stability   : experimental
 --
 -- TBD
+--
+-- FIXME: This now needs a clean up, retesting and recoveraging.
+--
 -----------------------------------------------------------------------------
 module Language.ASN1.PER.Integer
    ( toNonNegativeBinaryInteger
    , fromNonNegativeBinaryInteger
    , fromNonNegativeBinaryInteger'
    , to2sComplement
+   , to2sComplementM
    , from2sComplement
    , from2sComplement'
    ) where
@@ -44,12 +48,21 @@ fromNonNegativeBinaryInteger :: Integer -> ByteString -> Integer
 fromNonNegativeBinaryInteger = I.fromNonNegativeBinaryInteger
 
 {-|
+'to2sComplementM' takes an 'Integer' argument and encodes it
+as two's complement (<http://en.wikipedia.org/wiki/2s_complement>)
+in the smallest number of bytes.
+-}
+to2sComplementM :: Integer -> BitPut
+to2sComplementM = I.to2sComplementM
+
+{-|
 'to2sComplement' takes an 'Integer' argument and encodes it
 as two's complement (<http://en.wikipedia.org/wiki/2s_complement>)
 in the smallest number of bytes.
 -}
-to2sComplement :: Integer -> BitPut
+to2sComplement :: Num a => Integer -> [a]
 to2sComplement = I.to2sComplement
+
 
 {-|
 'from2sComplement' takes a 'ByteString' argument and decodes the

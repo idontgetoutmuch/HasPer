@@ -80,6 +80,7 @@ octet alignment. We have implemented the UNALIGNED variant of CANONICAL-PER.
 
 {-# OPTIONS_GHC -XMultiParamTypeClasses -XGADTs -XTypeOperators
                 -XEmptyDataDecls -XFlexibleInstances -XFlexibleContexts
+                -fwarn-unused-binds
 #-}
 {-
                 -fwarn-unused-imports -fwarn-incomplete-patterns
@@ -122,7 +123,9 @@ import LatticeMod
 import ConstraintGeneration
 import Language.ASN1.PER.Integer
    ( fromNonNegativeBinaryInteger'
+   , toNonNegativeBinaryInteger
    , from2sComplement'
+   , to2sComplement
    )
 import Data.List hiding (groupBy)
 import Data.Char
@@ -221,13 +224,11 @@ toPER' (BITSTRING nbs) x cl = encodeBitString nbs cl x
 {- X691REF: 10.1 -}
 \begin{code}
 
-extractValue = runIdentity . runWriterT . runErrorT
-
-extractValue' = runIdentity . runWriterT . runErrorT
+extractValue  = runIdentity . runWriterT . runErrorT
 
 completeEncode :: PERMonad () -> PERMonad ()
 completeEncode m
-    = let (e,v) = extractValue m
+    = let v = snd . extractValue $ m
       in tell (padding v)
 
 padding enc
@@ -640,38 +641,7 @@ encodeConstrainedIntAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `d
 
 \end{code}
 
-
-
-
-\section{Two's Complement Arithmetic}
-
-10.4 Encoding as a 2's-complement-binary-integer is used when
-encoding an integer with no lower bound (10.8) as in the final
-case of encodeInt. The encoding of the integer is accompanied
-by the encoding of its length using encodeOctetsWithLength
-(10.8.3)
-
-\begin{code}
-
-to2sComplement :: Integer -> BitStream
-to2sComplement n
-   | n >= 0 = 0:(h n)
-   | otherwise = encodeNonNegBinaryIntInOctets (fromInteger $ 2^p + n)
-   where
-      p = length (h (-n-1)) + 1
-
-g :: (Integer, Integer) -> Maybe (Integer, (Integer, Integer))
-g (0,0) = Nothing
-g (0,p) = Just (0,(0,p-1))
-g (n,0) = Just (n `rem` 2,(n `quot` 2,7))
-g (n,p) = Just (n `rem` 2,(n `quot` 2,p-1))
-
-h :: Integer -> BitStream
-h n = (reverse . map fromInteger) (flip (curry (unfoldr g)) 7 n)
-
-\end{code}
-
- 10.6 Encoding as a normally small non-negative whole number
+\section{10.6 Encoding as a normally small non-negative whole number}
 
 \begin{code}
 
@@ -2357,21 +2327,10 @@ decodeSEQUENCEAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) 
       xs <- decodeSEQUENCEAux bitmap ts
       return (x :*: xs)
 
-
-
-
-
-forget :: (MonadTrans t, MonadError [Char] (t BG.BitGet)) => Either String (t BG.BitGet a) -> t BG.BitGet a
-forget (Left e) = throwError e
-forget (Right x) = x
-
-swap :: (Functor m, Monad m) => Either String (m a) -> m (Either String a)
-swap (Left s) = return (Left s)
-swap (Right x) = fmap Right x
-
 \end{code}
 
 \section{SEQUENCE OF Decoding}
+
 \begin{code}
 
 nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
@@ -2408,6 +2367,8 @@ highly inefficient.
 
 class (MonadError ASNError (t BG.BitGet), MonadTrans t) => ASNMonadTrans t
 
+instance ASNMonadTrans (ErrorT ASNError)
+
 decodeBitString :: ASNMonadTrans t => [ElementSetSpecs BitString] -> t BG.BitGet BitString
 decodeBitString constraints =
    do xs <- decodeBitStringAux (errorize (lSerialEffCons lBSConE top constraints))
@@ -2430,6 +2391,25 @@ getBits n =
 
 \end{code}
 
+\section{Object Identifier}
+
+\begin{code}
+
+newtype OID = OID {subIds :: [Int]}
+   deriving Show
+
+-- type BMonad = ErrorT ASNError BP.BitPut' ()
+
+-- encodeOID :: OID -> BMonad ()
+encodeOID x = undefined
+   where
+      encodeOIDAux []       = undefined -- throwError (BoundsError "encodeOID: an OID must contain at least two object identifier components")
+      encodeOIDAux (x:[])   = undefined -- throwError (BoundsError "encodeOID: an OID must contain at least two object identifier components")
+      encodeOIDAux (x:y:zs) = if (x >= 0 && x <= 2) && (y >=0 && y <= 39)
+                                 then toNonNegativeBinaryInteger 8 ((x*40) + y)
+                                 else undefined -- throwError (BoundsError ("encodeOID: invalide oid components: " ++ show x))
+
+\end{code}
 
 \section{Bibliography}
 
