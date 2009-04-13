@@ -37,6 +37,18 @@ generateC t x =
 cComment :: Doc -> Doc
 cComment x = text "/*" <+> x <+> text "*/"
 
+cCommentBlock :: [Doc] -> Doc
+cCommentBlock = undefined
+
+cStatement :: Doc -> Doc
+cStatement x = x <> semi
+
+myBraces x = text "{" $+$ nest 2 x $+$ text "}"
+
+cIf :: Doc -> [Doc] -> Doc
+cIf condition statements =
+   text "if (" <> condition <> text ")" $+$  nest 2 (myBraces (vcat statements))
+
 mainC :: ASNType a -> a -> Doc
 mainC t@(ReferencedType r ct) v = 
    foldr ($+$) empty [
@@ -122,7 +134,7 @@ includeFiles (ReferencedType r _) =
    where
       name = ref r
 
--- | A function to write to file
+-- | A function to write to file.
 fileFunction = 
    vcat [
       text "/*",
@@ -142,6 +154,27 @@ fileFunction =
          ),
       text "}"
       ]
+
+-- | Code to read from a file. FIXME: Should this be a C function
+-- since the write equivalent is? Let's pretend it generates a C
+-- function for now by calling it 'readFileFunction' rather than
+-- \'readFileCode\'.
+readFileFunction =
+   vcat [ cComment   (text "Open input file as read-only binary")
+        , cStatement (text "fp = fopen(filename,\"rb\")")
+        , cIf (text "!fp") [ cStatement (text "perror(filename)")
+                           , cStatement (text "exit(66)") <+>
+                                         cComment (text "better, EX_NOINPUT")
+                           ]
+        , space
+        , cComment   (text "Read up to the buffer size")
+        , cStatement (text "size = fread(buf, 1, sizeof(buf), fp)")
+        , cStatement (text "fclose(fp)")
+        , cIf (text "!size") [ cStatement (text "fprint(stderr, \"%s: Empty or broken\\n\", filename)")
+                             , cStatement (text "exit(65)") <+>
+                                           cComment (text "better, EX_DATAERR")
+                             ]
+        ]
 
 -- | Allocate memory for a variable
 allocPointer :: String -> Doc
