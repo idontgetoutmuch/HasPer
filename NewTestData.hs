@@ -44,3 +44,11 @@ seqOf1Constraint :: ConstraintSet [InfInteger]
 seqOf1Constraint = UnionSet (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,16)))))))))))))
 
 foo = ConstrainedType seqOf1Type (RootOnly seqOf1Constraint)
+
+{-
+INTEGER Tests
+-}
+
+tInteger1 = ReferencedType (Ref "INTEGER1") (BuiltinType INTEGER)
+vInteger1 = Val 4096
+
