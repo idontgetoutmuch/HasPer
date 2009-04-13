@@ -43,11 +43,52 @@ cCommentBlock = undefined
 cStatement :: Doc -> Doc
 cStatement x = x <> semi
 
-myBraces x = text "{" $+$ nest 2 x $+$ text "}"
+myBraces x = foldr ($+$) empty [text "{", nest 2 x, text "}"]
+
+nestLevel = 2
 
 cIf :: Doc -> [Doc] -> Doc
 cIf condition statements =
    text "if (" <> condition <> text ")" $+$  nest 2 (myBraces (vcat statements))
+
+cMainFunction :: Doc -> Doc
+cMainFunction x = foldr ($+$) empty
+                              [ text "int main(int ac, char **av) {"
+                              , space
+                              , nest nestLevel x
+                              , text "}\n"
+                              ]
+
+mainCRead :: ASNType a -> a -> Doc
+mainCRead t@(ReferencedType r ct) v =
+   cMainFunction (readBody t)
+
+readBody t@(ReferencedType r ct) = 
+   foldr ($+$) empty ss
+   where
+      ss =
+         [ cStatement (text "char buf[1024]") <+> cComment (text "Temporary buffer")
+         , cStatement (cType <+> text "*" <> cPtr) <+> cComment (text "Type to decode")
+         , cStatement (text "asn_dec_rval_t rval") <+> cComment (text "Decoder return value")
+         , cStatement (text "FILE *fp") <+> cComment (text "Input file handler")
+         , cStatement (text "size_t size") <+> cComment (text "Number of bytes read")
+         , cStatement (text "char *filename") <+> cComment (text "Input file name")
+         , space
+         , readFileFunction
+         , space
+         , cComment (text "Decode the input buffer as" <+> text name <+> text "type")
+         , cStatement (text "rval = per_decode(0, &asn_DEF_" <> text name <> comma <+>
+                       cPtr <> comma <+> text "write_out, fp)")
+         , cStatement (text "fclose(fp)")
+         , cIf (text "ec.encoded == -1")
+               [ text "fprintf(stderr," $+$
+                 nest nestLevel (text "\"Could not encode " <+> text name <+> text "(at %s)\\n\"" <> comma $+$
+                 text "ec.failed_type")
+               ]
+         ]
+      cPtr = text (lowerFirst name)
+      cType = text name <> text "_t"
+      name = ref r
 
 mainC :: ASNType a -> a -> Doc
 mainC t@(ReferencedType r ct) v = 
