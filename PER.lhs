@@ -107,8 +107,8 @@ constraint (which is used in the generation of an encoding) and the actual const
 is used for validity testing). This module is described in section \ref{constraintGen};
 \item
 {\em ASN1.PER.Integer} in which the functions {\em fromNonNegativeBinaryInteger'} and {\em
-from2sComplement'} are defined. These are used in the encoding of integers. Note that in Haskell
-by default the totality of a module is imported unless explicitly specified within parentheses; and
+from2sComplement'} are defined. These are used in the decoding of integers. Note that in Haskell
+the totality of a module is imported unless explicitly specified within parentheses; and
 \item
 several Haskell library modules some of which have been qualified with a shorter name which is then used
 as a prefix when any entity of these modules is used.
@@ -145,7 +145,7 @@ import Data.Maybe
 
 The top-level PER encoding function is called {\em encode}. The function takes three inputs:
 the type of value being encoded; a list of subtype constraints which represents the
-(potentially) serially appolied constraints and will be converted into an effective constraint
+serially applied constraints and will be converted into an effective constraint
 in advance of encoding; and the value to be encoded.
 It has three distinct
 cases which address the various forms of an ASNType.
@@ -156,22 +156,35 @@ The input is a builtin type value. The function {\em toPer} is called on this va
 The input is a referenced type value. The reference is dropped
 and {\em encode} is recursively called on the value.
 \item
-The input is a constrained type value. The constraint is added to the list of constraint and
+The input is a constrained type value. The constraint is added to the list of constraints and
 the function is called again on the type being constrained. This recursion will continue
 until we reach a non-constrained type. The associated list of constraints will then include all
 of the seraily applied constraints.
 \end{itemize}
 
+The function {\em encode} returns a value of type {\em PERMonad ()}. This is a writer monad
+wrapped up inside an error monad thus enabling the writing of the bits that represent the
+encoding as a {\em BitStream} value, and the reporting of any errors incurred during encoding.
+The error type {\em ASNError} enables the categorisation of the various types of error.
 
 
 \begin{code}
 type PERMonad a = ErrorT ASNError (WriterT BitStream Identity) a
 
+data ASNError =
+     ConstraintError String
+   | BoundsError     String
+   | DecodeError     String
+   | ExtensionError  String
+   | OtherError      String
+      deriving Show
+
+instance Error ASNError where
+   noMsg = OtherError "The impossible happened"
+
+
 type PerEncoding = Either String BitStream
-{-
-perEncode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad ()
-perEncode t cl v = temporaryConvert (encode t cl v)
--}
+
 
 encode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad ()
 encode (BuiltinType t) cl v       = toPER t v cl
@@ -204,7 +217,7 @@ toPER BMPSTRING x cl       = encodeRCS cl x
 toPER UNIVERSALSTRING x cl = encodeRCS cl x
 toPER BOOLEAN x cl         = encodeBool cl x
 toPER (ENUMERATED e) x cl  = encodeEnum e x -- no PER-Visible constraints
-toPER (BITSTRING nbs) x cl = encodeBS nbs cl x
+toPER (BITSTRING nbs) x cl = encodeBitstring nbs cl x
 toPER (OCTETSTRING) x cl   = encodeOS cl x
 toPER (SEQUENCE s) x cl    = encodeSeq s x -- no PER-Visible constraints
 toPER (SEQUENCEOF s) x cl  = encodeSeqOf cl s x
@@ -222,6 +235,10 @@ toPER' (BITSTRING nbs) x cl = encodeBitString nbs cl x
 {- FIXME: Need a more efficient way to do this. Could carry the remainder with each encoding?
 -}
 {- X691REF: 10.1 -}
+
+{\em extractValue} is simply a function that extracts the encoding bits from the monadic value
+returned by the encoding functions.
+
 \begin{code}
 
 extractValue  = runIdentity . runWriterT . runErrorT
@@ -253,7 +270,7 @@ padding enc
 
 encodeOpen :: ASNType a -> a -> PERMonad ()
 encodeOpen t v
-{- X691REF: 10.2.1 -}   = let (err,enc) = extractValue (completeEncode (encode t [] v))
+{- X691REF: 10.2.1 -}   = let (_,enc) = extractValue (completeEncode (encode t [] v))
 {- X691REF: 10.2.2 -}     in  encodeOctetsWithLength enc
 
 \end{code}
@@ -271,14 +288,14 @@ the constraint imposes an upper bound which is less than 64K. If it does then no
 the value is encoded with a length prefix if the upper bound differs from the lower bound, and
 with no length encoding otherwise.
 
-If the upper bound is at least 64K then {\em encodeUnconstrainedLength} is called. the items are grouped first in 16k batches, and then
+If the upper bound is at least 64K then {\em encodeUnconstrainedLength} is called. The items are grouped first in 16k batches, and then
 in batches of 4. The input encoding function is then supplied as
 an input to the function {\em encodeUnconstrainedLength} which manages the interleaving of
 length and value encodings -- it encodes the length and values of
 each batch and concatenates their resulting bitstreams together.
 Note the values are encoded using the input function.
 
-Note that {\em encodeWithLength} is not used to encode {\bf normally small length} length
+Note that {\em encodeWithLength} is not used to encode {\bf normally small length}
 determinants (see X691: 10.9.3.4} which are only used with the bitmap that prefixes the
 extension addition values of a set or sequence type.
 
@@ -301,13 +318,6 @@ encodeWithLength ic fun ls
        lb = lower ic
        ub = upper ic
 
-groupBy :: Int -> [t] -> [[t]]
-groupBy n =
-   unfoldr k
-      where
-         k [] = Nothing
-         k p = Just (splitAt n p)
-
 k64 :: InfInteger
 k64 = 64 * 2^10
 \end{code}
@@ -319,7 +329,7 @@ function and the list of values to be encoded. If the length of the input value 
 16K then the length is encoded followed by the value. Otherwise the auxiliary function {\em
 encodeUnocnstrainedLengthAux} is called. This function manages the fragmenting of the input
 value into blocks of at most four 16K blocks. These are each encoded -- their block length
-followed by the encoding of the block of values -- and the if the block contains four 16k
+followed by the encoding of the block of values -- and if the block contains four 16k
 blocks the process is repeated with the next block of 16K values.
 
 {\em lengthLessThan16K} encodes the length of a list of less than 16K values and {\em blockLen}
@@ -356,13 +366,19 @@ encodeUnconstrainedLengthAux encFun xs
                      lengthLessThan16K ((genericLength.last) x)
                      mapM_ encFun (last x)
     where
-        (x:xss)    = (groupBy 4 . groupBy (16*(2^10))) $ xs
+        (x:_)      = (groupBy 4 . groupBy (16*(2^10))) $ xs
         l          = genericLength x
         last16     = (genericLength . last) x
 
 k16 :: InfInteger
 k16    = 16*(2^10)
 
+groupBy :: Int -> [t] -> [[t]]
+groupBy n =
+   unfoldr k
+      where
+         k [] = Nothing
+         k p = Just (splitAt n p)
 
 lengthLessThan16K :: InfInteger -> PERMonad ()
 lengthLessThan16K n
@@ -409,19 +425,23 @@ encoded as an unconstrained integer using the function {\em encodeUnconsInt}. If
 a constraint then the function {\em encodeIntWithConstraint} is called. The encoding depends on
 whether the constraint is extensible and whether the value lies within the extenstion root.
 
+Note that the third input to {\em encodeIntWithConstraint} is the last of the serially applied
+constraints. This is because if a constraint is serially applied to an extensible constraint
+then any extension additions of the extensible constraint are discarded (see X.680 Annex
+G.4.2.3). That is, the extensibility and extension additions of the effective constraint are
+determined only by the last constraint.
+
 \begin{code}
 
 
 encodeInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
 encodeInt [] v = {- X691REF: 12.2.4 -} encodeUnconsInt v
-encodeInt cs v = encodeIntWithConstraint parentRoot validPR lc v
-   where
-      lc         = last cs
-      ic         = init cs
-      parentRoot :: Either String IntegerConstraint
-      parentRoot = lRootIntCons top ic
-      validPR :: Either String ValidIntegerConstraint
-      validPR    = lRootIntCons top ic
+encodeInt cs v = encodeIntWithConstraint cs v
+
+--      parentRoot :: Either String IntegerConstraint
+--      parentRoot = lRootIntCons top ic
+--      validPR :: Either String ValidIntegerConstraint
+--      validPR    = lRootIntCons top ic
 
 \end{code}
 
@@ -454,43 +474,30 @@ inputs. The three required for {\em encodeNonExtConsInt} and the two -- actual a
 
 \begin{code}
 
-encodeIntWithConstraint :: Either String IntegerConstraint -> Either String ValidIntegerConstraint
-                  -> SubtypeConstraint InfInteger -> InfInteger -> PERMonad ()
-encodeIntWithConstraint pr vpr lc v
+encodeIntWithConstraint :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
+encodeIntWithConstraint cs v
     = if (not extensible)
-        then {- X691REF: 12.2 -} encodeNonExtConsInt validRootCon effRootCon v
-        else {- X691REF: 12.1 -} encodeExtConsInt validRootCon validExtCon effRootCon effExtCon v
+        then {- X691REF: 12.2 -} encodeNonExtConsInt validCon effCon v
+        else {- X691REF: 12.1 -} encodeExtConsInt validCon effCon v
       where
-        (effExtCon,extensible)  = lApplyExt pr lc
-        effRootCon              = lEvalC lc pr
-        (validExtCon,b2)        = lApplyExt vpr lc
-        validRootCon            = lEvalC lc vpr
+          effCon :: Either String (ExtBS (ConType IntegerConstraint))
+          effCon = lSerialEffCons integerConElements top cs
+          validCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
+          validCon = lSerialEffCons integerConElements top cs
+          extensible = eitherExtensible effCon
+
+eitherExtensible (Right v) = isExtensible v
+eitherExtensible _ = False
+
+
+--        (effExtCon,extensible)  = lApplyExt pr lc
+--        effRootCon              = lEvalC lc pr
+--        (validExtCon,_)        = lApplyExt vpr lc
+--        validRootCon            = lEvalC lc vpr
 
 \end{code}
 
 
-
-The functions {\em isNonEmptyConstraint} and {\em isEmptyConstraint} simply test whether the
-combination of PER-visible constraints associated with an integer type results in an actual
-constraint or no constraint. For example, the intersection of two mutually exclusive
-constraints results in no constraint. This will then mean that their can be no valid values
-and an error must be reported.
-
-The function {\em inRange} simply tests with a value sits within the constraint. It is tested
-against the actual constraint and not agianst the effective constraint which is used for
-encoding.
-
-\begin{code}
-
-isNonEmptyConstraint,isEmptyConstraint :: (Eq t, Lattice t) => t -> Bool
-isNonEmptyConstraint x  = x /= bottom
-isEmptyConstraint       = (not . isNonEmptyConstraint)
-
-inRange :: InfInteger -> ValidIntegerConstraint -> Bool
-inRange _ (Valid [])       = False
-inRange n (Valid (x:rs))   = n >= (lower x) && n <= (upper x) || inRange n (Valid rs)
-
-\end{code}
 
 {\em encodeNonExtConsInt} has to deal with five cases.
 \begin{itemize}
@@ -512,11 +519,11 @@ The value does not satisfy the constraint. An appropriate error is thrown.
 \end{itemize}
 
 \begin{code}
-encodeNonExtConsInt :: Either String ValidIntegerConstraint
-                     -> Either String IntegerConstraint
+encodeNonExtConsInt :: Either String (ExtBS (ConType ValidIntegerConstraint))
+                     -> Either String (ExtBS (ConType IntegerConstraint))
                      -> InfInteger
                      -> PERMonad ()
-encodeNonExtConsInt (Right validRootCon) (Right effRootCon) n
+encodeNonExtConsInt (Right validCon) (Right effCon) n
     | isEmptyConstraint effRootCon
          = throwError (ConstraintError "Empty constraint")
     | isNonEmptyConstraint effRootCon && inRange n validRootCon
@@ -533,11 +540,36 @@ encodeNonExtConsInt (Right validRootCon) (Right effRootCon) n
     | otherwise
         = throwError (BoundsError "Value out of range")
           where
-          rootLower          = lower effRootCon
-          rootUpper          = upper effRootCon
+            effRootCon = conType $ getRC effCon
+            validRootCon = conType $ getRC validCon
+            rootLower          = lower effRootCon
+            rootUpper          = upper effRootCon
+encodeNonExtConsInt _ _ _ = throwError (ConstraintError "Invalid constraint")
 
 \end{code}
 
+
+The functions {\em isNonEmptyConstraint} and {\em isEmptyConstraint} test whether the
+combination of PER-visible constraints associated with an integer type results in an actual
+constraint or no constraint. For example, the intersection of two mutually exclusive
+constraints results in no constraint. This will then mean that their can be no valid values
+and an error must be reported.
+
+The function {\em inRange} tests with a value satisfies a constraint. It is tested
+against the actual constraint and not against the effective constraint which is used for
+encoding.
+
+\begin{code}
+
+isNonEmptyConstraint,isEmptyConstraint :: (Eq t, Lattice t) => t -> Bool
+isNonEmptyConstraint x  = x /= bottom
+isEmptyConstraint       = (not . isNonEmptyConstraint)
+
+inRange :: InfInteger -> ValidIntegerConstraint -> Bool
+inRange _ (Valid [])       = False
+inRange n (Valid (x:rs))   = n >= (lower x) && n <= (upper x) || inRange n (Valid rs)
+
+\end{code}
 
 {\em encodeExtConsInt} is similar to {\em encodeNonExtConsInt}. It has the five cases
 described for {\em encodeNonExtConsInt} -- where any encoding is prefixed by the bit 0 --
@@ -547,14 +579,11 @@ integer using {\em encodeUnconsInt} prefixed by the bit 1.
 
 \begin{code}
 
-encodeExtConsInt :: Either String ValidIntegerConstraint
-                  -> Either String ValidIntegerConstraint
-                  -> Either String IntegerConstraint
-                  -> Either String IntegerConstraint
-                  -> InfInteger
-                  -> PERMonad ()
-encodeExtConsInt (Right validRootCon) (Right validExtCon)
-                 (Right effRootCon) (Right effExtCon) n
+encodeExtConsInt :: Either String (ExtBS (ConType ValidIntegerConstraint))
+                     -> Either String (ExtBS (ConType IntegerConstraint))
+                     -> InfInteger
+                     -> PERMonad ()
+encodeExtConsInt (Right validCon) (Right effCon)  n
              | isEmptyConstraint effRootCon && isEmptyConstraint effExtCon
                   = throwError (ConstraintError "Empty constraint")
              | isNonEmptyConstraint effRootCon && inRange n validRootCon
@@ -575,8 +604,12 @@ encodeExtConsInt (Right validRootCon) (Right validExtCon)
              | otherwise
                   = throwError (BoundsError "Value out of range")
                     where
-                         rootLower          = lower effRootCon
-                         rootUpper          = upper effRootCon
+                        effRootCon = conType $ getRC effCon
+                        validRootCon = conType $ getRC validCon
+                        effExtCon = conType $ getEC effCon
+                        validExtCon = conType $ getEC validCon
+                        rootLower          = lower effRootCon
+                        rootUpper          = upper effRootCon
 
 
 \end{code}
@@ -584,7 +617,7 @@ encodeExtConsInt (Right validRootCon) (Right validExtCon)
 {\em encodeSemiConsInt} encodes a semi-constrained integer. The difference between the value and the
 lower bound is encoded as a non-negative-binary-integer in the mininum number of octets using
 {\em encodeNonNegBinaryIntInOctets}. This is prefixed by an encoding of the length of the
-octeys using {\em encodeOctetsWithLength}.
+octets using {\em encodeOctetsWithLength}.
 
 \begin{code}
 
@@ -608,7 +641,7 @@ encodeNonNegBinaryIntInOctets (Val x) =
 \end{code}
 
 {\em encodeOctetsWithLength} encodes a collection of octets with
-unconstrained length. {\em encodeBitsWithLength does} the same except
+unconstrained length. {\em encodeBitsWithLength} does the same except
 for a collection of bits.
 
 \begin{code}
@@ -641,86 +674,33 @@ encodeConstrainedIntAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `d
 
 \end{code}
 
-\section{10.6 Encoding as a normally small non-negative whole number}
-
-\begin{code}
-
-encodeNSNNInt :: Integer -> Integer -> PERMonad ()
-encodeNSNNInt n lb
-    = if n <= 63
-        then do tell [0]
-                encodeConstrainedInt (fromInteger n, fromInteger 63)
-        else do tell [1]
-                encodeSemiConsInt (fromInteger n) (fromInteger lb)
-
-\end{code}
-
 
 \section{ENCODING THE ENUMERATED TYPE}
 
-There are three cases to deal with:
+{\em encodeEnum} takes the defined enumeration type and the enumeration value and
+first applies the function {\em assignIndex} to the enumeration type. This returns a pair
+whose first element indicates if an extension marker is present in the type, and whose second
+element is a list of indices assigned to the enumeration values. The index assigned to each
+enumeration value is determined by the enumeration number associated with each enumeration.
+These are either assigned explicitly when the enumeration is defined, or implicitly by the
+function {\em assignNumber}.
 
-\begin{enumerate}
+{\em encodeEnum} calls the auxiliary function {\em encodeEnumAux} which manages the various
+encoding cases. Its second input is the number of enumeration root values which is required
+since a root enumeration will be encoded as a constrained integer.
 
-\item
-There is no extension marker. The enumerations are indexed
-based on their (explicit or implicit) values. Thus each
-enumeration without an explicit value, is given a value that is not
-already explcitly assigned (assignNumber) on a first come/first
-serve basis. The indexes are then assigned in ascending
-order where the first index is 0 (assignIndex). The total number of
-enumerations is required since the encoding is of a constrained
-integer i.e. in the minimum number of bits. (13.2 and 10.5.6)
-encodeEnumAux simply encodes the existing enumeration.
-
-\item
-
-There is an extension marker but the value is in the
-enumeration root. 0 prefixes the encoding of the value
-which is completed as in (i). assignIndex returns a
-Boolean which indicates the presence or absence of an extension
-marker. (13.3 and 10.5.6)
-
-\item
-The value is in the extension. 1 prefixes the encoding,
-the enumerations in the extension are indexed in order of
-appearance and are encoded as a normally small non-negative whole
-number. (13.3 and 10.6) The function encodeEnumExtAux manages this
-encoding.
-
-\end{enumerate}
+Note that {\em encodeEnum} does not have a constraint input since there are no PER-visible
+enumerated type constraints.
 
 \begin{code}
 
 encodeEnum :: Enumerate a -> ExactlyOne a SelectionMade -> PERMonad ()
 encodeEnum e x
-    = let (b,inds) = assignIndex e
+    = let (extensible,inds) = assignIndex e {- X691REF: 13.1 -}
           no = genericLength inds
       in
-        encodeEnumAux b no inds e x
+        encodeEnumAux extensible no inds e x
 
-encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> ExactlyOne a n
-                 -> PERMonad ()
-encodeEnumAux b no (f:r) (AddEnumeration  _ es) (AddAValue a rest)
-    = if not b
-        then encodeConstrainedInt (fromInteger f, fromInteger (no-1))
-        else do tell [0]
-                encodeConstrainedInt (fromInteger f, fromInteger (no-1))
-encodeEnumAux b no (f:r) (AddEnumeration  _ es) (AddNoValue a rest)
-    = encodeEnumAux b no r es rest
-encodeEnumAux b no inds (EnumerationExtensionMarker   ex) x
-    = let el = noEnums ex
-      in encodeEnumExtAux 0 el ex x
-encodeEnumAux _ _ _ _ _ = throwError (OtherError "No enumerated value!")
-
-encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> ExactlyOne a n
-                    -> PERMonad ()
-encodeEnumExtAux i l (AddEnumeration  _ es) (AddAValue a rest)
-    = do tell [1]
-         encodeNSNNInt i 0
-encodeEnumExtAux i l (AddEnumeration  _ es) (AddNoValue a rest)
-    = encodeEnumExtAux (i+1) l es rest
-encodeEnumExtAux i l _ _ = throwError (OtherError "No enumerated extension value!")
 
 assignIndex :: Enumerate a -> (Bool, [Integer])
 assignIndex en
@@ -741,7 +721,6 @@ assignN (f:xs) (AddEnumeration  (NamedNumber _ i) r)b ls = assignN (f:xs) r b (i
 assignN (f:xs) (AddEnumeration  _ r) b ls = assignN xs r b (f:ls)
 assignN (f:xs) (EnumerationExtensionMarker   r) b ls = (True, reverse ls)
 assignN [] _ _ _ = error "No numbers to assign"
-
 
 getNamedNumbers :: Enumerate a -> [Integer]
 getNamedNumbers EmptyEnumeration = []
@@ -766,7 +745,278 @@ findN i []
 
 \end{code}
 
+{\em encodeEnumAux} is a recursive function which recurses through the enumeration value until
+it reaches the enumeration. If no extension marker is present then the enumeration is
+encoded using {\em encodeConstrainedInt}. If the marker is present and the enumeration is
+in the extension root then it is encoded as above but prefixed by 0.
+
+If the enumeration is not in the extension root then the encoding is passed to a second
+auxiliary function {\em encodeEnumExtAux}. This is also a recursive function which encodes an
+enumeration as a normally small non-negative integer using {\em encodeNSNNInt} prefixed by a
+1.
+
+\begin{code}
+
+encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> ExactlyOne a n
+                 -> PERMonad ()
+encodeEnumAux extensible no (f:r) (AddEnumeration  _ es) (AddAValue a rest)
+    = if not extensible
+        then    {- X691REF: 13.2 -}
+                encodeConstrainedInt (fromInteger f, fromInteger (no-1))
+        else do {- X691REF: 13.2 -}
+                tell [0]
+                encodeConstrainedInt (fromInteger f, fromInteger (no-1))
+encodeEnumAux b no (f:r) (AddEnumeration  _ es) (AddNoValue a rest)
+    = encodeEnumAux b no r es rest
+encodeEnumAux b no inds (EnumerationExtensionMarker   ex) x
+    = let el = noEnums ex
+      in encodeEnumExtAux 0 el ex x
+encodeEnumAux _ _ _ _ _ = throwError (OtherError "No enumerated value!")
+
+encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> ExactlyOne a n
+                    -> PERMonad ()
+encodeEnumExtAux i l (AddEnumeration  _ es) (AddAValue a rest)
+    = do    {- X691REF: 13.3 -}
+            tell [1]
+            encodeNSNNInt i 0
+encodeEnumExtAux i l (AddEnumeration  _ es) (AddNoValue a rest)
+    = encodeEnumExtAux (i+1) l es rest
+encodeEnumExtAux i l _ _ = throwError (OtherError "No enumerated extension value!")
+
+\end{code}
+
+{\em encodeNSNNInt} encodes a normally small non-negative integer.
+\begin{code}
+
+encodeNSNNInt :: Integer -> Integer -> PERMonad ()
+encodeNSNNInt n lb
+    = if n <= 63
+        then do {- X691REF: 10.6.1 -}
+                tell [0]
+                encodeConstrainedInt (fromInteger n, fromInteger 63)
+        else do {- X691REF: 10.6.2 -}
+                tell [1]
+                encodeSemiConsInt (fromInteger n) (fromInteger lb)
+
+
+\end{code}
+
+\section{ENCODING THE REAL TYPE} {- FIXME: To do? -}
+
 \section{ENCODING THE BIT STRING TYPE}
+
+
+{\em encodeBitstring} takes the usual two inputs -- the list of serially applied constraints
+and the value to be encoded -- and an additional input, the named bits of type {\em
+NamedBits}. If the constraint list is empty the function {\em encodeUnconstrainedBitstring} is
+called. Otherwise, {\em encodeBitstringWithConstraint} is called.
+
+
+\begin{code}
+
+encodeBitstring :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PERMonad ()
+encodeBitstring nbs [] x = {- X691REF: 15.2 -} encodeUnconstrainedBitstring nbs x
+encodeBitstring nbs cs x
+    = {- X691REF: 15.3 -} encodeBitstringWithConstraint nbs cs x
+{-
+      where
+        lc         = last cs
+        ic         = init cs
+        parentCon :: Either String (ExtBS (ConType IntegerConstraint))
+        parentCon = lSerialEffCons lBSConE top ic
+        validPC :: Either String (ExtBS (ConType ValidIntegerConstraint))
+        validPC    = lSerialEffCons lBSConE top ic
+-}
+\end{code}
+
+
+\begin{code}
+
+encodeBitstringWithConstraint :: NamedBits -> [SubtypeConstraint BitString] -> BitString
+                                 -> PERMonad ()
+encodeBitstringWithConstraint namedBits cs v
+    = if (not extensible)
+        then {- X691REF: 15.7 -}
+             encodeNonExtConsBitstring namedBits validCon effCon v
+        else {- X691REF: 15.6 -}
+             encodeExtConsBitstring namedBits validCon effCon v
+      where
+          effCon :: Either String (ExtBS (ConType IntegerConstraint))
+          effCon = lSerialEffCons lBSConE top cs
+          validCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
+          validCon = lSerialEffCons lBSConE top cs
+          extensible = eitherExtensible effCon
+
+{-
+        effCon      = lSerialApplyLast lBSConE pr lc
+        validEffCon = lSerialApplyLast lBSConE vpr lc
+        extensible  = isExtensible effCon {- FIXME: Extensiblity value wrapped inside return value -}
+        (effExtCon,extensible)  = lApplyExt pr lc
+        effRootCon              = lEvalC lc pr
+        (validExtCon,_)        = lApplyExt vpr lc
+        validRootCon            = lEvalC lc vpr
+
+lEncValidBS nbs (effBSCon cl) (validBSCon cl) xs
+
+effBSCon ::[SubtypeConstraint BitString] -> Either String (ExtBS (ConType IntegerConstraint))
+effBSCon cs = lSerialEffCons lBSConE top cs
+
+
+validBSCon :: [SubtypeConstraint BitString] -> Either String (ExtBS (ConType ValidIntegerConstraint))
+validBSCon cs = lSerialEffCons lBSConE top cs
+
+lEncValidBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
+               -> Either String (ExtBS (ConType ValidIntegerConstraint))
+               -> BitString -> PERMonad ()
+lEncValidBS nbs m@(Right c) n v
+    = if extensibleBS c
+            then lEncExtBS nbs m n v
+            else lEncNonExtBS nbs m n v
+lEncValidBS nbs (Left s) _ _ = throwError (ConstraintError s)
+-}
+
+encodeNonExtConsBitstring :: NamedBits -> Either String (ExtBS (ConType ValidIntegerConstraint))
+                -> Either String (ExtBS (ConType IntegerConstraint))
+                -> BitString
+                -> PERMonad ()
+encodeNonExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
+    | emptyConstraint
+           = throwError (ConstraintError "Empty constraint")
+    | null nbs && inSizeRange okrc || (not . null) nbs
+           = let (_,bs) = extractValue (bsCode nbs rc vs)
+              in  tell bs
+    | otherwise
+           = throwError (BoundsError "Value out of range")
+             where
+                rc = conType . getBSRC $ vsc
+                okrc :: [IntegerConstraint]
+                Valid okrc = conType . getBSRC $ ok
+                emptyConstraint = rc == bottom
+                inSizeRange []      = False
+                inSizeRange (x:rs)
+                    = let l = genericLength vs
+                      in l >= (lower x) && l <= (upper x) || inSizeRange rs
+
+
+
+encodeExtConsBitstring :: NamedBits -> Either String (ExtBS (ConType ValidIntegerConstraint))
+                -> Either String (ExtBS (ConType IntegerConstraint))
+                -> BitString
+                -> PERMonad()
+encodeExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
+    =   let rc = conType . getBSRC $ vsc
+            Valid okrc = conType . getBSRC $ ok
+            ec = conType . getBSEC $ vsc
+            Valid okec = conType . getBSEC $ ok
+            emptyConstraint = rc == bottom && ec == bottom
+            inSizeRange []      = False
+            inSizeRange (x:rs)
+                = let l = genericLength vs
+                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
+            foobar
+                | emptyConstraint
+                    = throwError (ConstraintError "Empty constraint")
+                | inSizeRange okrc
+                    = let (_,bs) = extractValue $ bsCode nbs rc vs
+                      in do tell [0]
+                            tell bs
+                | inSizeRange okec
+                     = let (_,bs) = extractValue $ bsExtCode nbs rc ec vs
+                       in do tell [1]
+                             tell bs
+                | otherwise
+                    = throwError (BoundsError "Value out of range")
+         in foobar
+
+
+bsCode :: NamedBits -> IntegerConstraint -> BitStream -> PERMonad ()
+bsCode nbs rc xs
+      =  let l  = lower rc
+             u  = upper rc
+             exs = if (not.null) nbs then editBS l u xs
+                     else tell xs
+         in
+             if u == 0
+             then tell []
+             else if u == l && u <= 65536
+                       then exs
+                       else if u <= 65536
+                            then let (_,ls) = extractValue $ exs
+                                 in do encodeConstrainedInt ((fromInteger.genericLength) ls - l, u-l)
+                                       tell ls
+                            else let
+                                    (_,ls) = extractValue $ exs
+                                 in encodeBitsWithLength ls
+
+bsExtCode :: NamedBits -> IntegerConstraint -> IntegerConstraint -> BitStream -> PERMonad ()
+bsExtCode nbs rc ec xs
+    = let nc = rc `ljoin` ec
+          l  = lower nc
+          u  = upper nc
+          exs = if (not.null) nbs then editBS l u xs
+                     else tell xs
+      in
+          if u <= 65536
+             then let (_,ls) = extractValue $ exs
+                  in do
+                        encodeConstrainedInt ((fromInteger.genericLength) ls - l, u-l)
+                        tell ls
+             else let (_,ls) = extractValue $ exs
+                  in encodeBitsWithLength ls
+
+
+editBS :: InfInteger -> InfInteger -> BitStream -> PERMonad ()
+editBS l u xs
+    = let lxs = genericLength xs
+      in if lxs < l
+        then add0s (l-lxs) xs
+        else
+            if lxs > u
+             then rem0s (lxs-u) xs
+             else tell xs
+
+add0s :: InfInteger -> BitStream -> PERMonad ()
+add0s (Val n) xs = do
+                     tell xs
+                     tell $ take (fromInteger n) [0,0..]
+add0s _ _        = throwError (OtherError "Invalid number input -- MIN or MAX.")
+
+rem0s :: InfInteger -> BitStream -> PERMonad ()
+rem0s (Val (n+1)) xs
+    = if last xs == 0
+           then rem0s (Val n) (init xs)
+           else throwError (OtherError "Last value is not 0")
+rem0s (Val 0) xs = tell xs
+rem0s _ _  = throwError (OtherError "Cannot remove a negative, MIN or MAX number of 0s.")
+
+\end{code}
+
+{\em encodeUnconstrainedBitstring} encodes the bitstring with a length determinant using {\em
+encodeBitsWithLength}. If there are any named bits then trailing 0 bits are removed in advance
+of encoding.
+
+\begin{code}
+encodeUnconstrainedBitstring :: NamedBits -> BitString -> PERMonad ()
+encodeUnconstrainedBitstring namedBits (BitString [])
+    = tell []
+encodeUnconstrainedBitstring namedBits (BitString bs)
+    = let rbs = reverse bs
+          rem0 = if (not.null) namedBits
+                    then strip0s rbs
+                    else rbs
+       in {- X691REF: 15.11 -}
+        encodeBitsWithLength (reverse rem0)
+
+
+
+strip0s (a:r)
+    = if a == 0
+        then strip0s r
+        else (a:r)
+strip0s [] = []
+
+\end{code}
+
 
 \subsection{First Refactoring}
 
@@ -831,179 +1081,6 @@ inSizeRange p qs = inSizeRangeAux qs
       l = genericLength p
       inSizeRangeAux (x:rs) =
          l >= (lower x) && l <= (upper x) || inSizeRangeAux rs
-
-\end{code}
-
-\subsection{Original Code}
-
-\begin{code}
-
-encodeBS :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PERMonad ()
-encodeBS nbs [] x = encodeBSNoSz nbs x
-encodeBS nbs cl x = encodeBSSz nbs cl x
-
-
-encodeBSSz :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PERMonad ()
-encodeBSSz nbs cl xs = lEncValidBS nbs (effBSCon cl) (validBSCon cl) xs
-
-effBSCon ::[SubtypeConstraint BitString] -> Either String (ExtBS (ConType IntegerConstraint))
-effBSCon cs = lSerialEffCons lBSConE top cs
-
-
-validBSCon :: [SubtypeConstraint BitString] -> Either String (ExtBS (ConType ValidIntegerConstraint))
-validBSCon cs = lSerialEffCons lBSConE top cs
-
-
-lEncValidBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
-               -> Either String (ExtBS (ConType ValidIntegerConstraint))
-               -> BitString -> PERMonad ()
-lEncValidBS nbs m@(Right c) n v
-    = if extensibleBS c
-            then lEncExtBS nbs m n v
-            else lEncNonExtBS nbs m n v
-lEncValidBS nbs (Left s) _ _ = throwError (ConstraintError s)
-
-
-lEncNonExtBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
-                -> Either String (ExtBS (ConType ValidIntegerConstraint))
-                -> BitString
-                -> PERMonad ()
-lEncNonExtBS nbs (Right vsc) (Right ok) (BitString vs)
-    | emptyConstraint
-           = throwError (ConstraintError "Empty constraint")
-    | null nbs && inSizeRange okrc || (not . null) nbs
-           = let (_,bs) = extractValue (bsCode nbs rc vs)
-              in  tell bs
-    | otherwise
-           = throwError (BoundsError "Value out of range")
-             where
-                rc = conType . getBSRC $ vsc
-                okrc :: [IntegerConstraint]
-                Valid okrc = conType . getBSRC $ ok
-                emptyConstraint = rc == bottom
-                inSizeRange []      = False
-                inSizeRange (x:rs)
-                    = let l = genericLength vs
-                      in l >= (lower x) && l <= (upper x) || inSizeRange rs
-
-
-
-lEncExtBS :: NamedBits -> Either String (ExtBS (ConType IntegerConstraint))
-                -> Either String (ExtBS (ConType ValidIntegerConstraint))
-                -> BitString
-                -> PERMonad()
-lEncExtBS nbs (Right vsc) (Right ok) (BitString vs)
-    =   let rc = conType . getBSRC $ vsc
-            Valid okrc = conType . getBSRC $ ok
-            ec = conType . getBSEC $ vsc
-            Valid okec = conType . getBSEC $ ok
-            emptyConstraint = rc == bottom && ec == bottom
-            inSizeRange []      = False
-            inSizeRange (x:rs)
-                = let l = genericLength vs
-                  in l >= (lower x) && l <= (upper x) || inSizeRange rs
-            foobar
-                | emptyConstraint
-                    = throwError (ConstraintError "Empty constraint")
-                | inSizeRange okrc
-                    = let (_,bs) = extractValue $ bsCode nbs rc vs
-                      in do tell [0]
-                            tell bs
-                | inSizeRange okec
-                     = let (_,bs) = extractValue $ bsExtCode nbs rc ec vs
-                       in do tell [1]
-                             tell bs
-                | otherwise
-                    = throwError (BoundsError "Value out of range")
-         in foobar
-
-
-bsCode :: NamedBits -> IntegerConstraint -> BitStream -> PERMonad ()
-bsCode nbs rc xs
-      =  let l  = lower rc
-             u  = upper rc
-             exs = if (not.null) nbs then editBS l u xs
-                     else tell xs
-         in
-             if u == 0
-             then tell []
-             else if u == l && u <= 65536
-                       then exs
-                       else if u <= 65536
-                            then let Val ub = u
-                                     Val lb = l
-                                     (_,ls) = extractValue $ exs
-                                 in do encodeConstrainedInt (fromInteger (genericLength ls - lb), u-l)
-                                       tell ls
-                            else let
-                                    (_,ls) = extractValue $ exs
-                                 in encodeBitsWithLength ls
-
-bsExtCode :: NamedBits -> IntegerConstraint -> IntegerConstraint -> BitStream -> PERMonad ()
-bsExtCode nbs rc ec xs
-    = let nc = rc `ljoin` ec
-          l  = lower nc
-          u  = upper nc
-          exs = if (not.null) nbs then editBS l u xs
-                     else tell xs
-      in
-          if u <= 65536
-             then let Val ub = u
-                      Val lb = l
-                      (_,ls) = extractValue $ exs
-                  in do
-                        encodeConstrainedInt (fromInteger (genericLength ls -lb), u-l)
-                        tell ls
-             else let (_,ls) = extractValue $ exs
-                  in encodeBitsWithLength ls
-
-
-editBS :: InfInteger -> InfInteger -> BitStream -> PERMonad ()
-editBS l u xs
-    = let lxs = genericLength xs
-      in if lxs < l
-        then add0s (l-lxs) xs
-        else
-            if lxs > u
-             then rem0s (lxs-u) xs
-             else tell xs
-
-add0s :: InfInteger -> BitStream -> PERMonad ()
-add0s (Val n) xs = do
-                     tell xs
-                     tell $ take (fromInteger n) [0,0..]
-add0s _ _        = throwError (OtherError "Invalid number input -- MIN or MAX.")
-
-rem0s :: InfInteger -> BitStream -> PERMonad ()
-rem0s (Val (n+1)) xs
-    = if last xs == 0
-           then rem0s (Val n) (init xs)
-           else throwError (OtherError "Last value is not 0")
-rem0s (Val 0) xs = tell xs
-rem0s _ _  = throwError (OtherError "Cannot remove a negative, MIN or MAX number of 0s.")
-
-\end{code}
-
-
-\begin{code}
-encodeBSNoSz :: NamedBits -> BitString -> PERMonad ()
-encodeBSNoSz nbs (BitString [])
-    = tell []
-encodeBSNoSz nbs (BitString bs)
-    = let rbs = reverse bs
-          rem0 = if (not.null) nbs then strip0s rbs
-            else rbs
-          ln = genericLength rem0
-       in
-        encodeBitsWithLength (reverse rem0)
-
-
-
-strip0s (a:r)
-    = if a == 0
-        then strip0s r
-        else (a:r)
-strip0s [] = []
 
 \end{code}
 
@@ -1520,9 +1597,7 @@ soCode rc t xs
              if u == l && u <= 65536
                        then encodeAll t xs
                        else if u <= 65536
-                            then let Val ub = u
-                                     Val lb = l
-                                 in do
+                            then do
                                      encodeConstrainedInt (((fromInteger.genericLength) xs-l), (u-l))
                                      encodeAll t xs
                             else do
@@ -1535,9 +1610,7 @@ soExtCode rc ec t xs
              u  = upper nc
          in
             if u <= 65536
-                            then let Val ub = u
-                                     Val lb = l
-                                 in do
+                            then do
                                      encodeConstrainedInt (((fromInteger.genericLength) xs-l), (u-l))
                                      encodeAll t xs
                             else do
@@ -1962,7 +2035,6 @@ lEncExtRCS (Right vsc) (Right ok) vs
 encodeRCSSz :: (RS a, Lattice a) => IntegerConstraint -> a -> PERMonad ()
 encodeRCSSz (IntegerConstraint l u) v
     = let t = getTop v
-          gl = genericLength (getString t)
        in
         manageRCS (encSF (getString t)) makeString encodeResString getString l u v
 
@@ -1977,7 +2049,6 @@ manageRCS e f g h l u v
 encodeResString :: (RS a, Lattice a) => a -> PERMonad ()
 encodeResString vs
     = let t = getTop vs
-          l = genericLength (getString t)
       in
          encodeWithLength top (encSF (getString t))  [(getString vs)] {- FIXME check top here -}
 
@@ -2071,13 +2142,13 @@ findV m (a:rs)
 \begin{code}
 
 type ElementSetSpecs a = SubtypeConstraint a
-
+{- FIXME: Doesn't compile now due to changes in approach to generating integer constraints -}
+{-
 fromPER x = decode4 x []
 
 decode4 (BuiltinType t) cl = fromPer3 t cl
 decode4 (ConstrainedType t c) cl = decode4 t (c:cl)
 decode4 (ReferencedType r t) cl  = decode4 t cl
-
 fromPer3 :: ASNMonadTrans t =>
             ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
 fromPer3 t@INTEGER cl = decodeInt3 cl
@@ -2085,7 +2156,7 @@ fromPer3 t@(SEQUENCE s) cl = decodeSEQUENCE s
 fromPer3 t@(TAGGED _ u) cl = decode4 u cl
 fromPer3 t@(SEQUENCEOF s) cl = decodeSequenceOf s cl
 fromPer3 t@(BITSTRING _) cl = decodeBitString cl
-
+-}
 \end{code}
 
 \section{Decoding Length Determinants}
@@ -2099,7 +2170,8 @@ lower bound ("lb") is negative, then the result is undefined.
 
 
 \begin{code}
-
+{- FIXME: Doesn't compile now due to changes in integer constraint generation -}
+{-
 decodeLengthDeterminant ::
    ASNMonadTrans t =>
    IntegerConstraint -> (Integer -> ASNType a -> t BG.BitGet [b]) -> ASNType a -> t BG.BitGet [b]
@@ -2120,7 +2192,7 @@ decodeLengthDeterminant c f t
 
       rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
       rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
-
+-}
 \end{code}
 
 This function decodes the length determinant for unconstrained length or large "ub".
@@ -2194,23 +2266,10 @@ Semi-constrained and unconstrained {\em INTEGER}s are encoded in a list of chunk
 \lq\lq large\rq\rq\ length determinant (as there are no constraints on the length
 determinant itself in this particular case).
 
-\begin{code}
-
-data ASNError =
-     ConstraintError String
-   | BoundsError     String
-   | DecodeError     String
-   | ExtensionError  String
-   | OtherError      String
-      deriving Show
-
-instance Error ASNError where
-   noMsg = OtherError "The impossible happened"
-
-\end{code}
 
 \begin{code}
-
+{- FIXME: Doesn't compile now due to changes in generating the integer constraints -}
+{-
 decodeInt3 :: ASNMonadTrans t => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
 decodeInt3 [] =
    lDecConsInt3 (return bottom) undefined (return bottom)
@@ -2222,7 +2281,7 @@ decodeInt3 cs =
       parentRoot            = lRootIntCons top ic
       (effExt,isExtensible) = lApplyExt parentRoot lc
       effRoot               = lEvalC lc parentRoot
-
+-}
 lDecConsInt3 :: ASNMonadTrans t =>
                  t BG.BitGet IntegerConstraint -> Bool -> t BG.BitGet IntegerConstraint -> t BG.BitGet InfInteger
 lDecConsInt3 mrc isExtensible mec =
@@ -2306,7 +2365,8 @@ decodeUInt3 =
 \section{SEQUENCE Decoding}
 
 \begin{code}
-
+{- FIXME: Doesn't compile due to changes in integer constraint generation -}
+{-
 decodeSEQUENCE s =
    do ps <- lift $ bitMask (l s)
       decodeSEQUENCEAux ps s
@@ -2326,13 +2386,14 @@ decodeSEQUENCEAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) 
    do x <- decode4 t []
       xs <- decodeSEQUENCEAux bitmap ts
       return (x :*: xs)
-
+-}
 \end{code}
 
 \section{SEQUENCE OF Decoding}
 
 \begin{code}
-
+{- FIXME: As above! -}
+{-
 nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
 
 decodeSequenceOf :: ASNMonadTrans t =>
@@ -2350,7 +2411,7 @@ decodeSequenceOfAux t me mv =
       v <- mv
       let rc = conType . getBSRC $ e
       decodeLengthDeterminant rc (flip nSequenceOfElements []) t
-
+-}
 \end{code}
 
 \subsection{BIT STRING --- Clause 15}
@@ -2368,7 +2429,8 @@ highly inefficient.
 class (MonadError ASNError (t BG.BitGet), MonadTrans t) => ASNMonadTrans t
 
 instance ASNMonadTrans (ErrorT ASNError)
-
+{- FIXME: as above! -}
+{-
 decodeBitString :: ASNMonadTrans t => [ElementSetSpecs BitString] -> t BG.BitGet BitString
 decodeBitString constraints =
    do xs <- decodeBitStringAux (errorize (lSerialEffCons lBSConE top constraints))
@@ -2388,7 +2450,7 @@ getBits n =
    do x <- BG.getBit
       xs <- getBits (n-1)
       return (fromEnum x:xs)
-
+-}
 \end{code}
 
 \section{Object Identifier}

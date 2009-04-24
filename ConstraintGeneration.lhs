@@ -12,142 +12,7 @@ import Control.Monad.Error
 
 
 
-Generation of Integer constraints.
 
-
--- X.680 G.4.2.3 states that extension additions are discarded if
--- a further constraint is subsequently serially applied.
--- Thus applyExt only requires the last constraint in the list
--- (the last in the serial application) and the root of the parent
--- type since values in extension additions can only be values that
--- are in the root of the parent type. The second element of the
--- returned pair indicates if the constraint is extensible (True) or
--- not (False).
-
-\begin{code}
-
-lApplyExt :: (IC a, Eq a, Lattice a, Show a) =>
-             Either String a -> SubtypeConstraint InfInteger -> (Either String a, Bool)
-lApplyExt rp (RootOnly _)  = (bottom, False)
-lApplyExt rp (EmptyExtension _) = (bottom, True)
-lApplyExt rp (NonEmptyExtension _ c) = (lApplyExtWithRt rp (lCalcEC c), True)
-
--- Need to define calcEC (follow rules outlined in X.680 G.4.3.8)
--- and appExtWithRt
--- For Integer constraints, set operators are only applied to
--- non-extensible constraints (see 47.2 and 47.4 for definitions of
--- SingleValue and ValueRange constraints) and thus calcEC is simply
--- calcC. Thus G.4.3.8 can be ignored.
-
-lCalcEC :: (IC a,Lattice a, Show a, Eq a) =>
-           ConstraintSet InfInteger -> Either String a
-lCalcEC c = lCalcC c
-
--- applyExtWithRt is simply serialC (defined below) since it is
--- the serial application of the parent root and the extension of the
--- final constraint. Only values in the paernt root may appear in the
--- extension (see X.680 section G.4.2.3).
-
-lApplyExtWithRt :: (Eq a, Lattice a, IC a, Show a) =>
-                   Either String a -> Either String a -> Either String a
-lApplyExtWithRt a b = lSerialC a b
-
--- need to define encInt
-
--- Need first input to host incremented constraint (due to serial constraints)
--- Need Either type to deal with legal and illegal constraints. An
--- illegal constraint (typically a mismatch between a parent type and
--- a constraint), will result in a string indicating the problem.
--- Need Maybe type to deal with empty constraint e.g. mutually exclusive intersection
--- As soon as one encounters an illegal constraint this is always
--- returned, and an empty constraint is only superceded by an illegal constraint.
--- Although an empty constraint could be viewed like an illegal
--- constraint (since it does not allow any legal values), this could
--- form either part of an extensible constraint whose overall effect
--- is lega
-
-lRootIntCons :: (IC a, Lattice a, Eq a, Show a) =>
-                 Either String a -> [SubtypeConstraint InfInteger] -> Either String a
-lRootIntCons x [] = x
-lRootIntCons x (c:cs) = lRootIntCons (lEvalC c x) cs
-
-lEvalC ::  (IC a, Lattice a, Eq a, Show a) =>
-          SubtypeConstraint InfInteger -> Either String a -> Either String a
-lEvalC (RootOnly c) x       = lSerialC x (lCalcC c)
-lEvalC (EmptyExtension c) x      = lSerialC x (lCalcC c)
-lEvalC (NonEmptyExtension c d) x = lSerialC x (lCalcC c)
-
--- See X.680 section G.4.2.3 for details on the serial application
--- of constraints. The second input is the new constraint whose
--- values must be bounded by the values in the first input. Thus
--- minBound in the second input matches the lower bound in the first
--- input and similarly for maxBound. Note that serialC takes two
--- Maybe type inputs since the illegal first input has already been
--- dealt with by applyIntCons. The second input cannot be illegal
--- since this is simply the (possible) set combination of atomic
--- constraints and involves no serial application of constraints.
-
-lSerialC :: (Show a, Lattice a, IC a, Eq a) =>
-            Either String a -> Either String a -> Either String a
-lSerialC mx my =
-   do a <- mx
-      b <- my
-      let la = getLower a
-          ua = getUpper a
-          lb = getLower b
-          ub = getUpper b
-          foobar
-             | not (within a b)
-                = throwError ("Constraint and parent type mismatch: " ++ show b ++ " is not within " ++ show a) -- Somehow we should prettyConstraint here
-             | otherwise
-                = return (serialCombine a b)
-      foobar
-
-lCalcC :: (IC a, Lattice a, Eq a, Show a) => ConstraintSet InfInteger -> Either String a
-lCalcC (UnionSet u) = lCalcU u
-
--- Need to define unionC which returns the union of two
--- constraints
-
-lCalcU :: (IC a, Lattice a, Eq a, Show a) => Union InfInteger -> Either String a
-lCalcU (IC i) = lCalcI i
-lCalcU(UC u i) = (lCalcU u) `ljoin` (lCalcI i)
-
-
-lCalcI :: (IC a, Lattice a, Eq a, Show a) =>
-          Intersection InfInteger -> Either String a
-lCalcI (INTER i e) = (lCalcI i) `meet` (lCalcA e)
-lCalcI (ATOM a)    = lCalcA a
-
-lCalcA :: (IC a, Lattice a, Eq a, Show a) => IE InfInteger -> Either String a
-lCalcA (E e) = lCalcE e
-
--- Note that the resulting constraint is always a contiguous set.
-
--- Need processCT to process the constraint implications of type
--- inclusion.
--- NOTE: Need to deal with illegal constraints resulting from
--- processCT
-
-lCalcE :: (IC a, Lattice a, Eq a, Show a) => Element InfInteger -> Either String a
-lCalcE (S (SV i)) = return (makeIC i i)
-lCalcE (C (Inc t)) = lProcessCT t []
-lCalcE (V (R (l,u))) = return (makeIC l u)
-
-
-
--- Note that a parent type does not inherit the extension of an
--- included type. Thus we use lRootIntCons on the included type.
-
-lProcessCT :: (IC a, Lattice a, Eq a, Show a) =>
-              ASNType InfInteger -> [SubtypeConstraint InfInteger] -> Either String a
-lProcessCT (BuiltinType INTEGER) cl = lRootIntCons top cl
-lProcessCT (ConstrainedType t c) cl  = lProcessCT t (c:cl)
-
-\end{code}
-
-
-\end{code}
 GENERATION OF EFFECTIVE STRING CONSTRAINT
 
  resEffCons takes a restricted string constraint and returns either a pair
@@ -184,7 +49,8 @@ lSerialEffCons :: (MonadError [Char] t,
                       Constraint b i,
                       Lattice (b i),
                       ExtConstraint a) =>
-                     (Element t1 -> Bool -> t (a (b i))) -> t (a1 (b i)) -> [SubtypeConstraint t1] -> t (a1 (b i))
+                     (Element t1 -> Bool -> t (a (b i))) -> t (a1 (b i))
+                        -> [SubtypeConstraint t1] -> t (a1 (b i))
 lSerialEffCons fn m ls
     = do
         let foobar
@@ -555,6 +421,22 @@ constraints.
 
 \begin{code}
 
+
+integerConElements :: (IC a, Lattice a, Eq a, Show a) => Element InfInteger -> Bool ->
+                Either String (ExtBS (ConType a))
+integerConElements (S (SV i)) b = return (makeEC (makeSC $ makeIC i i) top b)
+integerConElements (C (Inc t)) b  = lProcessCT t []
+integerConElements (V (R (l,u))) b = return (makeEC (makeSC $ makeIC l u) top b)
+
+-- {- FIXME Parent type does not inherit extension of included type -}
+
+lProcessCT :: (IC a, Lattice a, Eq a, Show a) =>
+              ASNType InfInteger -> [SubtypeConstraint InfInteger] -> Either String (ExtBS (ConType a))
+lProcessCT (BuiltinType INTEGER) cl = lSerialEffCons integerConElements top cl
+lProcessCT (ConstrainedType t c) cl  = lProcessCT t (c:cl)
+
+{- FIXME: Note that boolean input is thrown away -}
+
 lResConE :: (RS a,
                 IC i,
                 Lattice i,
@@ -563,7 +445,7 @@ lResConE :: (RS a,
                 Show i,
                 Eq a) =>
                 Element a -> Bool ->  Either String (ExtResStringConstraint (ResStringConstraint a i))
-lResConE (SZ (SC v)) b            = lEffSize v b
+lResConE (SZ (SC v)) b            = convertIntToRS $ lEffCons integerConElements v
 lResConE (P (FR (EmptyExtension _))) b       = throwError "Invisible!"
 lResConE (P (FR (NonEmptyExtension _ _))) b = throwError "Invisible!"
 lResConE (P (FR (RootOnly p)))  b       = lEffCons lPaConE (RootOnly p)
@@ -571,22 +453,36 @@ lResConE (C (Inc c)) b            = lProcessCST lResConE c []
 lResConE (S (SV v))  b            = throwError "Invisible!"
 
 
+convertIntToRS :: (RS a,
+                IC i,
+                Lattice i,
+                Lattice a,
+                Eq i,
+                Show i,
+                Eq a) => Either String (ExtBS (ConType i))
+                         -> Either String (ExtResStringConstraint (ResStringConstraint a i))
+convertIntToRS (Right (ExtBS (ConType x) (ConType y) b))
+    = Right (ExtResStringConstraint (ResStringConstraint top x) (ResStringConstraint top y) b)
+convertIntToRS (Left s) = Left s
+
+{- FIXME: Note that boolean is thrown away -}
+
 lBSConE :: (Eq i,
             Show i,
             Lattice i,
             IC i) =>
             Element BitString -> Bool -> Either String (ExtBS (ConType i))
-lBSConE (SZ (SC v)) b  = lEffSize v b
+lBSConE (SZ (SC v)) b  = lEffCons integerConElements v
 lBSConE (C (Inc c)) b  = throwError "Invisible!"
 lBSConE (S (SV v))  b  = throwError "Invisible!"
 
-
+{- FIXME: Note that boolean input is thrown away -}
 lOSConE :: (Eq i,
             Show i,
             Lattice i,
             IC i) =>
             Element OctetString -> Bool -> Either String (ExtBS (ConType i))
-lOSConE (SZ (SC v)) b  = lEffSize v b
+lOSConE (SZ (SC v)) b  = lEffCons integerConElements v
 lOSConE (C (Inc c)) b  = throwError "Invisible!"
 lOSConE (S (SV v))  b  = throwError "Invisible!"
 
@@ -623,38 +519,22 @@ lPaConE (S (SV v)) b
    = return (ExtResStringConstraint (ResStringConstraint v top)
                                       (ResStringConstraint top top) b)
 
-
+{- FIXME: Note that boolean value is thrown away -}
 
 lSeqOfConE :: (Eq i,
             Show i,
             Lattice i,
             IC i) =>
             Element [a] -> Bool -> Either String (ExtBS (ConType i))
-lSeqOfConE (SZ (SC v)) b  = lEffSize v b
+lSeqOfConE (SZ (SC v)) b  = lEffCons integerConElements v
 lSeqOfConE (C (Inc c)) b  = throwError "Invisible!"
 lSeqOfConE (S (SV v))  b  = throwError "Invisible!"
 lSeqOfConE (IT (WC c)) b  = throwError "Invisible!"
 lSeqOfConE (IT WCS) b     = throwError "Invisible!"
 
 
-lEffSize :: (IC a1,
-                Lattice a1,
-                Eq a1,
-                Show a1,
-                Constraint b a1,
-                Lattice (b a1),
-                ExtConstraint a) =>
-               SubtypeConstraint InfInteger -> Bool -> Either String (a (b a1))
-lEffSize (RootOnly c) b
-    = do ec <- lCalcC c
-         return (makeEC (makeSC ec) top b)
-lEffSize (EmptyExtension c) b
-    = do ec <- lCalcC c
-         return (makeEC (makeSC ec) top True)
-lEffSize (NonEmptyExtension c d) b
-    = do r <- lCalcC c
-         e <- lCalcC d
-         return (makeEC (makeSC r) (makeSC e) True)
+
+
 
 
 lProcessCST :: (Lattice (t1 (a1 (b i))),
