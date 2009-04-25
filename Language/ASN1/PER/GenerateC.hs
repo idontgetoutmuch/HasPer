@@ -51,6 +51,13 @@ cIf :: Doc -> [Doc] -> Doc
 cIf condition statements =
    text "if (" <> condition <> text ")" $+$  nest 2 (myBraces (vcat statements))
 
+cIfElse :: Doc -> [Doc] -> [Doc] -> Doc
+cIfElse condition ts fs =
+   text "if (" <> condition <> text ")" $+$ 
+   nest 2 (myBraces (vcat ts)) $+$
+   text "else" $+$
+   nest 2 (myBraces (vcat fs))
+
 cMainFunction :: Doc -> Doc
 cMainFunction x = foldr ($+$) empty
                               [ text "int main(int ac, char **av) {"
@@ -78,13 +85,19 @@ readBody t@(ReferencedType r ct) =
          , space
          , cComment (text "Decode the input buffer as" <+> text name <+> text "type")
          , cStatement (text "rval = per_decode(0, &asn_DEF_" <> text name <> comma <+>
-                       cPtr <> comma <+> text "write_out, fp)")
-         , cStatement (text "fclose(fp)")
-         , cIf (text "ec.encoded == -1")
-               [ text "fprintf(stderr," $+$
-                 nest nestLevel (text "\"Could not encode " <+> text name <+> text "(at %s)\\n\"" <> comma $+$
-                 text "ec.failed_type")
+                       text "(void **)&" <> cPtr <> comma <+> text "buf, size)")
+         , cIf (text "rval.code != RC_OK")
+               [ cStatement (text "fprintf(stderr," $+$
+                              nest nestLevel (text "\"%s: Broken" <+> text name <+>
+                                              text "encoding at byte %ld\\n\"" <> comma $+$
+                                              text "filename" <> comma <+> text "(long)rval.consumed)"))
+               , cStatement (text "exit(65)") <+> cComment (text "better, EX_DATAERR")
                ]
+         , space
+         , cComment (text "Print the decoded" <+> text name <+> text "type as XML")
+         , cStatement (text "xer_fprint(stdout, &asn_DEF_" <> text name <> cPtr <> text ")")
+         , space
+         , cStatement (text "return 0") <+> cComment (text "Decoding finished successfully")
          ]
       cPtr = text (lowerFirst name)
       cType = text name <> text "_t"
