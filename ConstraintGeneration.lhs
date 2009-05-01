@@ -74,6 +74,8 @@ lSerialApply :: (MonadError [Char] m,
 lSerialApply fn ersc c = lEitherApply ersc (lEffCons fn c)
 
 \end{code}
+Note that if a complete constraint in serial application is not PER-visible then is simply
+ignored (X.691 B.2.2.2).
 
 \begin{code}
 
@@ -95,7 +97,8 @@ lEitherApply esrc m
                                  then return (makeEC (updateV rc1 rc2) top False)
                                  else throwError "Parent type and constraint mismatch"
                      foobar1
-        foobar
+        catchError foobar (\err -> return (makeEC (getRC esrc) top False) )
+
 
 
 lSerialApplyLast :: (MonadError [Char] t1,
@@ -132,7 +135,7 @@ lLastApply esrc m
                                                     (updateV r1 e2) True)
                          | otherwise = throwError "Parent type and constraint mismatch"
                     foobar1
-         foobar
+         catchError foobar (\err -> return (makeEC (getRC esrc) top False) )
 
 \end{code}
 
