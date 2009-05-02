@@ -52,3 +52,4 @@ INTEGER Tests
 tInteger1 = ReferencedType (Ref "INTEGER1") (BuiltinType INTEGER)
 vInteger1 = Val 4096
 
+v2_31 = (Val 2^31)

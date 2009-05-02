@@ -34,6 +34,13 @@ generateC t x =
    do zt <- getZonedTime       
       return (creationData zt $$ includeFiles t $$ fileFunction $$ mainC t x)
 
+-- | Generate a C program which reads PER from a file given an ASN.1 type
+-- and a corresponding value.
+generateCRead :: ASNType a -> a -> IO Doc
+generateCRead t x =
+   do zt <- getZonedTime       
+      return (creationData zt $$ includeFiles t $$ mainCRead t x)
+
 cComment :: Doc -> Doc
 cComment x = text "/*" <+> x <+> text "*/"
 
@@ -75,17 +82,27 @@ readBody t@(ReferencedType r ct) =
    where
       ss =
          [ cStatement (text "char buf[1024]") <+> cComment (text "Temporary buffer")
-         , cStatement (cType <+> text "*" <> cPtr) <+> cComment (text "Type to decode")
+         , cStatement (cType <+> text "*" <> cPtr <+> text "= 0") <+> cComment (text "Type to decode")
          , cStatement (text "asn_dec_rval_t rval") <+> cComment (text "Decoder return value")
          , cStatement (text "FILE *fp") <+> cComment (text "Input file handler")
          , cStatement (text "size_t size") <+> cComment (text "Number of bytes read")
          , cStatement (text "char *filename") <+> cComment (text "Input file name")
          , space
+         , cComment (text "Require a single filename argument")
+         , cIfElse (text "ac != 2")
+                   [
+                     cStatement (text "fprintf(stderr, \"Usage: %s <file.per>\\n\", av[0])")
+                   , cStatement (text "exit(64)") <+> cComment (text "better, EX_USAGE")
+                   ]
+                   [
+                     cStatement (text "filename = av[1]")
+                   ]
+         , space
          , readFileFunction
          , space
          , cComment (text "Decode the input buffer as" <+> text name <+> text "type")
-         , cStatement (text "rval = per_decode(0, &asn_DEF_" <> text name <> comma <+>
-                       text "(void **)&" <> cPtr <> comma <+> text "buf, size)")
+         , cStatement (text "rval = uper_decode(0, &asn_DEF_" <> text name <> comma <+>
+                       text "(void **)&" <> cPtr <> comma <+> text "buf, size, 0, 0)")
          , cIf (text "rval.code != RC_OK")
                [ cStatement (text "fprintf(stderr," $+$
                               nest nestLevel (text "\"%s: Broken" <+> text name <+>
@@ -95,7 +112,7 @@ readBody t@(ReferencedType r ct) =
                ]
          , space
          , cComment (text "Print the decoded" <+> text name <+> text "type as XML")
-         , cStatement (text "xer_fprint(stdout, &asn_DEF_" <> text name <> cPtr <> text ")")
+         , cStatement (text "xer_fprint(stdout, &asn_DEF_" <> text name <> comma <+> cPtr <> text ")")
          , space
          , cStatement (text "return 0") <+> cComment (text "Decoding finished successfully")
          ]
@@ -156,7 +173,7 @@ mainC t@(ReferencedType r ct) v =
                 )
               , text "}"
               , text "/* Also print the constructed " <> text name <> text " XER encoded (XML) */"
-              , text "xer_fprint(stdout,&asn_DEF_" <> text name <> text "," <> cPtr <> text ");"
+              , text "xer_fprintf(stdout,&asn_DEF_" <> text name <> text "," <> cPtr <> text ");"
               , text "return 0; /* Encoding finished successfully */"
               ]
            )
@@ -224,7 +241,7 @@ readFileFunction =
         , cComment   (text "Read up to the buffer size")
         , cStatement (text "size = fread(buf, 1, sizeof(buf), fp)")
         , cStatement (text "fclose(fp)")
-        , cIf (text "!size") [ cStatement (text "fprint(stderr, \"%s: Empty or broken\\n\", filename)")
+        , cIf (text "!size") [ cStatement (text "fprintf(stderr, \"%s: Empty or broken\\n\", filename)")
                              , cStatement (text "exit(65)") <+>
                                            cComment (text "better, EX_DATAERR")
                              ]
