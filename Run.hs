@@ -147,3 +147,16 @@ example1 =
 -}
 
 main = test "generated" rt3 v3
+
+encodeTest genFile ty val = do
+   CE.bracketOnError
+      getCurrentDirectory
+      (\currDir -> setCurrentDirectory currDir) 
+      (\currDir -> do t <- getCurrentTime
+                      let u = "asn1c." ++ show (utctDay t) ++ "." ++ show (utctDayTime t)
+                      createDirectory u
+                      setCurrentDirectory u
+                      do c <- generateC ty val
+                         writeASN1AndC (genFile <.> "asn1") (genFile <.> "c") ty val
+                         setCurrentDirectory currDir
+      )
