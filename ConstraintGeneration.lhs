@@ -74,7 +74,7 @@ lSerialApply :: (MonadError [Char] m,
 lSerialApply fn ersc c = lEitherApply ersc (lEffCons fn c)
 
 \end{code}
-Note that if a complete constraint in serial application is not PER-visible then is simply
+Note that if a complete constraint in serial application is not PER-visible then it is simply
 ignored (X.691 B.2.2.2).
 
 \begin{code}
