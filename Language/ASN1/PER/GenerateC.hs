@@ -17,6 +17,7 @@
 module Language.ASN1.PER.GenerateC
    (
      generateC
+   , generateCRead
    ) where
 
 import Text.PrettyPrint
@@ -173,7 +174,7 @@ mainC t@(ReferencedType r ct) v =
                 )
               , text "}"
               , text "/* Also print the constructed " <> text name <> text " XER encoded (XML) */"
-              , text "xer_fprintf(stdout,&asn_DEF_" <> text name <> text "," <> cPtr <> text ");"
+              , text "xer_fprint(stdout,&asn_DEF_" <> text name <> text "," <> cPtr <> text ");"
               , text "return 0; /* Encoding finished successfully */"
               ]
            )
