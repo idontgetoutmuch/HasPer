@@ -17,6 +17,8 @@ import System.Info
 
 import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitGet as BG
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Binary.BitPut as BP
 
 import Language.ASN1.PER.GenerateC
 import GenerateModule
@@ -31,7 +33,8 @@ skeletons =
       _         -> "/usr/local/share/asn1c"
 
 asn1c = "asn1c"
-asn1cOptions = "-gen-PER -fnative-types -S"
+asn1cOptions = "-gen-PER -S"
+-- asn1cOptions = "-gen-PER -fnative-types -S"
 
 cc = 
    case os of
@@ -75,6 +78,11 @@ runCommands ((c,e):xs) =
 writeASN1AndC asn1File cFile t v =
    do writeFile asn1File (render (prettyModule t))
       c <- generateC t v
+      writeFile cFile (render c)
+
+writeASN1AndCRead asn1File cFile t v =
+   do writeFile asn1File (render (prettyModule t))
+      c <- generateCRead t v
       writeFile cFile (render c)
 
 test genFile ty val =
@@ -156,8 +164,7 @@ encodeTest genFile ty val = do
                       let u = "asn1c." ++ show (utctDay t) ++ "." ++ show (utctDayTime t)
                       createDirectory u
                       setCurrentDirectory u
-                      do c <- generateCRead ty val
-                         writeASN1AndC (genFile <.> "asn1") (genFile <.> "c") ty val
+                      do writeASN1AndCRead (genFile <.> "asn1") (genFile <.> "c") ty val
                          runCommands [(asn1c ++ " " ++ asn1cOptions ++ " " ++ skeletons ++ " " ++ (genFile <.> "asn1"), "Failure in asn1c")]
                          d <- getCurrentDirectory
                          fs <- getDirectoryContents d
@@ -173,11 +180,11 @@ encodeTest genFile ty val = do
                          putStrLn (linker ++ " " ++ linkerOut genFile ++ " " ++ ("*" <.> objectSuffix))
                          runCommands [
                               (linker ++ " " ++ linkerOut genFile ++ " " ++ ("*" <.> objectSuffix), "Failure linking")
-                            -- , ((executable genFile) ++ " " ++ (genFile <.> "per"), "Failure executing")
                             ]
-{-
-                         readGen (genFile <.> "per") ty)
--}
+                         B.writeFile (genFile <.> "per") (f ty val)
+                         runCommands [
+                              ((executable genFile) ++ " " ++ (genFile <.> "per"), "Failure executing")
+                            ]
                          setCurrentDirectory currDir
       )
    where
@@ -199,3 +206,8 @@ encodeTest genFile ty val = do
             _         -> joinPath [".",f]
       name = referenceTypeName ty
       referenceTypeName (ReferencedType r _) = ref r
+      f t x =
+         case possibleError of
+            Left e -> error (show e)
+            Right y -> B.pack . BL.unpack . BP.runBitPut . mapM_ (BP.putNBits 1) $ encoding
+         where (possibleError, encoding) = extractValue (encode t [] x) 
