@@ -156,7 +156,46 @@ encodeTest genFile ty val = do
                       let u = "asn1c." ++ show (utctDay t) ++ "." ++ show (utctDayTime t)
                       createDirectory u
                       setCurrentDirectory u
-                      do c <- generateC ty val
+                      do c <- generateCRead ty val
                          writeASN1AndC (genFile <.> "asn1") (genFile <.> "c") ty val
+                         runCommands [(asn1c ++ " " ++ asn1cOptions ++ " " ++ skeletons ++ " " ++ (genFile <.> "asn1"), "Failure in asn1c")]
+                         d <- getCurrentDirectory
+                         fs <- getDirectoryContents d
+                         let cFiles = 
+                                case os of
+                                   "mingw32" -> 
+                                      (genFile <.> "c"):(name <.> "c"):(cFiles' ["converter-sample.c"] ".c.lnk" fs)
+                                   _ ->
+                                      (genFile <.> "c"):(name <.> "c"):(cFiles' [genFile <.> "c", name <.> "c", "converter-sample" <.> "c"] ".c" fs)
+                         putStrLn (show cFiles)
+                         putStrLn (show (map compile cFiles))
+                         runCommands (map compile cFiles)
+                         putStrLn (linker ++ " " ++ linkerOut genFile ++ " " ++ ("*" <.> objectSuffix))
+                         runCommands [
+                              (linker ++ " " ++ linkerOut genFile ++ " " ++ ("*" <.> objectSuffix), "Failure linking")
+                            -- , ((executable genFile) ++ " " ++ (genFile <.> "per"), "Failure executing")
+                            ]
+{-
+                         readGen (genFile <.> "per") ty)
+-}
                          setCurrentDirectory currDir
       )
+   where
+      cFiles' excls suffix =
+         map (skeletons </>) .
+         filters (map (/=) excls) . 
+         map (<.> ".c") . 
+         map fst . 
+         filter ((== suffix). snd) . 
+         (map splitExtensions)
+      filters = flip (foldr filter)
+      linkerOut f = 
+         case os of
+            "mingw32" -> "-o " ++ (f <.> "exe")
+            _         -> "-o " ++ f
+      executable f = 
+         case os of
+            "mingw32" -> f <.> "exe"
+            _         -> joinPath [".",f]
+      name = referenceTypeName ty
+      referenceTypeName (ReferencedType r _) = ref r
