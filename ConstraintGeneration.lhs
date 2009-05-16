@@ -71,7 +71,7 @@ lSerialApply :: (MonadError [Char] m,
                  ExtConstraint a2,
                  ExtConstraint a) =>
                 (Element t -> Bool -> m (a1 (b i))) -> a (b i) -> SubtypeConstraint t -> m (a2 (b i))
-lSerialApply fn ersc c = lEitherApply ersc (lEffCons fn c)
+lSerialApply fn ersc c = lEitherApply ersc (lEffCons False fn c)
 
 \end{code}
 Note that if a complete constraint in serial application is not PER-visible then it is simply
@@ -109,7 +109,7 @@ lSerialApplyLast :: (MonadError [Char] t1,
                      ExtConstraint a,
                      ExtConstraint a2) =>
                     (Element t -> Bool -> t1 (a1 (b i))) -> a (b i) -> SubtypeConstraint t -> t1 (a2 (b i))
-lSerialApplyLast fn x c = lLastApply x (lEffCons fn c)
+lSerialApplyLast fn x c = lLastApply x (lEffCons False fn c)
 
 
 lLastApply :: (MonadError [Char] t,
@@ -148,11 +148,11 @@ lEffCons :: (Eq (b i),
                 Constraint b i,
                 Lattice (b i),
                 ExtConstraint a,
-                MonadError [Char] t1) =>
+                MonadError [Char] t1) => Bool ->
                (Element t -> Bool -> t1 (a (b i))) -> SubtypeConstraint t -> t1 (a (b i))
-lEffCons fn (RootOnly c)         = lCon fn c False
-lEffCons fn (EmptyExtension c)        = lCon fn c True
-lEffCons fn (NonEmptyExtension c e)  = lExtendC (lCon fn c False) (lCon fn e False)
+lEffCons x fn (RootOnly c)         = lCon fn c x
+lEffCons _ fn (EmptyExtension c)        = lCon fn c True
+lEffCons _ fn (NonEmptyExtension c e)  = lExtendC (lCon fn c False) (lCon fn e False)
 
 \end{code}
 
@@ -448,10 +448,10 @@ lResConE :: (RS a,
                 Show i,
                 Eq a) =>
                 Element a -> Bool ->  Either String (ExtResStringConstraint (ResStringConstraint a i))
-lResConE (SZ (SC v)) b            = convertIntToRS $ lEffCons integerConElements v
+lResConE (SZ (SC v)) b            = convertIntToRS $ lEffCons b integerConElements v
 lResConE (P (FR (EmptyExtension _))) b       = throwError "Invisible!"
 lResConE (P (FR (NonEmptyExtension _ _))) b = throwError "Invisible!"
-lResConE (P (FR (RootOnly p)))  b       = lEffCons lPaConE (RootOnly p)
+lResConE (P (FR (RootOnly p)))  b       = lEffCons b lPaConE (RootOnly p)
 lResConE (C (Inc c)) b            = lProcessCST lResConE c []
 lResConE (S (SV v))  b            = throwError "Invisible!"
 
@@ -475,7 +475,7 @@ lBSConE :: (Eq i,
             Lattice i,
             IC i) =>
             Element BitString -> Bool -> Either String (ExtBS (ConType i))
-lBSConE (SZ (SC v)) b  = lEffCons integerConElements v
+lBSConE (SZ (SC v)) b  = lEffCons b integerConElements v
 lBSConE (C (Inc c)) b  = throwError "Invisible!"
 lBSConE (S (SV v))  b  = throwError "Invisible!"
 
@@ -485,7 +485,7 @@ lOSConE :: (Eq i,
             Lattice i,
             IC i) =>
             Element OctetString -> Bool -> Either String (ExtBS (ConType i))
-lOSConE (SZ (SC v)) b  = lEffCons integerConElements v
+lOSConE (SZ (SC v)) b  = lEffCons b integerConElements v
 lOSConE (C (Inc c)) b  = throwError "Invisible!"
 lOSConE (S (SV v))  b  = throwError "Invisible!"
 
@@ -529,7 +529,7 @@ lSeqOfConE :: (Eq i,
             Lattice i,
             IC i) =>
             Element [a] -> Bool -> Either String (ExtBS (ConType i))
-lSeqOfConE (SZ (SC v)) b  = lEffCons integerConElements v
+lSeqOfConE (SZ (SC v)) b  = lEffCons b integerConElements v
 lSeqOfConE (C (Inc c)) b  = throwError "Invisible!"
 lSeqOfConE (S (SV v))  b  = throwError "Invisible!"
 lSeqOfConE (IT (WC c)) b  = throwError "Invisible!"

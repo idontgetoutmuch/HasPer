@@ -327,7 +327,7 @@ unconstrained length i.e. it either has no upper bound on the size of the value,
 or the upper bound is at least 64k. The inputs are the value encoding
 function and the list of values to be encoded. If the length of the input value is less than
 16K then the length is encoded followed by the value. Otherwise the auxiliary function {\em
-encodeUnocnstrainedLengthAux} is called. This function manages the fragmenting of the input
+encodeUnconstrainedLengthAux} is called. This function manages the fragmenting of the input
 value into blocks of at most four 16K blocks. These are each encoded -- their block length
 followed by the encoding of the block of values -- and if the block contains four 16k
 blocks the process is repeated with the next block of 16K values.
@@ -799,18 +799,20 @@ and the value to be encoded -- and an additional input, the named bits of type {
 NamedBits}. If the constraint list is empty the function {\em encodeUnconstrainedBitstring} is
 called. Otherwise, {\em encodeBitstringWithConstraint} is called. Note that there are two ways
 in which a BITSTRING type may have no PER-visible constraints. The first is when there are no
-constraints associated with the type. The second is when at least one of the serially applied
-constraints is non-PER visible. This is determined when generating the effective constraint
+constraints associated with the type. The second is when all of the serially applied
+constraints are non-PER visible. This is determined when generating the effective constraint
 for a type using the function {\em lSerialEffCon} defined in the module {\em
 ConstraintGeneration}.
-
 
 \begin{code}
 
 encodeBitstring :: NamedBits -> [SubtypeConstraint BitString] -> BitString -> PERMonad ()
-encodeBitstring nbs [] x = {- X691REF: 15.2 -} encodeUnconstrainedBitstring nbs x
+encodeBitstring nbs [] x
+    = {- X691REF: 15.2 -}
+      encodeUnconstrainedBitstring nbs x
 encodeBitstring nbs cs x
-    = {- X691REF: 15.3 -} encodeBitstringWithConstraint nbs cs x
+    = {- X691REF: 15.3 -}
+      encodeBitstringWithConstraint nbs cs x
 
 \end{code}
 
@@ -823,28 +825,26 @@ encodeUnconstrainedBitstring :: NamedBits -> BitString -> PERMonad ()
 encodeUnconstrainedBitstring namedBits (BitString [])
     = tell []
 encodeUnconstrainedBitstring namedBits (BitString bs)
-    = let rbs = reverse bs
-          rem0 = if (not.null) namedBits
+    = let rem0 = if (not.null) namedBits
                     then {- X691REF: 15.2 -}
-                            strip0s rbs
-                    else rbs
-      in {- X691REF: 15.11 -}
-            encodeBitsWithLength (reverse rem0)
+                            strip0s bs
+                    else bs
+      in {- X691REF: 15.11 with ub unset -}
+            encodeBitsWithLength rem0
 
 
-
-strip0s (a:r)
-    = if a == 0
-        then strip0s r
-        else (a:r)
+strip0s :: BitStream -> BitStream
 strip0s [] = []
+strip0s bs
+    = if last bs == 0
+        then strip0s (init bs)
+        else bs
 
 \end{code}
 
-
-If the constraint is not extensible then {\em encodeNonExtConsBitstring} is called. If it is
-extensible then {\em encodeExtConsBitstring} is called. They both take the effective
-constraint and actual constraint associated with the type as input.
+{\em encodeBitstringWithConstraint} calls {\em encodeNonExtConsBitstring} if the constraint is not
+extensible. If it is extensible then {\em encodeExtConsBitstring} is called. They both take the
+effective constraint and actual constraint associated with the type as input.
 
 \begin{code}
 
@@ -892,9 +892,11 @@ encodeNonExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
            = throwError (ConstraintError "Empty constraint")
     | otherwise
            = {- X691REF: 15.8 - 15.11 -}
-             encodeConstrainedBitstring nbs rc vrc vs
+             encodeConstrainedBitstring [] nbs l u vrc vs
              where
                 rc = conType . getRC $ vsc
+                l = lower rc
+                u = upper rc
                 vrc = conType . getRC $ ok
 
 \end{code}
@@ -908,9 +910,9 @@ called.
 The constraint is empty and thus no values can be encoded. Note that this means that there is a
 PER-visible size constraint that has no values. An appropriate error is thrown.
 \item
-There is a PER-visible constraint. The function {\em encodeConstrainedBitstring} is called.
-If this results in an error (the value cannot satisfy the constraint root) then {\em
-encodeExtConstrainedBitstring} is called. The function Haskell library function {\em catchError}
+There is a PER-visible constraint. The function {\em encodeConstrainedBitstring} is called with the prefix bit
+set to 0. If this results in an error (the value cannot satisfy the constraint root) then {\em
+encodeNonExtRootBitstring} is called. The Haskell library function {\em catchError}
 manages the error/non-error cases.
 \end{itemize}
 
@@ -931,55 +933,62 @@ encodeExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
            = throwError (ConstraintError "Empty constraint")
     | otherwise
            = do
-                catchError (encodeConstrainedBitstring nbs rc vrc vs)
-                           (\err -> encodeExtConstrainedBitstring nbs rc ec vec vs)
+                catchError ({- X691REF: 15.6 within root -}
+                            encodeConstrainedBitstring [0] nbs l u vrc vs)
+                           (\err -> do {- X691REF: 15.6 not in root -}
+                                       encodeNonExtRootBitstring nbs rc ec vec vs)
              where
                 rc = conType . getRC $ vsc
+                l = lower rc
+                u = upper rc
                 ec = conType . getEC $ vsc
                 vrc = conType . getRC $ ok
                 vec = conType . getEC $ ok
 
 \end{code}
 
-{\em encodeConstrainedBitstring} first checks if there are any named bits. If there are then
-{\em editBS} is called which adds or removes zeroes as appropriate. Otherwise the bitstring is
-left unchanged.
+{\em
+{\em encodeConstrainedBitstring} takes a prefix bit as the first
+input and has two list-pattern based cases. The first case has an empty list
+as its second argument indicating that there are no named bits. The second case uses the
+pattern {\em (b:rs)} to indicate that there is at least one named bit.
 
 Note that X.691 15.8 states that if a bitstring is constrained to be of zero length then
 it shall not be encoded. It is not clear whether this means that a bitstring with no length is
 not encoded, or if any bitstring associated with a bitstring type with a zero-length
 constraint is not encoded. We have implemented it using the former case. That is, the
-bitstring must satisfy the constraint (up to the removal of trailing 0 bits as des cribed in
+bitstring must satisfy the constraint (up to the removal of trailing 0 bits as described in
 X.691 15.3).
 \begin{code}
 
-encodeConstrainedBitstring :: NamedBits -> IntegerConstraint -> ValidIntegerConstraint ->
-                                BitStream -> PERMonad ()
-encodeConstrainedBitstring nbs rc (Valid vrc) xs
-      =  let l  = lower rc
-             u  = upper rc
-             exs = if (not.null) nbs
-                     then   {- X691REF: 15.3 -}
-                            editBS l u xs
-                     else if inSizeRange xs vrc
-                            then tell xs
-                            else throwError (BoundsError "Size out of range")
-         in
-             if u == 0
-             then   {- X691REF: 15.8 -}
-                    tell []
-             else if u == l && u <= 65536
-                       then {- X691REF: 15.9 and 15.10 -}
-                            exs
-                       else if u <= 65536
-                            then {- X691REF: 15.11 (ub set) -}
-                                 let (_,ls) = extractValue $ exs
-                                 in do encodeConstrainedInt ((fromInteger.genericLength) ls - l, u-l)
-                                       exs
-                            else {- X691REF: 15.11 (ub unset) -}
-                                 let (_,ls) = extractValue $ exs
-                                 in encodeBitsWithLength ls
+type PrefixBit = BitStream
 
+encodeConstrainedBitstring :: PrefixBit -> NamedBits -> InfInteger -> InfInteger
+                                -> ValidIntegerConstraint -> BitStream -> PERMonad ()
+encodeConstrainedBitstring pb [] l u (Valid vrc) xs
+   | inSizeRange xs vrc
+            = encodeConBS pb l u xs
+   | otherwise
+            = throwError (BoundsError "Size out of range")
+encodeConstrainedBitstring pb (b:rs) l u _ xs
+    = {- X691REF: 15.3 -}
+       do
+         (v,bs) <- return $ extractValue $ namedBitsEdit l u xs
+         encodeC (encodeConBS pb l u) (v,bs)
+
+encodeC fun (Left x,bs)  = throwError (BoundsError "Invalid length")
+encodeC fun (_,bs)   = fun bs
+\end{code}
+
+{\em inSizeRange} is a predicate that tests whether a value satisfies a size constraint. The
+length of the value is tested against the actual constraint -- possibly a non-contiguous set
+of values -- and not against the effective constraint.
+
+{\em namedBitsEdit} applies the necessary pruning of or appending of 0s to a bitstring to
+produce a minimal size value that satisfies the constraint associated with the type. This is
+only applied when the BIT STRING type has associated named bits.
+
+\begin{code}
 
 inSizeRange :: [b] -> [IntegerConstraint] -> Bool
 inSizeRange _  [] = False
@@ -988,28 +997,11 @@ inSizeRange p qs = inSizeRangeAux qs
       l = genericLength p
       inSizeRangeAux (x:rs) =
          l >= (lower x) && l <= (upper x) || inSizeRangeAux rs
-
-encodeExtConstrainedBitstring :: NamedBits -> IntegerConstraint -> IntegerConstraint -> ValidIntegerConstraint -> BitStream -> PERMonad ()
-encodeExtConstrainedBitstring nbs rc ec (Valid erc) xs
-    = let nc = rc `ljoin` ec
-          l  = lower nc
-          u  = upper nc
-          exs = if (not.null) nbs then editBS l u xs
-                     else if inSizeRange xs erc
-                            then tell xs
-                            else throwError (BoundsError "Size out of range")
-      in
-          if u <= 65536
-             then let (_,ls) = extractValue $ exs
-                  in do
-                        encodeConstrainedInt ((fromInteger.genericLength) ls - l, u-l)
-                        exs
-             else let (_,ls) = extractValue $ exs
-                  in encodeBitsWithLength ls
+      inSizeRangeAux [] = False
 
 
-editBS :: InfInteger -> InfInteger -> BitStream -> PERMonad ()
-editBS l u xs
+namedBitsEdit :: InfInteger -> InfInteger -> BitStream -> PERMonad ()
+namedBitsEdit l u xs
     = let lxs = genericLength xs
       in if lxs < l
         then add0s (l-lxs) xs
@@ -1038,6 +1030,68 @@ rem0s' l xs
     = if genericLength xs > l && last xs == 0
         then rem0s' l (init xs)
         else tell xs
+\end{code}
+
+{\em encodeConBS}  applies one of X.691 15.8-15.11.
+
+Note that in the last case of {\em encodeConBS} the lower bound of the constraint is ignored.
+This is becuase the lower bound does not affect these length encodings (X.691 10.9.3.5 Note).
+
+\begin{code}
+
+-- encodeConBS :: PrefixBit -> InfInteger -> InfInteger -> BitStream -> PERMonad ()
+encodeConBS pb l u xs
+    = if u == 0
+             then   {- X691REF: 15.8 -}
+                    do  tell pb
+                        tell []
+             else if u == l && u <= 65536
+                       then {- X691REF: 15.9 and 15.10 -}
+                            do
+                              tell pb
+                              tell xs
+                       else if u <= 65536
+                            then {- X691REF: 15.11 (ub set) -}
+                                do tell pb
+                                   encodeConstrainedInt ((fromInteger.genericLength) xs - l, u-l)
+                                   tell xs
+                            else {- X691REF: 15.11 (ub unset) -}
+                                do
+                                    tell pb
+                                    encodeBitsWithLength xs
+
+\end{code}
+
+
+{\em encodeNonExtRootBitstring} is similar to {\em encodeExtRootBitstring} but needs the
+extension constraint and encodes the length of the bitstring as a semi-constrained whole
+number with the lower bound set to zero as specified by X.691 15.11 and the note associated with
+X.691 10.9.3.5.
+
+Note that when pre-processing the bitstring in the named bits case, the upper and lower bound
+of the constraint is generated from the union of the root and non-root constraint using our
+{\em Lattice} class function {\em ljoin}. The {\em Lattice class}, related classes and class
+instantiations are defined in the module {\em LatticeMod}.
+
+\begin{code}
+
+encodeNonExtRootBitstring :: NamedBits -> IntegerConstraint -> IntegerConstraint -> ValidIntegerConstraint -> BitStream -> PERMonad ()
+encodeNonExtRootBitstring [] rc ec (Valid erc) xs
+    | inSizeRange xs erc
+        = do tell [1]
+             encodeBitsWithLength xs
+    | otherwise = throwError (BoundsError "Size out of range")
+        where
+            l = lower ec
+            u = upper ec
+encodeNonExtRootBitstring nbs rc ec (Valid erc) xs
+    = let nc = rc `ljoin` ec
+          l  = lower nc
+          u  = upper nc
+      in do
+          (v,bs) <- return $ extractValue $ namedBitsEdit l u xs
+          tell [1]
+          encodeC encodeBitsWithLength (v,bs)
 
 \end{code}
 
@@ -1103,7 +1157,6 @@ chunkBy1 _ x = mapM_ (tell . return) x -- FIXME: We shouldn't ultimately need "r
 \end{code}
 
 \section{ENCODING THE OCTETSTRING TYPE}
-{- FIXME: Not sure if length encoding is correct when not in extension root -}
 
 {\em encodeOctetstring} takes the usual two inputs -- the list of serially applied constraints
 and the value to be encoded. If the constraint list is empty the function
@@ -1119,9 +1172,12 @@ for a type using the function {\em lSerialEffCon} defined in the module {\em Con
 \begin{code}
 
 encodeOctetstring :: [SubtypeConstraint OctetString] -> OctetString -> PERMonad ()
-encodeOctetstring [] x = {- X691REF: 16.8 with ub unset -} encodeUnconstrainedOctetstring x
+encodeOctetstring [] x
+    = {- X691REF: 16.8 with ub unset -}
+      encodeUnconstrainedOctetstring x
 encodeOctetstring cs x
-    = {- X691REF: 16.3 -} encodeOctetstringWithConstraint cs x
+    = {- X691REF: 16.3 -}
+      encodeOctetstringWithConstraint cs x
 
 \end{code}
 
@@ -1135,9 +1191,10 @@ representation of an octet to a list of bits representation.
 
 encodeUnconstrainedOctetstring :: OctetString -> PERMonad ()
 encodeUnconstrainedOctetstring (OctetString xs)
-    =   let encodeOctet x = encodeConstrainedInt ((fromIntegral x),255)
-        in
-            encodeUnconstrainedLength encodeOctet xs
+    = encodeUnconstrainedLength encodeOctet xs
+
+encodeOctet :: Octet -> PERMonad ()
+encodeOctet x = encodeConstrainedInt ((fromIntegral x),255)
 
 \end{code}
 
@@ -1190,9 +1247,11 @@ encodeNonExtConsOctetstring (Right ok) (Right vsc) (OctetString vs)
            = throwError (ConstraintError "Empty constraint")
     | otherwise
            = {- X691REF: 16.5 - 16.8 -}
-             encodeConstrainedOctetstring rc vrc vs
+             encodeConstrainedOctetstring [] l u vrc vs
              where
                 rc = conType . getRC $ vsc
+                l = lower rc
+                u = upper rc
                 vrc = conType . getRC $ ok
 
 \end{code}
@@ -1206,9 +1265,10 @@ called.
 The constraint is empty and thus no values can be encoded. Note that this means that there is a
 PER-visible size constraint that has no values. An appropriate error is thrown.
 \item
-There is a PER-visible constraint. The function {\em encodeConstrainedOctetstring} is called.
+There is a PER-visible constraint. The function {\em encodeConstrainedOctetstring} is called with the
+prefix bit set to 0.
 If this results in an error (the value cannot satisfy the constraint root) then {\em
-encodeExtConstrainedOctetstring} is called. The function Haskell library function {\em catchError}
+encodeExtConstrainedOctetstring} is called and the prefix bit is set to 1. The function Haskell library function {\em catchError}
 manages the error/non-error cases.
 \end{itemize}
 
@@ -1229,10 +1289,15 @@ encodeExtConsOctetstring (Right ok) (Right vsc) (OctetString vs)
            = throwError (ConstraintError "Empty constraint")
     | otherwise
            = do
-                catchError (encodeConstrainedOctetstring rc vrc vs)
-                           (\err -> encodeExtConstrainedOctetstring rc ec vec vs)
+                catchError (do {- X691REF: 16.3 within root -}
+                               encodeConstrainedOctetstring [0] l u vrc vs)
+                           (\err -> do {- X691REF: 16.3 not in root -}
+                                       tell [1]
+                                       encodeExtConstrainedOctetstring rc ec vec vs)
              where
                 rc = conType . getRC $ vsc
+                l = lower rc
+                u = upper rc
                 ec = conType . getEC $ vsc
                 vrc = conType . getRC $ ok
                 vec = conType . getEC $ ok
@@ -1249,19 +1314,12 @@ octetstring must satisfy the constraint.
 
 \begin{code}
 
-encodeConstrainedOctetstring :: IntegerConstraint -> ValidIntegerConstraint ->
+encodeConstrainedOctetstring :: PrefixBit -> InfInteger -> InfInteger -> ValidIntegerConstraint ->
                                 OctetStream -> PERMonad ()
-encodeConstrainedOctetstring rc (Valid vrc) xs
-      =  let l  = lower rc
-             u  = upper rc
-             exs = if inSizeRange xs vrc
-                            then let encodeOctets (x:xs)
-                                        = do encodeConstrainedInt ((fromIntegral x),255)
-                                             encodeOctets xs
-                                     encodeOctets [] = tell []
-                                 in encodeOctets xs
-                            else throwError (BoundsError "Size out of range")
-         in
+encodeConstrainedOctetstring pb l u (Valid vrc) xs
+      | inSizeRange xs vrc
+         = let exs = encodeOctets xs
+           in
              if u == 0
              then   {- X691REF: 16.5 -}
                     tell []
@@ -1277,8 +1335,12 @@ encodeConstrainedOctetstring rc (Valid vrc) xs
                                  let (_,ls) = extractValue $ exs
                                  in
                                     encodeOctetsWithLength ls
+       | otherwise = throwError (BoundsError "Size out of range")
 
-
+encodeOctets :: OctetStream -> PERMonad ()
+encodeOctets (x:xs)
+         = mapM_ encodeOctet (x:xs)
+encodeOctets [] = tell []
 
 encodeExtConstrainedOctetstring :: IntegerConstraint -> IntegerConstraint
                                    -> ValidIntegerConstraint -> OctetStream -> PERMonad ()
@@ -1287,12 +1349,8 @@ encodeExtConstrainedOctetstring rc ec (Valid erc) xs
           l  = lower nc
           u  = upper nc
           exs = if inSizeRange xs erc
-                            then let encodeOctets (x:xs)
-                                        = do encodeConstrainedInt ((fromIntegral x),255)
-                                             encodeOctets xs
-                                     encodeOctets [] = tell []
-                                 in encodeOctets xs
-                            else throwError (BoundsError "Size out of range")
+                   then encodeOctets xs
+                   else throwError (BoundsError "Size out of range")
       in
           if u <= 65536
              then let (_,ls) = extractValue $ exs
