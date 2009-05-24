@@ -158,7 +158,7 @@ example1 =
          BP.runBitPut x
 -}
 
-main = test "generated" rt3 v3
+main = encodeTest "urk" rt1 (Val 7)
 
 encodeTest genFile ty val = do
    CE.bracketOnError
