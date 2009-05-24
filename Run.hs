@@ -14,6 +14,10 @@ import qualified Control.Exception as CE
 import IO
 import System.FilePath
 import System.Info
+import Data.List
+import Control.Arrow
+
+import Text.HTML.TagSoup
 
 import qualified Data.ByteString as B
 import qualified Data.Binary.Strict.BitGet as BG
@@ -182,9 +186,22 @@ encodeTest genFile ty val = do
                               (linker ++ " " ++ linkerOut genFile ++ " " ++ ("*" <.> objectSuffix), "Failure linking")
                             ]
                          B.writeFile (genFile <.> "per") (f ty val)
+                         (code, out, err) <- readProcessWithExitCode (executable genFile) [genFile <.> "per"] ""
+                         putStrLn (show code)
+                         putStrLn out
+                         putStrLn err
+                         let x = parseTags out
+                         putStrLn (show x)
+                         let y = fromTagText (x!!1)
+                             z = if ':' `elem` y
+                                    then "0x" ++ (concat $ g $ y)
+                                    else  y
+                         putStrLn (show ((read z) :: Integer))
+{-
                          runCommands [
                               ((executable genFile) ++ " " ++ (genFile <.> "per"), "Failure executing")
                             ]
+-}
                          setCurrentDirectory currDir
       )
    where
@@ -211,3 +228,11 @@ encodeTest genFile ty val = do
             Left e -> error (show e)
             Right y -> B.pack . BL.unpack . BP.runBitPut . mapM_ (BP.putNBits 1) $ encoding
          where (possibleError, encoding) = extractValue (encode t [] x) 
+
+f [] = Nothing
+f xs = Just (second (drop 1) . break (== ':') $ xs)
+
+g = unfoldr f
+
+h [] = Nothing
+h xs = Just . second (drop 1) . break (== ':') $ xs
