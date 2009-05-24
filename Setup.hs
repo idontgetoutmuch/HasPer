@@ -15,8 +15,8 @@ main = do
 
 cCompilerName =
    case os of
-      "mingw32" -> "gcc"
-      _         -> "lcc"
+      "mingw32" -> "lcc"
+      _         -> "gcc"
 
 perHooks =
    simpleUserHooks {
@@ -47,7 +47,7 @@ perPostConf a cfs pd lbi =
             return ()
       case mC of
          Nothing -> 
-            warn v ("Full inter-operability testing cannot be performed without" ++ cCompilerName) >> return ()
+            warn v ("Full inter-operability testing cannot be performed without " ++ cCompilerName) >> return ()
          Just cp -> do
             info v (show cp)
             return ()
