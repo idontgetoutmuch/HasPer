@@ -34,7 +34,6 @@ perPostConf a cfs pd lbi =
           mPdf   = lookupProgram (simpleProgram "pdflatex") (withPrograms lbi)
           mAsn1c = lookupProgram (simpleProgram "asn1c") (withPrograms lbi)
           mC     = lookupProgram (simpleProgram cCompilerName) (withPrograms lbi)
-      error "Foo"
       case mPdf of
          Nothing -> 
             warn v "Full documentation cannot be built without pdflatex" >> return ()
