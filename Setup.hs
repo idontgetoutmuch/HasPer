@@ -1,6 +1,8 @@
 module Main where
 
 import System.Info
+import System.Process
+
 import Distribution.Simple
 import Distribution.Simple.Program
 import Distribution.Simple.Setup
@@ -27,6 +29,7 @@ perHooks =
             , simpleProgram cCompilerName
           ]
       , postConf = perPostConf
+      , runTests = myTests
    }
 
 perPostConf :: Args -> ConfigFlags -> PackageDescription  -> LocalBuildInfo -> IO ()
@@ -56,4 +59,9 @@ perPostConf a cfs pd lbi =
          Just cp -> do
             reportProgram v cSP mC
             return ()
-       
+
+myTests _ _ _ _ = do
+   (code, out, err) <- readProcessWithExitCode "runghc" ["PERTest.hs"] ""
+   putStrLn (show code)
+   putStrLn ("Stdout: " ++ out)
+   putStrLn ("Stderr: " ++ err)
