@@ -32,7 +32,8 @@ perHooks =
 perPostConf :: Args -> ConfigFlags -> PackageDescription  -> LocalBuildInfo -> IO ()
 perPostConf a cfs pd lbi =
    do let v       = fromFlagOrDefault normal (configVerbosity cfs)
-          mPdf    = lookupProgram (simpleProgram "pdflatex") (withPrograms lbi)
+          pdfSP   = simpleProgram "pdflatex"
+          mPdf    = lookupProgram pdfSP (withPrograms lbi)
           asn1cSP = simpleProgram "asn1c"
           mAsn1c  = lookupProgram  asn1cSP (withPrograms lbi)
           cSP     = simpleProgram cCompilerName
@@ -40,7 +41,8 @@ perPostConf a cfs pd lbi =
       case mPdf of
          Nothing -> 
             warn v "Full documentation cannot be built without pdflatex" >> return ()
-         Just _ ->
+         Just _ -> do
+            reportProgram v pdfSP mPdf
             return ()
       case mAsn1c of
          Nothing -> 
