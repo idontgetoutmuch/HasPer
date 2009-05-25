@@ -4,6 +4,8 @@ import NewTestData
 import PER
 import ASNTYPE
 import NewPretty
+import Run
+
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.Binary.BitPut
@@ -29,6 +31,10 @@ decodeEncode t x =
 
 dESibDataVariableValue = decodeEncode sibDataVariableType sibDataVariableValue
 
+test2 = TestCase (do let v = Val (2^100)
+                     e <- encodeTest "urk" rt1 v
+                     assertEqual "INTEGER Inter-operability test 1" v (Val e))
+
 bitStringConsTest1 =
    TestCase (
       assertEqual "Constrained BIT STRING Test 1" sibDataVariableValue dESibDataVariableValue
@@ -36,6 +42,7 @@ bitStringConsTest1 =
 
 tests =
    [ bitStringConsTest1
+   , test2
    ]
 
 main = runTestTT (TestList tests)

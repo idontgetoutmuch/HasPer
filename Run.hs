@@ -2,7 +2,7 @@
                 -XScopedTypeVariables
 #-}
 
-module Main(main) where
+module Run(encodeTest) where
 
 import System.Process
 import System.Exit
@@ -203,6 +203,7 @@ encodeTest genFile ty val = do
                             ]
 -}
                          setCurrentDirectory currDir
+                         return ((read z) :: Integer)
       )
    where
       cFiles' excls suffix =
