@@ -219,9 +219,9 @@ toPER BOOLEAN x cl         = encodeBool cl x
 toPER (ENUMERATED e) x cl  = encodeEnum e x -- no PER-Visible constraints
 toPER (BITSTRING nbs) x cl = encodeBitstring nbs cl x
 toPER (OCTETSTRING) x cl   = encodeOctetstring cl x
-toPER (SEQUENCE s) x cl    = encodeSeq s x -- no PER-Visible constraints
+toPER (SEQUENCE s) x cl    = encodeSequence s x -- no PER-Visible constraints
 toPER (SEQUENCEOF s) x cl  = encodeSeqOf cl s x
-toPER (SET s) x cl         = temporaryConvert (encodeSet s x) -- no PER-Visible constraints
+toPER (SET s) x cl         = encodeSet s x -- no PER-Visible constraints
 toPER (CHOICE c) x cl      = encodeChoice c x -- no PER-visible constraints
 toPER (SETOF s) x cl       = encodeSeqOf cl s x -- no PER-visible constraints
 toPER (TAGGED tag t) x cl  = encode t cl x
@@ -1008,7 +1008,7 @@ namedBitsEdit l u xs
         else
             if lxs > u
              then rem0s (lxs-u) l xs
-             else tell xs
+             else rem0s' l xs
 
 add0s :: InfInteger -> BitStream -> PERMonad ()
 add0s (Val n) xs = do
@@ -1039,7 +1039,7 @@ This is becuase the lower bound does not affect these length encodings (X.691 10
 
 \begin{code}
 
--- encodeConBS :: PrefixBit -> InfInteger -> InfInteger -> BitStream -> PERMonad ()
+encodeConBS :: PrefixBit -> InfInteger -> InfInteger -> BitStream -> PERMonad ()
 encodeConBS pb l u xs
     = if u == 0
              then   {- X691REF: 15.8 -}
@@ -1075,15 +1075,13 @@ instantiations are defined in the module {\em LatticeMod}.
 
 \begin{code}
 
-encodeNonExtRootBitstring :: NamedBits -> IntegerConstraint -> IntegerConstraint -> ValidIntegerConstraint -> BitStream -> PERMonad ()
+encodeNonExtRootBitstring :: NamedBits -> IntegerConstraint
+        -> IntegerConstraint -> ValidIntegerConstraint -> BitStream -> PERMonad ()
 encodeNonExtRootBitstring [] rc ec (Valid erc) xs
     | inSizeRange xs erc
         = do tell [1]
              encodeBitsWithLength xs
     | otherwise = throwError (BoundsError "Size out of range")
-        where
-            l = lower ec
-            u = upper ec
 encodeNonExtRootBitstring nbs rc ec (Valid erc) xs
     = let nc = rc `ljoin` ec
           l  = lower nc
@@ -1179,13 +1177,23 @@ encodeOctetstring cs x
     = {- X691REF: 16.3 -}
       encodeOctetstringWithConstraint cs x
 
+exBS3 = extractValue $ encode (BuiltinType OCTETSTRING)
+           [NonEmptyExtension (UnionSet (UC (IC (ATOM (E (SZ (SC (RootOnly
+                        (UnionSet (IC (ATOM (E (V (R (1,5)))))))))))))
+                                 (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R
+                                    (7,10))))))))))))))
+                        (UnionSet (UC (IC (ATOM (E (SZ (SC (RootOnly
+                        (UnionSet (IC (ATOM (E (V (R (11,15)))))))))))))
+                                 (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R
+                                    (17,20))))))))))))))]
+                                        (OctetString [1,0,1,1,0,0,1,0,1,1,0,1,0,0,0,0,0,0,0,1])
 \end{code}
 
 
 {\em encodeUnconstrainedOctetstring} encodes an unconstrained octetstring, It uses {\em
 encodeUnconstrainedLength} -- which manages the interleaving of length encoding with value
-encoding for values with an unconstrained length - whose first input converts a {\em Word8}
-representation of an octet to a list of bits representation.
+encoding for values with an unconstrained length - whose first input {\em encodeOctet}
+converts a {\em Word8} representation of an octet to a list of bits representation.
 
 \begin{code}
 
@@ -1292,8 +1300,7 @@ encodeExtConsOctetstring (Right ok) (Right vsc) (OctetString vs)
                 catchError (do {- X691REF: 16.3 within root -}
                                encodeConstrainedOctetstring [0] l u vrc vs)
                            (\err -> do {- X691REF: 16.3 not in root -}
-                                       tell [1]
-                                       encodeExtConstrainedOctetstring rc ec vec vs)
+                                       encodeNonExtRootConOctetstring rc ec vec vs)
              where
                 rc = conType . getRC $ vsc
                 l = lower rc
@@ -1342,216 +1349,228 @@ encodeOctets (x:xs)
          = mapM_ encodeOctet (x:xs)
 encodeOctets [] = tell []
 
-encodeExtConstrainedOctetstring :: IntegerConstraint -> IntegerConstraint
+encodeNonExtRootConOctetstring :: IntegerConstraint -> IntegerConstraint
                                    -> ValidIntegerConstraint -> OctetStream -> PERMonad ()
-encodeExtConstrainedOctetstring rc ec (Valid erc) xs
-    = let nc = rc `ljoin` ec
-          l  = lower nc
-          u  = upper nc
-          exs = if inSizeRange xs erc
-                   then encodeOctets xs
-                   else throwError (BoundsError "Size out of range")
-      in
-          if u <= 65536
-             then let (_,ls) = extractValue $ exs
-                  in do
-                        encodeConstrainedInt ((fromInteger.genericLength) ls - l, u-l)
-                        exs
-             else let (_,ls) = extractValue $ exs
-                  in encodeOctetsWithLength ls
+encodeNonExtRootConOctetstring rc ec (Valid erc) xs
+    | inSizeRange xs erc
+        = let (_,ls) = extractValue $ encodeOctets xs
+          in do tell [1]
+                encodeOctetsWithLength ls
+    | otherwise = throwError (BoundsError "Size out of range")
 
 \end{code}
 
 \section{ENCODING THE SEQUENCE TYPE}
 
-\begin{code}
+{\em encodeSequence} has only two inputs - the type and value - since a sequence has no PER-visible
+constraints. It calls an auxilliary function {\em encodeSequenceAux} which requires two
+further inputs which indicate the extensibility of the type and existence of extension
+additions (represented as a pair of boolean values), and hosts the bits which indicate the presence or otherwise of optional or default
+values. {\em encodeSequenceAux} is a recursive function that recurses over the structure of a sequence.
+It has several cases to deal with that match the various components of a sequence -- mandatory, optional,
+default, extension marker and so on -- and
+returns a pair whose second component is the function
+{\em completeSequenceBits} which adds a prefix to the output bits including the extension bit if
+required and the bits which describe the presence or otherwise of optional or default values.
+Each root component is encoded as required using {\em encode} and if the type has any extesnion additions
+these are encoded by the {\em encodeSequenceAux}.
+The Haskell {\em MonadWriter} function {\em pass} applies this
+function to the output bits.
 
-encodeSeq :: Sequence a -> a -> PERMonad ()
-encodeSeq s x
-    = case encodeSeqAux ([],[]) ([],[]) s x
-        of Right ((rp,rb),(ap,ab))  ->
-                if null ap
-                    then
-                     do mapM_ tell rp
-                        mapM_ tell rb
-                        mapM_ tell ap
-                        mapM_ tell ab
-                    else
-                     do mapM_ tell rp
-                        mapM_ tell rb
-                        lengthAdds ap
-                        mapM_ tell ab
-           Left s ->
-                throwError (OtherError s)
+Note that the extension indicator is initally set to {\em (False, False)}. The first element is converted
+to {\em True} when an extension marker is reached and {\em encodeSequenceAuxExt} is called and
+its bits output in advance of {\em encodeSequenceAux} continuing its recursive progress.
+{\em encodeSequenceAuxExt} produces the encoding of the any extension additions including the
+required preamble. If the type includes a second extesnion marker then the {\em
+encodeSequenceAux} simply continues recursing through the type.
+
+Note also that the encoding of a {\em COMPONENTS OF} item is managed by
+{\em encodeSequenceAuxCO}.
+
+\begin{code}
+type OptDefBits = BitStream
+type ExtBits = BitStream
+type ExtAndUsed = (Bool, Bool)
+
+axSeq = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (BuiltinType INTEGER) con1)))
+                (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN)))
+                    (AddComponent (MandatoryComponent (NamedType "c" (BuiltinType (CHOICE choice1))))
+                        (ExtensionMarker
+                          (ExtensionAdditionGroup NoVersionNumber eag1
+                           (ExtensionMarker (AddComponent (OptionalComponent (NamedType "i" (BuiltinType BMPSTRING)))
+                                (AddComponent (OptionalComponent (NamedType "j" (BuiltinType PRINTABLESTRING)))
+                                    EmptySequence)))))))
+
+choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
+            (ChoiceExtensionMarker (ChoiceExtensionAdditionGroup NoVersionNumber
+                            (ChoiceOption (NamedType "e" (BuiltinType BOOLEAN))
+                                   (ChoiceOption (NamedType "f"  (BuiltinType IA5STRING))
+                                          (ChoiceExtensionAdditionGroup NoVersionNumber (ChoiceExtensionMarker EmptyChoice))))))
+
+
+eag1 = AddComponent (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RootOnly pac5))))
+        (AddComponent (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) EmptySequence)
+
+pac5 = UnionSet (IC (ATOM ((E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (3,3))))))))))))))
+
+con1 = RootOnly (UnionSet (IC (ATOM (E (V (R (250,253)))))))
+
+axVal2 = Val 253 :*:
+        (True :*:
+            ((AddNoValue NoValue (AddAValue True (AddNoValue NoValue EmptyList))) :*:
+                    ((Just ((NumericString "123") :*: (Just True :*: Empty))) :*:
+                        (Just (BMPString "A") :*: (Nothing :*: Empty)))))
+
+
+axVal = Val 253 :*:
+        (True :*:
+            ((AddNoValue NoValue (AddAValue True (AddNoValue NoValue EmptyList))) :*:
+                    ((Just ((NumericString "123") :*: (Just True :*: Empty))) :*:
+                        (Nothing :*: (Nothing :*: Empty)))))
+
+
+ns1 :: SubtypeConstraint VisibleString
+ns1 = RootOnly (UnionSet (IC (ATOM ((E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R(1,1)))))))))))))))
+
+encodeSequence :: Sequence a -> a -> PERMonad ()
+encodeSequence s v = do odb <- pass $ encodeSequenceAux (False, False) [] s v
+                        return ()
+
+encodeSequenceAux :: ExtAndUsed -> OptDefBits -> Sequence a -> a
+                -> PERMonad (OptDefBits, BitStream -> BitStream)
+encodeSequenceAux eu od EmptySequence Empty
+    = return (od, completeSequenceBits eu od)
+encodeSequenceAux (extensible, b) od (ExtensionMarker as) xs
+    | not extensible
+        = let m = encodeSequenceAuxExt (True, False) od [] as xs
+          in
+           do (b, eb, od, pm) <- censor (const []) m
+              (od2,f) <- pm
+              censor ((++) (snd . extractValue $ lengthAddsNew eb)) m
+              encodeSequenceAux b od2 EmptySequence Empty
+    | otherwise
+        = encodeSequenceAux (extensible,b) od as xs
+encodeSequenceAux eu od (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
+{- NOTE: od2 is the optional/default list of the components of a sequence -}
+    = do od2 <- encodeSequenceAuxCO [] s x
+         encodeSequenceAux eu (od ++ od2) as xs
+encodeSequenceAux eu od (AddComponent (ComponentsOf (ReferencedType n t)) as) (x:*:xs)
+    = encodeSequenceAux eu od (AddComponent (ComponentsOf t) as) (x:*:xs)
+encodeSequenceAux eu od (AddComponent (ComponentsOf (ConstrainedType t c)) as) (x:*:xs) -- typically a reference
+    = encodeSequenceAux eu od (AddComponent (ComponentsOf t) as) (x:*:xs)
+encodeSequenceAux eu od (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
+    = do
+        encode a [] x
+        encodeSequenceAux eu od as xs
+encodeSequenceAux eu od (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
+    = encodeSequenceAux eu od as xs
+encodeSequenceAux (b1,b2) od (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
+    = encodeSequenceAux (b1, True) od as xs
+encodeSequenceAux eu od (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs)
+    =   {- X691REF: 18.2 with optional component not present -}
+        encodeSequenceAux eu (od ++ [0]) as xs
+encodeSequenceAux eu od (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
+    = do {- X691REF: 18.2 with optional comonent present -}
+         encode a [] x
+         encodeSequenceAux eu (od ++ [1]) as xs
+encodeSequenceAux eu od (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs)
+    =   {- X691REF: 18.2 with default component not present -}
+        encodeSequenceAux eu (od ++ [0]) as xs
+encodeSequenceAux eu od (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
+    = do {- X691REF: 18.2 with default component present -}
+         encode a [] x
+         encodeSequenceAux eu (od ++ [1]) as xs
+encodeSequenceAux (b1,b2) od (ExtensionAdditionGroup _ _ as) (x:*:xs)
+    = encodeSequenceAux (b1,True) od as xs
+
+
+completeSequenceBits :: ExtAndUsed -> OptDefBits -> BitStream -> BitStream
+completeSequenceBits (extensible, extensionAdditionPresent) odb bs
+    | not extensible
+        = odb ++ bs
+    | extensionAdditionPresent
+        {- X691REF: 18.1 with extension additions present -}
+        {- X691REF: 18.2  -}
+        = 1: odb ++ bs
+    | otherwise
+        {- X691REF: 18.1 with no extenion additions present -}
+        {- X691REF: 18.2  -}
+        = 0: odb ++ bs
+
+encodeSequenceAuxExt :: ExtAndUsed -> OptDefBits -> ExtBits -> Sequence a -> a
+                        -> PERMonad ((ExtAndUsed, ExtBits, OptDefBits, PERMonad (OptDefBits, BitStream -> BitStream)))
+encodeSequenceAuxExt b odb eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
+    = encodeSequenceAuxExt b odb (eb ++ [0]) as xs
+encodeSequenceAuxExt (b1,b2) odb eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
+    = do encodeOpen a x
+         encodeSequenceAuxExt (b1,True) odb (eb ++ [1]) as xs
+encodeSequenceAuxExt b odb eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
+    = encodeSequenceAuxExt b odb (eb ++ [0]) as xs
+encodeSequenceAuxExt (b1,b2) odb eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
+    = do encodeOpen (BuiltinType (SEQUENCE a)) x
+         encodeSequenceAuxExt (b1, True) odb (eb ++ [1]) as xs
+encodeSequenceAuxExt b odb eb (ExtensionMarker as) xs
+    = return (b, eb, odb, encodeSequenceAux b odb as xs)
+encodeSequenceAuxExt b odb eb EmptySequence Empty
+    | null eb
+        = return (b, eb, odb, encodeSequenceAux b odb EmptySequence Empty)
+    | otherwise
+        = return (b, eb, odb, encodeSequenceAux b odb EmptySequence Empty)
+encodeSequenceAuxExt b odb eb _ _
+    = throwError (OtherError "Inappropriate component!")
 
 \end{code}
 
-I DON'T THINK THAT THE ELSE CASE IS FRAGMENTING CORRECTLY
+{- FIXME:I DON'T THINK THAT THE ELSE CASE IS FRAGMENTING CORRECTLY -}
 
 18.8 A length determinant of the number of extension additions is added if
 the sequence has any extension additions declared. This is encoded as a normally
 small length (10.9.3.4)
 
+
 \begin{code}
 
-lengthAdds ap
+lengthAddsNew ap
     = let la = genericLength ap
        in if la <= 63
         then do tell [0]
                 encodeConstrainedInt (la-1, 63)
-                mapM_ tell ap
+                tell ap
         else do tell [1]
                 encodeOctetsWithLength (encodeNonNegBinaryIntInOctets la)
-                mapM_ tell ap
+                tell ap
 
-\end{code}
+{- X.680 24.4 -}
 
-encodeSeqAux is the auxillary function for encodeSeq. When
-encoding a sequence, one has to both encode each component and
-produce a preamble which indicates the presence or absence of an
-optional or default value. The first list in the result is the
-preamble. The constructor ExtensionMarker indicates the sequence is
-extensible, and the coding responsibility is passed to
-encodeExtSeqAux (where the values are encoded as an open type).
-Note that if another ExtensionMarker occurs then reponsibility returns
-to encodeSeqAux since this is the 2 extension marker case
-(and what follows is in the extension root).
-
-encodeCO implments the encoding of a COMPONENTS OF component of a
-sequence. The (non-extension) components of the referenced
-sequence are embedded in the parent sequence and are enocoded as
-if components of this sequence.
-
-\begin{code}
-
-encodeSeqAux :: ([BitStream],[BitStream]) -> ([BitStream],[BitStream]) -> Sequence a -> a ->
-      Either String (([BitStream],[BitStream]),([BitStream],[BitStream]))
-encodeSeqAux (ap,ab) (rp,rb) EmptySequence Empty
-    = if ((not.null) (concat ab))
-        then return (([1]:reverse rp,reverse rb),(reverse ap,reverse ab))
-        else return ((reverse rp,reverse rb),(reverse ap, reverse ab))
-encodeSeqAux (ap,ab) (rp,rb) (ExtensionMarker as) xs
-    = encodeExtSeqAux (ap,ab) (rp,rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs) -- typically a reference
-    = do (p,b) <- encodeCO ([],[]) s x
-         encodeSeqAux (ap,ab) (p ++ rp,b ++ rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf (ReferencedType n t)) as) (x:*:xs) -- typically a reference
-    = encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf t) as) (x:*:xs)
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf (ConstrainedType t c)) as) (x:*:xs) -- typically a reference
-    = encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf t) as) (x:*:xs)
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ComponentsOf _) as) (x:*:xs)
-    = throwError "COMPONENTS OF can only be applied to a SEQUENCE."
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
+encodeSequenceAuxCO :: OptDefBits -> Sequence a -> a -> PERMonad OptDefBits
+encodeSequenceAuxCO odb EmptySequence _
+    = return odb
+encodeSequenceAuxCO odb (ExtensionMarker as) xs
+    = encodeSequenceAuxCO odb as xs
+encodeSequenceAuxCO odb (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
+    = do odb2 <- encodeSequenceAuxCO [] s x
+         encodeSequenceAuxCO (odb ++ odb2) as xs
+encodeSequenceAuxCO odb (AddComponent (ComponentsOf _) as) (x:*:xs)
+    = throwError (OtherError "COMPONENTS OF can only be applied to a SEQUENCE")
+encodeSequenceAuxCO odb (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
+    = do encode a [] x
+         encodeSequenceAuxCO odb as xs
+encodeSequenceAuxCO odb (AddComponent (ExtensionComponent (NamedType t a)) as) (_:*:xs) =
+   encodeSequenceAuxCO odb as xs
+encodeSequenceAuxCO odb (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
+   encodeSequenceAuxCO (odb ++ [0]) as xs
+encodeSequenceAuxCO odb (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
     = do
-        (err,bts) <- return (extractValue (encode a [] x))
-        encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs) =
-   encodeSeqAux (ap,ab) ([]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
+        encode a [] x
+        encodeSequenceAuxCO (odb ++ [1]) as xs
+encodeSequenceAuxCO odb (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs)
+    = encodeSequenceAuxCO (odb ++ [0]) as xs
+encodeSequenceAuxCO odb (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
     = do
-        (err,bts) <- return (extractValue (encode a [] x))
-        encodeSeqAux (ap,ab) ([]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
-   encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
-    = do
-        (err,bts) <- return (extractValue (encode a [] x))
-        encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs) =
-   encodeSeqAux (ap,ab) ([0]:rp,[]:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
-    = do
-        (err,bts) <- return (extractValue (encode a [] x))
-        encodeSeqAux (ap,ab) ([1]:rp,bts:rb) as xs
-encodeSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ _ _) _
-    = throwError "Impossible case: Extension Addition Groups only appear within an extension"
-
-encodeCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
-encodeCO (rp,rb) EmptySequence _
-    = return (rp,rb)
-encodeCO (rp,rb) (ExtensionMarker as) xs
-    = encodeExtCO (rp,rb) as xs
-encodeCO (rp,rb) (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
-    = do (p,b) <- encodeCO ([],[]) s x
-         encodeCO (p ++ rp,b ++ rb) as xs
-encodeCO (rp,rb) (AddComponent (ComponentsOf _) as) (x:*:xs)
-    = throwError "COMPONENTS OF can only be applied to a SEQUENCE"
-encodeCO (rp,rb) (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
-    = do (err,bts) <- return (extractValue (encode a [] x))
-         encodeCO ([]:rp,bts:rb) as xs
-encodeCO (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs) =
-   encodeCO ([]:rp,[]:rb) as xs
-encodeCO (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
-    = do (err,bts) <- return (extractValue (encode a [] x))
-         encodeCO ([]:rp,bts:rb) as xs
-encodeCO (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
-   encodeCO ([0]:rp,[]:rb) as xs
-encodeCO (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
-    = do
-        (err,bts) <- return (extractValue (encode a [] x))
-        encodeCO ([1]:rp,bts:rb) as xs
-encodeCO (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs) =
-   encodeCO ([0]:rp,[]:rb) as xs
-encodeCO (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
-    = do
-        (err,bts) <- return (extractValue (encode a [] x))
-        encodeCO ([1]:rp,bts:rb) as xs
-encodeCO (rp,rb) (ExtensionAdditionGroup _ _ _) _
-    = throwError "Impossible case: Extension Addition Groups only appear in an extension."
-
-
--- Only the root component list of the COMPONENTS OF type is inlcuded.
-encodeExtCO :: ([BitStream],[BitStream]) -> Sequence a -> a -> Either String (([BitStream],[BitStream]))
-encodeExtCO (rp,rb) EmptySequence _
-    = return (rp,rb)
-encodeExtCO (rp,rb) (ExtensionMarker as) xs
-    = encodeCO (rp,rb) as xs
-encodeExtCO (rp,rb) (AddComponent _ as) (_:*:xs)
-    = encodeExtCO (rp,rb) as xs
-encodeExtCO (rp,rb) (ExtensionAdditionGroup _ _ as) (x:*:xs)
-    = encodeExtCO (rp,rb) as xs
-\end{code}
-
-encodeExtSeqAux adds the encoding of any extension additions to
-the encoding of the extension root. If an addition is present a
-1 is added to a bitstream prefix and the value is encoded as an
-open type (using encodeOpen). If an addition is not present then a
-0 is added to the prefix.
-
-\begin{code}
-
-encodeExtSeqAux :: ([BitStream],[BitStream]) -> ([BitStream], [BitStream]) -> Sequence a -> a ->
-    Either String (([BitStream],[BitStream]),([BitStream],[BitStream]))
-encodeExtSeqAux (ap,ab) (rp,rb) EmptySequence _
-    = if (length . filter (==[1])) ap > 0
-                then  return (([1]:reverse rp,reverse rb),(reverse ap,reverse ab))
-                else  return (([0]:reverse rp,reverse rb),(reverse ap,reverse ab))
-encodeExtSeqAux extAdds extRoot (ExtensionMarker as) xs =
-   encodeSeqAux extAdds extRoot as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ a as) (Nothing:*:xs) =
-   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (ExtensionAdditionGroup _ a as) (Just x:*:xs)
-    = do (err,bts) <- return (runIdentity (runWriterT (runErrorT
-                            (encodeOpen (BuiltinType (SEQUENCE a)) x))))
-         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs) =
-   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
-    = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (encodeOpen a x))))
-         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
-   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
-    = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (encodeOpen a x))))
-         encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs) =
-   encodeExtSeqAux ([0]:ap,[]:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
-   = do (err,bts) <- return (runIdentity (runWriterT (runErrorT (encodeOpen a x))))
-        encodeExtSeqAux ([1]:ap,bts:ab) (rp,rb) as xs
-encodeExtSeqAux (ap,ab) (rp,rb) _ _
-    = throwError "Impossible case for extension addition."
-
+        encode a [] x
+        encodeSequenceAuxCO (odb ++ [1]) as xs
+encodeSequenceAuxCO odb (ExtensionAdditionGroup _ _ as) (x:*:xs)
+    = encodeSequenceAuxCO odb as xs
 
 \end{code}
 
@@ -1847,8 +1866,9 @@ components.
 
 \begin{code}
 
-encodeSet :: Sequence a -> a -> PerEncoding
-encodeSet s x
+encodeSet :: Sequence a -> a -> PERMonad ()
+encodeSet s x = tell []
+{- FIXME: To fix!!
     =   do
             ((rp,rb),(ap,ab)) <- encodeSeqAux ([],[]) ([],[]) s x
             let ts  = getTags s
@@ -1858,7 +1878,7 @@ encodeSet s x
                 pr  = concat (map fst os)
                 en  = concat (map (snd . snd) os)
             return (pr ++ en ++ concat ap ++ concat ab)
-
+-}
 \end{code}
 
 

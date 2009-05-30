@@ -364,12 +364,16 @@ lUpdateResCon :: (IC t, Lattice t1, RS t1, Eq t1) =>
 lUpdateResCon (ResStringConstraint p1 s1) (ResStringConstraint p2 s2)
      = ResStringConstraint (lUpdatePA p1 p2) (serialCombine s1 s2)
 
+{- NOTE: Need y == top to deal with RCS constraints with only size constraint -}
 
 lUpdatePA :: (Lattice a, RS a, Eq a) => a -> a -> a
 lUpdatePA x y
-    = if x == bottom || y == bottom
-        then bottom
-        else y
+    | x == bottom || y == bottom
+        = bottom
+    | y == top
+        = x
+    | otherwise
+        = y
 
 lValidPA :: (Lattice a, RS a, Eq a) => a -> a -> Bool
 lValidPA x y

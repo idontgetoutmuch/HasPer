@@ -45,19 +45,19 @@ perPostConf a cfs pd lbi =
          Nothing -> 
             warn v "Full documentation cannot be built without pdflatex" >> return ()
          Just _ -> do
-            reportProgram v pdfSP mPdf
+  --          reportProgram v pdfSP mPdf
             return ()
       case mAsn1c of
          Nothing -> 
             warn v "Full inter-operability testing cannot be performed without asn1c" >> return ()
          Just _ -> do
-            reportProgram v asn1cSP mAsn1c
+ --           reportProgram v asn1cSP mAsn1c
             return ()
       case mC of
          Nothing -> 
             warn v ("Full inter-operability testing cannot be performed without " ++ cCompilerName) >> return ()
          Just cp -> do
-            reportProgram v cSP mC
+ --           reportProgram v cSP mC
             return ()
 
 myTests _ _ _ _ = do

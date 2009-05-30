@@ -63,15 +63,21 @@ lSerialEffCons fn m ls
         foobar
 
 
-lSerialApply :: (MonadError [Char] m,
-                 ExtConstraint a1,
-                 Lattice (b i),
+lSerialApply :: (Eq (b i),
                  Constraint b i,
-                 Eq (b i),
-                 ExtConstraint a2,
+                 Lattice (b i),
+                 ExtConstraint a1,
+                 MonadError [Char] m,
                  ExtConstraint a) =>
-                (Element t -> Bool -> m (a1 (b i))) -> a (b i) -> SubtypeConstraint t -> m (a2 (b i))
-lSerialApply fn ersc c = lEitherApply ersc (lEffCons False fn c)
+                (Element t -> Bool -> m (a1 (b i)))
+                -> a (b i)
+                -> SubtypeConstraint t
+                -> m (a (b i))
+lSerialApply fn ersc c
+    = catchError (lEitherApply ersc (lEffCons False fn c)) (serialError ersc)
+
+serialError esrc "Invisible!" = return esrc
+serialError esrc err          = throwError err
 
 \end{code}
 Note that if a complete constraint in serial application is not PER-visible then it is simply
@@ -87,29 +93,31 @@ lEitherApply :: (MonadError [Char] m,
                  ExtConstraint a2) =>
                 a (b i) -> m (a1 (b i)) -> m (a2 (b i))
 lEitherApply esrc m
-    = do
-        let foobar
-                = do x <- m
-                     let rc2 = getRC x
-                         rc1 = getRC esrc
-                         foobar1
-                            = if isValid rc1 rc2
-                                 then return (makeEC (updateV rc1 rc2) top False)
-                                 else throwError "Parent type and constraint mismatch"
-                     foobar1
-        catchError foobar (\err -> return (makeEC (getRC esrc) top False) )
+        = do
+            let foobar
+                 = do x <- m
+                      let rc2 = getRC x
+                          rc1 = getRC esrc
+                          foobar1
+                              = if isValid rc1 rc2
+                                        then return (makeEC (updateV rc1 rc2) top False)
+                                        else throwError "Parent type and constraint mismatch"
+                      foobar1
+            foobar
 
 
 
-lSerialApplyLast :: (MonadError [Char] t1,
-                     ExtConstraint a1,
-                     Lattice (b i),
+lSerialApplyLast :: (Eq (b i),
                      Constraint b i,
-                     Eq (b i),
-                     ExtConstraint a,
-                     ExtConstraint a2) =>
-                    (Element t -> Bool -> t1 (a1 (b i))) -> a (b i) -> SubtypeConstraint t -> t1 (a2 (b i))
-lSerialApplyLast fn x c = lLastApply x (lEffCons False fn c)
+                     Lattice (b i),
+                     ExtConstraint a1,
+                     MonadError [Char] m,
+                     ExtConstraint a) =>
+                    (Element t -> Bool -> m (a1 (b i)))
+                    -> a (b i)
+                    -> SubtypeConstraint t
+                    -> m (a (b i))
+lSerialApplyLast fn x c = catchError (lLastApply x (lEffCons False fn c)) (serialError x)
 
 
 lLastApply :: (MonadError [Char] t,
@@ -120,9 +128,9 @@ lLastApply :: (MonadError [Char] t,
                ExtConstraint a) =>
               a (b i) -> t (a1 (b i)) -> t (a2 (b i))
 lLastApply esrc m
-    = do
-         let  r1 = getRC esrc
-              foobar
+        = do
+           let r1 = getRC esrc
+               foobar
                  = do
                     x <- m
                     let
@@ -135,7 +143,7 @@ lLastApply esrc m
                                                     (updateV r1 e2) True)
                          | otherwise = throwError "Parent type and constraint mismatch"
                     foobar1
-         catchError foobar (\err -> return (makeEC (getRC esrc) top False) )
+           foobar
 
 \end{code}
 
