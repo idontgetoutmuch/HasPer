@@ -1177,16 +1177,6 @@ encodeOctetstring cs x
     = {- X691REF: 16.3 -}
       encodeOctetstringWithConstraint cs x
 
-exBS3 = extractValue $ encode (BuiltinType OCTETSTRING)
-           [NonEmptyExtension (UnionSet (UC (IC (ATOM (E (SZ (SC (RootOnly
-                        (UnionSet (IC (ATOM (E (V (R (1,5)))))))))))))
-                                 (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R
-                                    (7,10))))))))))))))
-                        (UnionSet (UC (IC (ATOM (E (SZ (SC (RootOnly
-                        (UnionSet (IC (ATOM (E (V (R (11,15)))))))))))))
-                                 (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R
-                                    (17,20))))))))))))))]
-                                        (OctetString [1,0,1,1,0,0,1,0,1,1,0,1,0,0,0,0,0,0,0,1])
 \end{code}
 
 
@@ -1366,23 +1356,42 @@ encodeNonExtRootConOctetstring rc ec (Valid erc) xs
 constraints. It calls an auxilliary function {\em encodeSequenceAux} which requires two
 further inputs which indicate the extensibility of the type and existence of extension
 additions (represented as a pair of boolean values), and hosts the bits which indicate the presence or otherwise of optional or default
-values. {\em encodeSequenceAux} is a recursive function that recurses over the structure of a sequence.
-It has several cases to deal with that match the various components of a sequence -- mandatory, optional,
+values. {\em encodeSequenceAux} is a recursive function that recurses over the structure of a sequence and returns a value of type 
+{\em PERMonad (OptDefBits, BitStream -> BitStream)}. This is a monadic value that outputs (the encoding) bits and returns a 
+pair of values -- the optional or default value indicator bits and a function which adds the appropriate prefix to the output that indicates
+whether the encoded value is extensible and has any extension additions, and the optional/default indicator bits.
+
+{\em encodeSequenceAux} has several cases to deal with that match the various components of a sequence -- mandatory, optional,
 default, extension marker and so on -- and
 returns a pair whose second component is the function
 {\em completeSequenceBits} which adds a prefix to the output bits including the extension bit if
 required and the bits which describe the presence or otherwise of optional or default values.
-Each root component is encoded as required using {\em encode} and if the type has any extesnion additions
-these are encoded by the {\em encodeSequenceAux}.
-The Haskell {\em MonadWriter} function {\em pass} applies this
-function to the output bits.
+Each root component is encoded as required using {\em encode}. 
 
 Note that the extension indicator is initally set to {\em (False, False)}. The first element is converted
-to {\em True} when an extension marker is reached and {\em encodeSequenceAuxExt} is called and
-its bits output in advance of {\em encodeSequenceAux} continuing its recursive progress.
-{\em encodeSequenceAuxExt} produces the encoding of the any extension additions including the
-required preamble. If the type includes a second extesnion marker then the {\em
-encodeSequenceAux} simply continues recursing through the type.
+to {\em True} when an extension marker is reached and {\em encodeSequenceAuxExt} is called.
+It returns a value of type {\em PERMonad ((ExtAndUsed, ExtBits, OptDefBits, PERMonad (OptDefBits, BitStream -> BitStream)))}.
+That is, it is a monadic value that writes (the encoding) bitstream and returns 4 values in a 4-tuple. These are:
+\begin{itemize}
+\item
+an updated extension indicator reflecting whether any extension additions exist in the value;
+\item
+a bitstream representing the existence or otherwise of extension additions;
+\item
+a bitstream representing the existence or otherwise of optional or default components; and
+\item
+a monadic value which is the result of applying {\em encodeSequenceAux} to the remainder of the sequence once the extension additions 
+have been terminated. This is indicated by another extension marker or simply by the end of the sequence.
+\end{itemize}
+
+Since we need to output root value encodings before extension addition encodings, we need 
+to run the returned {\em encodeSequenceAux} monad in advance of outputing the extension addition
+encoding bits. This is achieved by using the {\em MonadWriter} function {\em censor} which applies 
+a function to the output of a monad in advance of outputting. Here we apply the Haskell built-in 
+function {\tt const} which simply returns its first argument -- in this case the empty list {\em []}.
+Now since this function is applied lazily the monad can run without producing output but returning the monad that we 
+require. We then run the returned monad and then run the extension additon monad again but this time 
+apply a function to add the required preamble to the extension addition encoding bits.
 
 Note also that the encoding of a {\em COMPONENTS OF} item is managed by
 {\em encodeSequenceAuxCO}.
@@ -1391,46 +1400,6 @@ Note also that the encoding of a {\em COMPONENTS OF} item is managed by
 type OptDefBits = BitStream
 type ExtBits = BitStream
 type ExtAndUsed = (Bool, Bool)
-
-axSeq = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (BuiltinType INTEGER) con1)))
-                (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN)))
-                    (AddComponent (MandatoryComponent (NamedType "c" (BuiltinType (CHOICE choice1))))
-                        (ExtensionMarker
-                          (ExtensionAdditionGroup NoVersionNumber eag1
-                           (ExtensionMarker (AddComponent (OptionalComponent (NamedType "i" (BuiltinType BMPSTRING)))
-                                (AddComponent (OptionalComponent (NamedType "j" (BuiltinType PRINTABLESTRING)))
-                                    EmptySequence)))))))
-
-choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
-            (ChoiceExtensionMarker (ChoiceExtensionAdditionGroup NoVersionNumber
-                            (ChoiceOption (NamedType "e" (BuiltinType BOOLEAN))
-                                   (ChoiceOption (NamedType "f"  (BuiltinType IA5STRING))
-                                          (ChoiceExtensionAdditionGroup NoVersionNumber (ChoiceExtensionMarker EmptyChoice))))))
-
-
-eag1 = AddComponent (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RootOnly pac5))))
-        (AddComponent (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) EmptySequence)
-
-pac5 = UnionSet (IC (ATOM ((E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (3,3))))))))))))))
-
-con1 = RootOnly (UnionSet (IC (ATOM (E (V (R (250,253)))))))
-
-axVal2 = Val 253 :*:
-        (True :*:
-            ((AddNoValue NoValue (AddAValue True (AddNoValue NoValue EmptyList))) :*:
-                    ((Just ((NumericString "123") :*: (Just True :*: Empty))) :*:
-                        (Just (BMPString "A") :*: (Nothing :*: Empty)))))
-
-
-axVal = Val 253 :*:
-        (True :*:
-            ((AddNoValue NoValue (AddAValue True (AddNoValue NoValue EmptyList))) :*:
-                    ((Just ((NumericString "123") :*: (Just True :*: Empty))) :*:
-                        (Nothing :*: (Nothing :*: Empty)))))
-
-
-ns1 :: SubtypeConstraint VisibleString
-ns1 = RootOnly (UnionSet (IC (ATOM ((E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R(1,1)))))))))))))))
 
 encodeSequence :: Sequence a -> a -> PERMonad ()
 encodeSequence s v = do odb <- pass $ encodeSequenceAux (False, False) [] s v
@@ -1487,15 +1456,22 @@ encodeSequenceAux (b1,b2) od (ExtensionAdditionGroup _ _ as) (x:*:xs)
 completeSequenceBits :: ExtAndUsed -> OptDefBits -> BitStream -> BitStream
 completeSequenceBits (extensible, extensionAdditionPresent) odb bs
     | not extensible
-        = odb ++ bs
+        = fragment odb ++ bs
     | extensionAdditionPresent
         {- X691REF: 18.1 with extension additions present -}
         {- X691REF: 18.2  -}
-        = 1: odb ++ bs
+        = 1: fragment odb ++ bs
     | otherwise
         {- X691REF: 18.1 with no extenion additions present -}
         {- X691REF: 18.2  -}
-        = 0: odb ++ bs
+        = 0: fragment odb ++ bs
+    where
+        {- X691REF: 18.3  -}
+        fragment ls
+            | genericLength ls < k64
+                = ls
+            | otherwise
+                = (snd . extractValue ) $ encodeUnconstrainedLength (tell . return) ls
 
 encodeSequenceAuxExt :: ExtAndUsed -> OptDefBits -> ExtBits -> Sequence a -> a
                         -> PERMonad ((ExtAndUsed, ExtBits, OptDefBits, PERMonad (OptDefBits, BitStream -> BitStream)))
