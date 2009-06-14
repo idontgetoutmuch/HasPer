@@ -12,6 +12,12 @@ Description:     A formal and executable specification of the Packed Encoding Ru
                  for ASN.1
 build-depends:   binary-strict == 0.4.2,
                  time,
+                 HUnit,
+                 tagsoup,
+                 haskell98,
+                 directory,
+                 process,
+                 filepath,
                  bytestring,
                  mtl,
                  containers,
