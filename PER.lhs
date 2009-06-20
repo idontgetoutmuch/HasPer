@@ -162,11 +162,36 @@ until we reach a non-constrained type. The associated list of constraints will t
 of the seraily applied constraints.
 \end{itemize}
 
-The function {\em encode} returns a value of type {\em PERMonad ()}. This is a writer monad
-wrapped up inside an error monad thus enabling the writing of the bits that represent the
-encoding as a {\em BitStream} value, and the reporting of any errors incurred during encoding.
-The error type {\em ASNError} enables the categorisation of the various types of error.
+The function {\em encode} returns a value of type {\em PERMonad ()}. This is a type that can deal with
+\begin{itemize}
+\item
+the output of an encoding; and
+\item
+error handling
+\end{itemize}
 
+In Haskell when we want to represent and manage computations such as writing output or
+handling errors we typcially use a {\em monadic} type. Haskell provides several commonly used
+monadic types such as
+\begin{itemize}
+\item
+the {\em Maybe} type for dealing with failure;
+\item
+the {\em IO} type for interaction with the user; and the
+\item
+list type for dealing with nondeterminism.
+\end{itemize}
+
+Each of these types (and other types) are members of the Haskell type class {\em Monad} which captures
+the behavioural requirements of a monad as a collection of operations supported by each of its member types.
+Haskell also provides monad transformers which combine existing monads to produce new monads
+with the characteristics of the component monads. Two such monad transformers are {\em ErrorT}
+which adds error handling capabilities to a monad, and {\em WriterT} which adds support for producing a
+stream of values.
+
+Thus the type {\em PERMonad} can produce a stream of values of type {\em BitStream} (the encoding type),
+and can handle errors of the type {\em ASNError}. This error type enables the categorisation of the various types of
+error.
 
 \begin{code}
 type PERMonad a = ErrorT ASNError (WriterT BitStream Identity) a
@@ -183,18 +208,10 @@ instance Error ASNError where
    noMsg = OtherError "The impossible happened"
 
 
-type PerEncoding = Either String BitStream
-
-
 encode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad ()
 encode (BuiltinType t) cl v       = toPER t v cl
 encode (ReferencedType r t) cl v  = encode t cl v
 encode (ConstrainedType t c) cl v = encode t (c:cl) v
-
-encode' :: ASNType a -> SerialSubtypeConstraints a -> a -> AMonad ()
-encode' (BuiltinType t) cl v       = toPER' t v cl
-encode' (ReferencedType r t) cl v  = encode' t cl v
-encode' (ConstrainedType t c) cl v = encode' t (c:cl) v
 
 \end{code}
 
@@ -220,42 +237,43 @@ toPER (ENUMERATED e) x cl  = encodeEnum e x -- no PER-Visible constraints
 toPER (BITSTRING nbs) x cl = encodeBitstring nbs cl x
 toPER (OCTETSTRING) x cl   = encodeOctetstring cl x
 toPER (SEQUENCE s) x cl    = encodeSequence s x -- no PER-Visible constraints
-toPER (SEQUENCEOF s) x cl  = encodeSeqOf cl s x
+toPER (SEQUENCEOF s) x cl  = encodeSequenceOf cl s x
 toPER (SET s) x cl         = encodeSet s x -- no PER-Visible constraints
 toPER (CHOICE c) x cl      = encodeChoice c x -- no PER-visible constraints
-toPER (SETOF s) x cl       = encodeSeqOf cl s x -- no PER-visible constraints
+toPER (SETOF s) x cl       = encodeSequenceOf cl s x -- no PER-visible constraints
 toPER (TAGGED tag t) x cl  = encode t cl x
-
-toPER' :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> AMonad ()
-toPER' (BITSTRING nbs) x cl = encodeBitString nbs cl x
 
 \end{code}
 
 \section{COMPLETE ENCODING}
 {- FIXME: Need a more efficient way to do this. Could carry the remainder with each encoding?
 -}
-{- X691REF: 10.1 -}
 
-{\em extractValue} is simply a function that extracts the encoding bits from the monadic value
-returned by the encoding functions.
+{\em completeEncode} produces a complete encoding by converting an encoding into one that is
+an integral multiple of 8 bits. It uses the Haskell library {\em MonadWriter} function {\em censor} which
+applies a function to output of the monad in advance of it being output. In this case we apply
+the function {\em padding} which produces a bitstream of the appropriate size.
 
 \begin{code}
 
-extractValue  = runIdentity . runWriterT . runErrorT
-
 completeEncode :: PERMonad () -> PERMonad ()
 completeEncode m
-    = let v = snd . extractValue $ m
-      in tell (padding v)
+    =  {- X691REF: 10.1 -}
+       censor padding m
 
+
+padding :: BitStream -> BitStream
 padding enc
     = let le  = length enc
           bts = le `mod` 8
           pad = if le == 0
-                        then [0,0,0,0,0,0,0,0]
-                        else if bts == 0
-                                then enc
-                                else enc ++ take (8-bts) [0,0..]
+                   then {- X691REF: 10.1.3 with empty bit string -}
+                         [0,0,0,0,0,0,0,0]
+                   else if bts == 0
+                           then {- X691REF: 10.1.3 with non-empty bit string and multiple of 8 bits -}
+                                enc
+                           else {- X691REF: 10.1.3 with non-empty bit string and not multiple of 8 bits -}
+                                enc ++ take (8-bts) [0,0..]
           in pad
 
 \end{code}
@@ -264,15 +282,34 @@ padding enc
 
 
 
-{\em encodeOpen} encodes an open type value.
+{\em encodeOpen} encodes an open type value. It uses the function {\em extractValue} which takes a {\em
+PERMonad ()} value and returns a pair of
+\begin{itemize}
+\item
+an indicator of whether or not an error has been thrown; and
+\item
+if not the bitstream output by the encoding.
+\end{itemize}
+
+It also uses the function {\em encodeCase} which takes the extracted value and a function
+which acts on the bitstream included in it. If the extracted value indicates an error then the
+error is simply passed on. Othwerwise, the function is applied to the bitstream.
+
 
 \begin{code}
 
 encodeOpen :: ASNType a -> a -> PERMonad ()
 encodeOpen t v
-{- X691REF: 10.2.1 -}   = let (_,enc) = extractValue (completeEncode (encode t [] v))
-{- X691REF: 10.2.2 -}     in  encodeOctetsWithLength enc
+{- X691REF: 10.2.1 -}   = let x = extractValue (completeEncode (encode t [] v))
+{- X691REF: 10.2.2 -}     in  encodeCase x encodeOctetsWithLength
 
+
+extractValue :: PERMonad () -> (Either ASNError (), BitStream)
+extractValue  = runIdentity . runWriterT . runErrorT
+
+encodeCase :: (Either ASNError (), BitStream) -> (BitStream -> PERMonad ()) -> PERMonad ()
+encodeCase (Left s, _) f = throwError s
+encodeCase (Right (), bs) f = f bs
 \end{code}
 
 \section{ENCODING A LENGTH DETERMINANT}
@@ -634,11 +671,11 @@ for a collection of bits.
 
 \begin{code}
 
-encodeOctetsWithLength :: [Int] -> PERMonad ()
+encodeOctetsWithLength :: BitStream -> PERMonad ()
 encodeOctetsWithLength = encodeUnconstrainedLength tell . groupBy 8
 
 
-encodeBitsWithLength :: [Int] -> PERMonad ()
+encodeBitsWithLength :: BitStream -> PERMonad ()
 encodeBitsWithLength = encodeUnconstrainedLength (tell . return)
 
 \end{code}
@@ -947,7 +984,6 @@ encodeExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
 
 \end{code}
 
-{\em
 {\em encodeConstrainedBitstring} takes a prefix bit as the first
 input and has two list-pattern based cases. The first case has an empty list
 as its second argument indicating that there are no named bits. The second case uses the
@@ -1093,66 +1129,6 @@ encodeNonExtRootBitstring nbs rc ec (Valid erc) xs
 
 \end{code}
 
-
-
-\subsection{First Refactoring}
-
-\begin{code}
-
-encodeBitString ::  NamedBits -> [SubtypeConstraint BitString] -> BitString -> AMonad ()
-
-encodeBitString nbs [] x =
-   encodeLargeLengthDeterminant chunkBy1 undefined (bitString x) -- FIXME: We are ignoring named bits!
-
-encodeBitString nbs cl x =
-   do Valid vc  <- validConstraint -- FIXME: Nasty pattern match. We should use something like data Valid = Valid { valid :: ... }
-                                    -- and then we could say e.g. vc <- validConstraint >>= valid
-      Valid vec <- validExtensionConstraint
-      ec  <- effectiveConstraint
-      eec <- effectiveExtensionConstraint
-      isE <- isExtensibleConstraint
-      let bs            = bitString x
-          isInRoot      = inSizeRange bs vc
-          isInExtension = inSizeRange bs vec
-          doit
-             | isE && (ec == bottom || eec== bottom) =
-                  throwError (OtherError "encodeBitString: Empty constraint")
-             | isE && isInRoot =
-                  do tell . return $ 0
-                     encodeLengthDeterminant (ec `ljoin` eec) chunkBy1 undefined bs
-             | isE && isInExtension =
-                  do tell . return $ 1
-                     encodeLengthDeterminant (ec `ljoin` eec) chunkBy1 undefined bs
-             | isE =
-                  throwError (ConstraintError "encodeBitString: Value out of range")
-             | ec == bottom =
-                  throwError (OtherError "encodeBitString: Empty constraint")
-             | isInRoot =
-                  encodeLengthDeterminant ec chunkBy1 undefined bs
-             | otherwise =
-                  throwError (ConstraintError "encodeBitString: Value out of range")
-      doit
-
-   where effectiveConstraint :: AMonad IntegerConstraint -- FIXME: These probably shouldn't be monadic; they can and should be pure.
-                                                         -- Or maybe not since "constraints" is monadic!!!
-         effectiveConstraint = constraints cl >>= return . conType . getBSRC
-         validConstraint :: AMonad ValidIntegerConstraint
-         validConstraint = constraints cl >>= return . conType . getBSRC
-         isExtensibleConstraint ::  AMonad Bool
-         isExtensibleConstraint = integerConstraints cl >>= return . extensibleBS
-         -- FIXME: This is slightly odd having to pick a type by hand.
-         -- We really shouldn't need to do this.
-         integerConstraints :: [SubtypeConstraint BitString] -> AMonad (ExtBS (ConType IntegerConstraint))
-         integerConstraints = constraints
-         effectiveExtensionConstraint :: AMonad IntegerConstraint
-         effectiveExtensionConstraint = constraints cl >>= return . conType . getBSEC
-         validExtensionConstraint :: AMonad ValidIntegerConstraint
-         validExtensionConstraint = constraints cl >>= return . conType . getBSEC
-
-
-chunkBy1 _ x = mapM_ (tell . return) x -- FIXME: We shouldn't ultimately need "return".
-
-\end{code}
 
 \section{ENCODING THE OCTETSTRING TYPE}
 
@@ -1356,8 +1332,8 @@ encodeNonExtRootConOctetstring rc ec (Valid erc) xs
 constraints. It calls an auxilliary function {\em encodeSequenceAux} which requires two
 further inputs which indicate the extensibility of the type and existence of extension
 additions (represented as a pair of boolean values), and hosts the bits which indicate the presence or otherwise of optional or default
-values. {\em encodeSequenceAux} is a recursive function that recurses over the structure of a sequence and returns a value of type 
-{\em PERMonad (OptDefBits, BitStream -> BitStream)}. This is a monadic value that outputs (the encoding) bits and returns a 
+values. {\em encodeSequenceAux} is a recursive function that recurses over the structure of a sequence and returns a value of type
+{\em PERMonad (OptDefBits, BitStream -> BitStream)}. This is a monadic value that outputs (the encoding) bits and returns a
 pair of values -- the optional or default value indicator bits and a function which adds the appropriate prefix to the output that indicates
 whether the encoded value is extensible and has any extension additions, and the optional/default indicator bits.
 
@@ -1366,7 +1342,7 @@ default, extension marker and so on -- and
 returns a pair whose second component is the function
 {\em completeSequenceBits} which adds a prefix to the output bits including the extension bit if
 required and the bits which describe the presence or otherwise of optional or default values.
-Each root component is encoded as required using {\em encode}. 
+Each root component is encoded as required using {\em encode}.
 
 Note that the extension indicator is initally set to {\em (False, False)}. The first element is converted
 to {\em True} when an extension marker is reached and {\em encodeSequenceAuxExt} is called.
@@ -1380,21 +1356,23 @@ a bitstream representing the existence or otherwise of extension additions;
 \item
 a bitstream representing the existence or otherwise of optional or default components; and
 \item
-a monadic value which is the result of applying {\em encodeSequenceAux} to the remainder of the sequence once the extension additions 
+a monadic value which is the result of applying {\em encodeSequenceAux} to the remainder of the sequence once the extension additions
 have been terminated. This is indicated by another extension marker or simply by the end of the sequence.
 \end{itemize}
 
-Since we need to output root value encodings before extension addition encodings, we need 
+Since we need to output root value encodings before extension addition encodings, we need
 to run the returned {\em encodeSequenceAux} monad in advance of outputing the extension addition
-encoding bits. This is achieved by using the {\em MonadWriter} function {\em censor} which applies 
-a function to the output of a monad in advance of outputting. Here we apply the Haskell built-in 
+encoding bits. This is achieved by using the {\em MonadWriter} function {\em censor} which applies
+a function to the output of a monad in advance of outputting. Here we apply the Haskell built-in
 function {\tt const} which simply returns its first argument -- in this case the empty list {\em []}.
-Now since this function is applied lazily the monad can run without producing output but returning the monad that we 
-require. We then run the returned monad and then run the extension additon monad again but this time 
-apply a function to add the required preamble to the extension addition encoding bits.
+Now since this function is applied lazily the monad can run without producing output but returning the monad that we
+require. We then run the returned monad and then run the extension additon monad again but this time
+apply a function to add the required preamble to the extension addition encoding bits using the
+function {\em addExtensionAdditionPreamble}.
 
 Note also that the encoding of a {\em COMPONENTS OF} item is managed by
-{\em encodeSequenceAuxCO}.
+{\em encodeSequenceAuxCO}. This monadic function outputs the encoding bits and returns the
+optional/default bits to be used in the generation of the encoding preamble.
 
 \begin{code}
 type OptDefBits = BitStream
@@ -1402,8 +1380,9 @@ type ExtBits = BitStream
 type ExtAndUsed = (Bool, Bool)
 
 encodeSequence :: Sequence a -> a -> PERMonad ()
-encodeSequence s v = do odb <- pass $ encodeSequenceAux (False, False) [] s v
-                        return ()
+encodeSequence s v
+           = do odb <- pass $ encodeSequenceAux (False, False) [] s v
+                return ()
 
 encodeSequenceAux :: ExtAndUsed -> OptDefBits -> Sequence a -> a
                 -> PERMonad (OptDefBits, BitStream -> BitStream)
@@ -1415,17 +1394,17 @@ encodeSequenceAux (extensible, b) od (ExtensionMarker as) xs
           in
            do (b, eb, od, pm) <- censor (const []) m
               (od2,f) <- pm
-              censor ((++) (snd . extractValue $ lengthAddsNew eb)) m
+              {- X691REF: 18.8 -}
+              censor ((++) (snd . extractValue $ addExtensionAdditionPreamble eb)) m
               encodeSequenceAux b od2 EmptySequence Empty
     | otherwise
         = encodeSequenceAux (extensible,b) od as xs
 encodeSequenceAux eu od (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
-{- NOTE: od2 is the optional/default list of the components of a sequence -}
     = do od2 <- encodeSequenceAuxCO [] s x
          encodeSequenceAux eu (od ++ od2) as xs
 encodeSequenceAux eu od (AddComponent (ComponentsOf (ReferencedType n t)) as) (x:*:xs)
     = encodeSequenceAux eu od (AddComponent (ComponentsOf t) as) (x:*:xs)
-encodeSequenceAux eu od (AddComponent (ComponentsOf (ConstrainedType t c)) as) (x:*:xs) -- typically a reference
+encodeSequenceAux eu od (AddComponent (ComponentsOf (ConstrainedType t c)) as) (x:*:xs)
     = encodeSequenceAux eu od (AddComponent (ComponentsOf t) as) (x:*:xs)
 encodeSequenceAux eu od (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
     = do
@@ -1444,6 +1423,7 @@ encodeSequenceAux eu od (AddComponent (OptionalComponent (NamedType t a)) as) (J
          encodeSequenceAux eu (od ++ [1]) as xs
 encodeSequenceAux eu od (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs)
     =   {- X691REF: 18.2 with default component not present -}
+        {- X691REF: 18.5 -}
         encodeSequenceAux eu (od ++ [0]) as xs
 encodeSequenceAux eu od (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
     = do {- X691REF: 18.2 with default component present -}
@@ -1476,14 +1456,20 @@ completeSequenceBits (extensible, extensionAdditionPresent) odb bs
 encodeSequenceAuxExt :: ExtAndUsed -> OptDefBits -> ExtBits -> Sequence a -> a
                         -> PERMonad ((ExtAndUsed, ExtBits, OptDefBits, PERMonad (OptDefBits, BitStream -> BitStream)))
 encodeSequenceAuxExt b odb eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
-    = encodeSequenceAuxExt b odb (eb ++ [0]) as xs
+    =   {- X691REF: 18.7 with extension addition absent -}
+        encodeSequenceAuxExt b odb (eb ++ [0]) as xs
 encodeSequenceAuxExt (b1,b2) odb eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
-    = do encodeOpen a x
+    = do {- X691REF: 18.7 with extension addition present -}
+         {- X691REF: 18.9 with ComponentType extension -}
+         encodeOpen a x
          encodeSequenceAuxExt (b1,True) odb (eb ++ [1]) as xs
 encodeSequenceAuxExt b odb eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
-    = encodeSequenceAuxExt b odb (eb ++ [0]) as xs
+    =   {- X691REF: 18.7 with extension addition absent -}
+        encodeSequenceAuxExt b odb (eb ++ [0]) as xs
 encodeSequenceAuxExt (b1,b2) odb eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
-    = do encodeOpen (BuiltinType (SEQUENCE a)) x
+    = do {- X691REF: 18.7 with extension addition present -}
+         {- X691REF: 18.9 with ExtensionAdditionGroup extension -}
+         encodeOpen (BuiltinType (SEQUENCE a)) x
          encodeSequenceAuxExt (b1, True) odb (eb ++ [1]) as xs
 encodeSequenceAuxExt b odb eb (ExtensionMarker as) xs
     = return (b, eb, odb, encodeSequenceAux b odb as xs)
@@ -1497,16 +1483,10 @@ encodeSequenceAuxExt b odb eb _ _
 
 \end{code}
 
-{- FIXME:I DON'T THINK THAT THE ELSE CASE IS FRAGMENTING CORRECTLY -}
-
-18.8 A length determinant of the number of extension additions is added if
-the sequence has any extension additions declared. This is encoded as a normally
-small length (10.9.3.4)
-
 
 \begin{code}
 
-lengthAddsNew ap
+addExtensionAdditionPreamble ap
     = let la = genericLength ap
        in if la <= 63
         then do tell [0]
@@ -1516,7 +1496,12 @@ lengthAddsNew ap
                 encodeOctetsWithLength (encodeNonNegBinaryIntInOctets la)
                 tell ap
 
-{- X.680 24.4 -}
+\end{code}
+
+When encoding a ComponentsOf component, we simply extract and encode the root components of
+the type.
+
+\begin{code}
 
 encodeSequenceAuxCO :: OptDefBits -> Sequence a -> a -> PERMonad OptDefBits
 encodeSequenceAuxCO odb EmptySequence _
@@ -1550,314 +1535,332 @@ encodeSequenceAuxCO odb (ExtensionAdditionGroup _ _ as) (x:*:xs)
 
 \end{code}
 
-\section{Refactoring Stuff}
-
-Conversion functions for use during refactoring so
-we don't have to change everything all at once.
-
-\begin{code}
-
-temporaryConvert :: Monoid x => Either String x -> ErrorT ASNError (WriterT x Identity) ()
-temporaryConvert (Left s) = throwError (OtherError s)
-temporaryConvert (Right x) = tell x
-
-type AMonad a = ErrorT ASNError (WriterT BitStream Identity) a
-
-constraints :: (Eq a, Show a, Lattice a, IC a) => [SubtypeConstraint BitString] -> AMonad (ExtBS (ConType a))
-constraints cs = errorize (lSerialEffCons lBSConE top cs)
-
-errorize :: (MonadError ASNError m) => Either String a -> m a
-errorize (Left e)  = throwError (ConstraintError e)
-errorize (Right x) = return x
-
-\end{code}
-
-\section{Length Determinants}
-
-\begin{code}
-
-encodeLengthDeterminant ::
-  IntegerConstraint -> (ASNType a -> [a] -> DomsMonad) -> (ASNType a -> [a] -> DomsMonad)
-encodeLengthDeterminant c f t xs
-   | ub /= maxBound &&
-     ub == lb &&
-     ub <= 64*(2^10) = f t xs
-   | ub > 64*(2^10) = encodeLargeLengthDeterminant f t xs {- FIXME: A word of explanation as to why
-                                                             we test this here - it's because after
-                                                             here we know y is defined. -}
-   | ub <= 64*(2^10) {- 10.9.1 -}
-        = do constrainedWholeNumber c y
-             f t xs
-   | otherwise      = error "FIXME: encodeLengthDeterminant"
-   where
-      ub = upper c
-      lb = lower c
-      y  = genericLength xs
-
-constrainedWholeNumber :: IntegerConstraint -> Integer -> DomsMonad
-constrainedWholeNumber c v =
-   encodeInt [rangeConstraint (lb,ub)] (Val v)
-   where
-      ub = upper c
-      lb = lower c
-      rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
-      rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
-
-\end{code}
-
-Note: We can use length safely (rather than genericLength) in the cases where we know
-the arguments are sufficiently small (in particular we know we have blocks of 4 or less of
-blocks of $16(2^{10})$ or less).
-
-\begin{code}
-encodeLargeLengthDeterminant ::
-  (ASNType a -> [a] -> DomsMonad) -> ASNType a -> [a] -> DomsMonad
-encodeLargeLengthDeterminant f t xs = doit
-   where
-      doit
-         | {- X691REF: 10.9.3.6 -} l < 128       = h l >> f t xs
-         | {- X691REF: 10.9.3.7 -} l < 16*(2^10) = h l >> f t xs
-         | {- X691REF: 10.9.3.8 -} otherwise     = if isFullBlock 4
-                                                      then fullBlock
-                                                      else doFirstTrue possibleBlocks
-      ysss            = groupBy 4 (groupBy (16*(2^10)) xs)
-      (hsss, tsss)    = genericSplitAt 1 ysss
-      hss             = concat hsss
-      isFullBlock n   = length hss == n && length (hss!!(n-1)) == 16*(2^10)
-      l               = genericLength xs
-      h               = temporaryConvert . return . encodeNonNegBinaryIntInOctets
-      fullBlock       = do h (fromIntegral 4)
-                           f t (concat hss)
-                           encodeLargeLengthDeterminant f t (concat . concat $ tsss)
-      partialBlock n  = do h (fromIntegral n)
-                           f t (concat (take n hss))
-                           encodeLargeLengthDeterminant f t (concat (drop n hss))
-      possibleBlocks  = map (\n -> (isFullBlock n, partialBlock n)) [3..1]
-      doFirstTrue :: Monad m => [(Bool, m ())] -> m ()
-      doFirstTrue []          = return ()
-      doFirstTrue ((p,a):pas) = if p then a else doFirstTrue pas
-
-\end{code}
-
 \section{ENCODING THE SEQUENCE-OF TYPE}
 
-\subsection{Dom's Refactored Version}
+{\em encodeSequenceOf} takes the usual two inputs -- the list of serially applied constraints
+and the value to be encoded. If the constraint list is empty the function
+{\em encodeUnconstrainedSequenceOf} is
+called. Otherwise, {\em encodeSequenceOfWithConstraint} is called. Note that there are two ways
+in which a SEQUENCEOF type may have no PER-visible constraints. The first is when there are no
+constraints associated with the type. The second is when all of the serially applied
+constraints are non-PER visible. This is determined when generating the effective constraint
+for a type using the function {\em lSerialEffCon} defined in the module {\em
+ConstraintGeneration}.
+
+Note that a SEQUENCEOF value is represented as a Haskell list of components. The PER-visible
+SIZE constraint is applied to the number of elements in the list.
 
 \begin{code}
 
-{- FIXME: We may want this to be "a" rather than always () -}
-type DomsMonad = ErrorT ASNError (WriterT BitStream Identity) ()
-
-{- FIXME: I think SubtypeConstraint [a] needs a word of explanation that -}
-{- we are constraining the list not the type. Also, would it be better   -}
-{- have our own (Haskell) type rather than [a]?                          -}
-encodeSequenceOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> DomsMonad
-encodeSequenceOf t [] xs =
-   encodeLargeLengthDeterminant nSequenceOf t xs
-encodeSequenceOf t cs xs =
-   encodeSequenceOfAux t (errorize (effSeqOfCon cs)) (errorize (validSeqOfCon cs)) xs
-
-encodeSequenceOfAux t me mv xs =
-   do e <- me
-      v <- mv
-      let rc = conType . getBSRC $ e
-      encodeLengthDeterminant rc nSequenceOf t xs
-
-nSequenceOf :: ASNType a -> [a] -> DomsMonad
-nSequenceOf t xs = mapM_ (encode t []) xs
+encodeSequenceOf :: [SubtypeConstraint [a]] -> ASNType a -> [a] -> PERMonad ()
+encodeSequenceOf [] t x
+    =   {- X691REF: 19.6 with ub unset -}
+        encodeUnconstrainedSequenceOf t x
+encodeSequenceOf cl t x
+    =   encodeSequenceOfWithConstraint t cl x
 
 \end{code}
 
-\subsection{Original Version}
-
-encodeSO implements the encoding of an unconstrained
-sequence-of value. This requires both the encoding of
-each of the components, and in most cases the encoding
-of the length of the sequence-of (which may require
-fragmentation into 64K blocks).
+{\em encodeUnconstrainedSequenceOf} encodes an unconstrained SEQUENCEOF value by adding a
+length determinant to the encoding of the SEQUENCEOF components. This may of course involve
+fragmentation.
 
 \begin{code}
 
-encodeSeqOf :: [SubtypeConstraint [a]] -> ASNType a -> [a] -> PERMonad ()
-encodeSeqOf [] t x = encodeUncSeqOf t x
-encodeSeqOf cl t x = encodeConSeqOf t cl x
-
+encodeUnconstrainedSequenceOf :: ASNType a -> [a] -> PERMonad ()
+encodeUnconstrainedSequenceOf t xs = encodeUnconstrainedLength (encode t []) xs
 
 \end{code}
 
-encodeUncSeqOf encodes an unconstrained SEQUENCEOF value.
+
+{\em encodeSequenceOfWithConstraint} calls {\em encodeNonExtConsSequenceOf} if the constraint is not
+extensible. If it is extensible then {\em encodeExtConsSequenceOf} is called. They both take the
+effective constraint and actual constraint associated with the type as input.
 
 \begin{code}
 
-encodeUncSeqOf :: ASNType a -> [a] -> PERMonad ()
-encodeUncSeqOf t xs = mEncodeWithLength (encodeList t) xs
+encodeSequenceOfWithConstraint :: ASNType a -> [SubtypeConstraint [a]] -> [a]
+                                  -> PERMonad ()
+encodeSequenceOfWithConstraint t cs v
+    = if (not extensible)
+        then
+             encodeNonExtConsSequenceOf t validCon effCon v
+        else {- X691REF: 19.4 -}
+             encodeExtConsSequenceOf t validCon effCon v
+      where
+          effCon :: Either String (ExtBS (ConType IntegerConstraint))
+          effCon = lSerialEffCons lSeqOfConE top cs
+          validCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
+          validCon = lSerialEffCons lSeqOfConE top cs
+          extensible = eitherExtensible effCon
 
-mEncodeWithLength :: ([[t]] -> PERMonad ()) -> [t] -> PERMonad ()
-mEncodeWithLength fun xs
-    = let ls = (groupBy 4 . groupBy (16*(2^10))) xs
-      in  mencodeUnconstrainedLength fun ls
+\end{code}
 
+{\em encodeNonExtConsSequenceOf} has to deal with three cases.
+\begin{itemize}
+\item
+There are no PER-visible constraints. The function {\em encodeUnconstrainedSequenceOf} is
+called.
+\item
+The constraint is empty and thus no values can be encoded. Note that this means that there is a
+PER-visible size constraint that has no values. An appropriate error is thrown.
+\item
+There is a PER-visible constraint. The function {\em encodeConstrainedSequenceOf} is called.
+\end{itemize}
 
-mencodeUnconstrainedLength :: ([[b]] -> PERMonad ()) -> [[[b]]] -> PERMonad ()
-mencodeUnconstrainedLength encFun [] = lengthLessThan16K 0
-mencodeUnconstrainedLength encFun (x:xs)
-    | l == 4 && last16 == k16
-        = do
-            blockLen 4 63
-            encFun x
-            mencodeUnconstrainedLength encFun xs
-    | l == 1 && last16 < k16
-        = do
-            lengthLessThan16K ((genericLength . head) x)
-            encFun ([head x])
-    | last16 == k16
-        = do
-            blockLen l 63
-            encFun x
-            lengthLessThan16K 0
+\begin{code}
+
+encodeNonExtConsSequenceOf :: ASNType a -> Either String (ExtBS (ConType ValidIntegerConstraint))
+                -> Either String (ExtBS (ConType IntegerConstraint))
+                -> [a]
+                -> PERMonad ()
+encodeNonExtConsSequenceOf t _ (Right (ExtBS (ConType (IntegerConstraint NegInf PosInf)) _ _)) vs
+    =   {- X691REF: 19.6 with ub unset -}
+        encodeUnconstrainedSequenceOf t vs
+encodeNonExtConsSequenceOf t (Right ok) (Right vsc) vs
+    | isEmptyConstraint rc
+           = throwError (ConstraintError "Empty constraint")
     | otherwise
-        = do
-            blockLen (l-1) 63
-            encFun (init x)
-            lengthLessThan16K ((genericLength.last) x)
-            encFun ([last x])
-    where
-        l      = genericLength x
-        last16 = (genericLength . last) x
+           = {- X691REF: 19.5 - 19.6 -}
+             encodeConstrainedSequenceOf t [] l u vrc vs
+             where
+                rc = conType . getRC $ vsc
+                l = lower rc
+                u = upper rc
+                vrc = conType . getRC $ ok
 
 \end{code}
+
+{\em encodeExtConsSequenceOf} has to deal with three cases.
+\begin{itemize}
+\item
+There are no PER-visible constraints. The function {\em encodeUnconstrainedSequenceOf} is
+called.
+\item
+The constraint is empty and thus no values can be encoded. Note that this means that there is a
+PER-visible size constraint that has no values. An appropriate error is thrown.
+\item
+There is a PER-visible constraint. The function {\em encodeConstrainedSequenceOf} is called with the
+prefix bit set to 0. If this results in an error (the value cannot satisfy the constraint root)
+then {\em encodeExtConstrainedSequenceOf} is called and the prefix bit is set to 1. The function
+Haskell library function {\em catchError} manages the error/non-error cases.
+\end{itemize}
 
 
 \begin{code}
 
-encodeConSeqOf :: ASNType a -> [SubtypeConstraint [a]] -> [a] -> PERMonad ()
-encodeConSeqOf t cl xs = lEncValidSeqOf t (effSeqOfCon cl) (validSeqOfCon cl) xs
-
-effSeqOfCon ::[SubtypeConstraint [a]] -> Either String (ExtBS (ConType IntegerConstraint))
-effSeqOfCon cs = lSerialEffCons lSeqOfConE top cs
-
-
-validSeqOfCon :: [SubtypeConstraint [a]] -> Either String (ExtBS (ConType ValidIntegerConstraint))
-validSeqOfCon cs = lSerialEffCons lSeqOfConE top cs
-
-
-lEncValidSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
-               -> Either String (ExtBS (ConType ValidIntegerConstraint))
-               -> [a] -> PERMonad ()
-lEncValidSeqOf t m@(Right vsc) n v
-    = if extensibleBS vsc
-            then lEncExtSeqOf t m n v
-            else lEncNonExtSeqOf t m n v
-lEncValidSeqOf _ (Left s) _ _
-    = throwError (ConstraintError s)
-
-lEncNonExtSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
-                -> Either String (ExtBS (ConType ValidIntegerConstraint))
+encodeExtConsSequenceOf :: ASNType a -> Either String (ExtBS (ConType ValidIntegerConstraint))
+                -> Either String (ExtBS (ConType IntegerConstraint))
                 -> [a]
-                -> PERMonad ()
-lEncNonExtSeqOf t (Right vsc) (Right ok) vs
-       | isEmptyConstraint rc
-            = throwError (ConstraintError "Empty constraint")
-       | inSizeRange vs okrc
-            = soCode rc t vs
-       | otherwise
-            = throwError (BoundsError "Value out of range")
-              where rc = conType . getBSRC $ vsc
-                    Valid okrc = conType . getBSRC $ ok
+                -> PERMonad()
+encodeExtConsSequenceOf t _
+    (Right (ExtBS (ConType (IntegerConstraint NegInf PosInf))
+                  (ConType (IntegerConstraint NegInf PosInf)) _)) vs
+    =   {- X691REF: 19.6 with ub unset -}
+        encodeUnconstrainedSequenceOf t vs
+encodeExtConsSequenceOf t (Right ok) (Right vsc) vs
+    | isEmptyConstraint rc
+           = throwError (ConstraintError "Empty constraint")
+    | otherwise
+           = do
+                catchError (do {- X691REF: 19.4 within root -}
+                               encodeConstrainedSequenceOf t [0] l u vrc vs)
+                           (\err -> do {- X691REF: 19.4 not in root -}
+                                       encodeNonExtRootConSequenceOf t rc ec vec vs)
+             where
+                rc = conType . getRC $ vsc
+                l = lower rc
+                u = upper rc
+                ec = conType . getEC $ vsc
+                vrc = conType . getRC $ ok
+                vec = conType . getEC $ ok
 
-soCode rc t xs
-      =  let l  = lower rc
-             u  = upper rc
-         in
-             if u == l && u <= 65536
-                       then encodeAll t xs
-                       else if u <= 65536
-                            then do
-                                     encodeConstrainedInt (((fromInteger.genericLength) xs-l), (u-l))
-                                     encodeAll t xs
-                            else do
-                                    mEncodeWithLength (encodeList t) xs
-
-
-soExtCode rc ec t xs
-      =  let nc = rc `ljoin` ec
-             l  = lower nc
-             u  = upper nc
-         in
-            if u <= 65536
-                            then do
-                                     encodeConstrainedInt (((fromInteger.genericLength) xs-l), (u-l))
-                                     encodeAll t xs
-                            else do
-                                    mEncodeWithLength (encodeList t) xs
+\end{code}
 
 
-encodeList :: ASNType a -> [[a]] -> PERMonad ()
-encodeList t []
-    = tell []
-encodeList t (f:r)
-    = do
-        encodeAll t f
-        encodeList t r
-
-encodeAll :: ASNType a -> [a] -> PERMonad ()
-encodeAll t (f:r)
-    = let (_,x) = extractValue (encode t [] f)
-      in do tell x
-            encodeAll t r
-encodeAll t [] = tell []
+{\em encodeConstrainedSequenceOf} first checks if the value satisfies the constraint.
+Note that with UNALIGNED PER if the upper bound of a constraint is greater or equal to 64K
+then the encoding of the length determinant is the same as it would be for an unconstrained
+length (X691: 10.9.4.2 Note).
 
 
-lEncExtSeqOf :: ASNType a -> Either String (ExtBS (ConType IntegerConstraint))
-                -> Either String (ExtBS (ConType ValidIntegerConstraint))
-                -> [a]
-                -> PERMonad ()
-lEncExtSeqOf t (Right vsc) (Right ok) vs
-        | isEmptyConstraint rc
-              = throwError (ConstraintError "Empty constraint")
-        | inSizeRange vs okrc
-              = do
-                  tell [0]
-                  soCode rc t vs
-        | inSizeRange vs okec
-              = do tell [1]
-                   soExtCode rc ec t vs
-        | otherwise
-              = throwError (BoundsError "Value out of range")
-                where rc = conType . getBSRC $ vsc
-                      Valid okrc = conType . getBSRC $ ok
-                      ec = conType . getBSEC $ vsc
-                      Valid okec = conType . getBSEC $ ok
+\begin{code}
+
+encodeConstrainedSequenceOf :: ASNType a -> PrefixBit -> InfInteger -> InfInteger
+                               -> ValidIntegerConstraint -> [a] -> PERMonad ()
+encodeConstrainedSequenceOf t pb l u (Valid vrc) xs
+      | inSizeRange xs vrc
+         = if u == l && u <= 65536
+              then {- X691REF: 19.5 -}
+                   mapM_ (encode t []) xs
+              else if u <= 65536
+                   then {- X691REF: 19.6 with ub set -}
+                        do encodeConstrainedInt ((fromInteger.genericLength) xs - l, u-l)
+                           mapM_ (encode t []) xs
+                   else {- X691REF: 19.6 with ub unset -}
+                        encodeUnconstrainedSequenceOf t xs
+      | otherwise = throwError (BoundsError "Size out of range")
+
+
+
+encodeNonExtRootConSequenceOf :: ASNType a -> IntegerConstraint -> IntegerConstraint
+                                 -> ValidIntegerConstraint -> [a] -> PERMonad ()
+encodeNonExtRootConSequenceOf t rc ec (Valid erc) xs
+    | inSizeRange xs erc
+        = do tell [1]
+             encodeUnconstrainedSequenceOf t xs
+    | otherwise = throwError (BoundsError "Size out of range")
 
 \end{code}
 
 
 \section{ENCODING THE SET TYPE}
 
-Encoding the SET type. The encoding is the same as for a
-SEQUENCE except that the components must be canonically ordered.
-The ordering is based on the component's tags. Note, the
-preamble must be reordered to match the ordering of the
-components.
+{\em encodeSet} encodes a SET value. In common with a SEQUENCE, a SET has no PER-visible
+constraints and thus the encoding function has only two inputs: the type of the set to be
+encoded represented as a sequence, and the value to be encoded. The encoding of a set is
+similar to that of a sequence except that the root components are encoded in order of their
+tags. We therefore cannot output each root component encoding in the order they appear in the
+set value, but instead, must store the monadic encode value, typically of the form {\em
+encode a [] x}, in a list, which are then ordered by tag value, and then run in this order. That is, the
+encoding bits are only output after the ordering of the components. This behaviour
+is managed by the auxiliary function {\em encodeSetAux} which is similar to {\em
+encodeSequenceAux} except that the second input is a list of pairs of
+\begin{itemize}
+\item
+tag information and
+\item
+a pair of optional/default bit with the monadic encode value
+\end{itemize}
+instead of simply a list of optional/default bits. Here each optional/default bit is of the
+type {\em Maybe Int} to allow for non-optional/default components for which the entry will be
+{\em Nothing}.
 
 \begin{code}
 
 encodeSet :: Sequence a -> a -> PERMonad ()
-encodeSet s x = tell []
-{- FIXME: To fix!!
-    =   do
-            ((rp,rb),(ap,ab)) <- encodeSeqAux ([],[]) ([],[]) s x
-            let ts  = getTags s
-                ps  = zip ts rb
-                pps = zip rp ps
-                os  = mergesort setPred pps
-                pr  = concat (map fst os)
-                en  = concat (map (snd . snd) os)
-            return (pr ++ en ++ concat ap ++ concat ab)
--}
+encodeSet s v
+           = do odb <- pass $ encodeSetAux (False, False) [] s v
+                return ()
+
+encodeSetAux :: ExtAndUsed -> [(TagInfo, (Maybe Int, PERMonad ()))] -> Sequence a -> a
+                -> PERMonad (OptDefBits, BitStream -> BitStream)
+encodeSetAux eu ms EmptySequence Empty
+    =   let sms = sortBy firstItem ms
+            firstItem m n
+                | fst m < fst n = LT
+                | fst m == fst n = EQ
+                | otherwise = GT
+            odb = map (\(Just x) -> x) $ filter (/= Nothing) $  map (fst . snd) sms
+            mds = map (snd . snd) sms
+        in do {- FIXME run monads in the right order and create optdefbits-}
+                 mapM_ id mds
+                 return (odb, completeSequenceBits eu odb)
+encodeSetAux (extensible, b) ms (ExtensionMarker as) xs
+    | not extensible
+        = let m = encodeSetAuxExt (True, False) ms [] as xs
+          in
+           do (b, eb,pm) <- censor (const []) m
+              (od2,f) <- pm
+              {- X691REF: 18.8 -}
+              censor ((++) (snd . extractValue $ addExtensionAdditionPreamble eb)) m
+              encodeSequenceAux b od2 EmptySequence Empty
+    | otherwise
+        = encodeSetAux (extensible,b) ms as xs
+encodeSetAux eu ms (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
+    = do ms2 <- encodeSetAuxCO [] s x
+         encodeSetAux eu (ms ++ ms2) as xs
+encodeSetAux eu ms (AddComponent (ComponentsOf (ReferencedType n t)) as) (x:*:xs)
+    = encodeSetAux eu ms (AddComponent (ComponentsOf t) as) (x:*:xs)
+encodeSetAux eu ms (AddComponent (ComponentsOf (ConstrainedType t c)) as) (x:*:xs)
+    = encodeSetAux eu ms (AddComponent (ComponentsOf t) as) (x:*:xs)
+encodeSetAux eu ms (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
+    = encodeSetAux eu (ms ++ [(getTI a, (Nothing, encode a [] x))])  as xs
+encodeSetAux eu ms (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
+    = encodeSetAux eu ms as xs
+encodeSetAux (b1,b2) ms (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
+    = encodeSetAux (b1, True) ms as xs
+encodeSetAux eu ms (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs)
+    =   {- X691REF: 18.2 with optional component not present -}
+        encodeSetAux eu (ms ++ [(getTI a, (Just 0, tell []))])  as xs
+encodeSetAux eu ms (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
+    =   {- X691REF: 18.2 with optional comonent present -}
+        encodeSetAux eu (ms ++ [(getTI a, (Just 1, encode a [] x))]) as xs
+encodeSetAux eu ms (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs)
+    =   {- X691REF: 18.2 with default component not present -}
+        {- X691REF: 18.5 -}
+        encodeSetAux eu (ms ++ [(getTI a, (Just 0, tell []))])  as xs
+encodeSetAux eu ms (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
+    =   {- X691REF: 18.2 with default component present -}
+        encodeSetAux eu (ms ++ [(getTI a, (Just 1, encode a [] x))]) as xs
+encodeSetAux (b1,b2) ms (ExtensionAdditionGroup _ _ as) (x:*:xs)
+    = encodeSetAux (b1,True) ms as xs
+
+
+
+encodeSetAuxExt :: ExtAndUsed -> [(TagInfo, (Maybe Int, PERMonad ()))]  -> ExtBits -> Sequence a -> a
+                        -> PERMonad ((ExtAndUsed, ExtBits, PERMonad (OptDefBits, BitStream -> BitStream)))
+encodeSetAuxExt b ms eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
+    =   {- X691REF: 18.7 with extension addition absent -}
+        encodeSetAuxExt b ms (eb ++ [0]) as xs
+encodeSetAuxExt (b1,b2) ms eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
+    = do {- X691REF: 18.7 with extension addition present -}
+         {- X691REF: 18.9 with ComponentType extension -}
+         encodeOpen a x
+         encodeSetAuxExt (b1,True) ms (eb ++ [1]) as xs
+encodeSetAuxExt b ms eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
+    =   {- X691REF: 18.7 with extension addition absent -}
+        encodeSetAuxExt b ms (eb ++ [0]) as xs
+encodeSetAuxExt (b1,b2) ms eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
+    = do {- X691REF: 18.7 with extension addition present -}
+         {- X691REF: 18.9 with ExtensionAdditionGroup extension -}
+         encodeOpen (BuiltinType (SEQUENCE a)) x
+         encodeSetAuxExt (b1, True) ms (eb ++ [1]) as xs
+encodeSetAuxExt b ms eb (ExtensionMarker as) xs
+    = return (b, eb, encodeSetAux b ms as xs)
+encodeSetAuxExt b ms eb EmptySequence Empty
+    | null eb
+        = return (b, eb, encodeSetAux b ms EmptySequence Empty)
+    | otherwise
+        = return (b, eb, encodeSetAux b ms EmptySequence Empty)
+encodeSetAuxExt b odb eb _ _
+    = throwError (OtherError "Inappropriate component!")
+
 \end{code}
 
 
+When encoding a ComponentsOf component, we simply extract and encode the root components of
+the type.
+
+\begin{code}
+
+encodeSetAuxCO :: [(TagInfo, (Maybe Int, PERMonad ()))] -> Sequence a -> a
+                       -> PERMonad [(TagInfo, (Maybe Int, PERMonad ()))]
+encodeSetAuxCO ms EmptySequence _
+    = return ms
+encodeSetAuxCO ms (ExtensionMarker as) xs
+    = encodeSetAuxCO ms as xs
+encodeSetAuxCO ms (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
+    = do ms2 <- encodeSetAuxCO [] s x
+         encodeSetAuxCO (ms ++ ms2) as xs
+encodeSetAuxCO odb (AddComponent (ComponentsOf _) as) (x:*:xs)
+    = throwError (OtherError "COMPONENTS OF can only be applied to a SEQUENCE")
+encodeSetAuxCO ms (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
+    = encodeSetAuxCO (ms ++ [(getTI a, (Nothing, encode a [] x))])  as xs
+encodeSetAuxCO odb (AddComponent (ExtensionComponent (NamedType t a)) as) (_:*:xs)
+    = encodeSetAuxCO odb as xs
+encodeSetAuxCO ms (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs)
+    = encodeSetAuxCO (ms ++ [(getTI a, (Just 0, tell []))])  as xs
+encodeSetAuxCO ms (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
+    = encodeSetAuxCO (ms ++ [(getTI a, (Just 1, encode a [] x))])  as xs
+encodeSetAuxCO ms (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs)
+    = encodeSetAuxCO (ms ++ [(getTI a, (Just 0, tell []))])  as xs
+encodeSetAuxCO ms (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
+    = encodeSetAuxCO (ms ++ [(getTI a, (Just 1, encode a [] x))])  as xs
+encodeSetAuxCO ms (ExtensionAdditionGroup _ _ as) (x:*:xs)
+    = encodeSetAuxCO ms as xs
+
+\end{code}
 
  Sorting predicate and tag selector
 
@@ -2312,339 +2315,6 @@ findV m (a:rs)
 
 \end{code}
 
-{-FIXME: Have commented out the decoding stuff for now. -}
-
-
-\begin{code}
-
-type ElementSetSpecs a = SubtypeConstraint a
-
-fromPER x = decode4 x []
-
-decode4 (BuiltinType t) cl = fromPer3 t cl
-decode4 (ConstrainedType t c) cl = decode4 t (c:cl)
-decode4 (ReferencedType r t) cl  = decode4 t cl
-fromPer3 :: ASNMonadTrans t =>
-            ASNBuiltin a -> [ElementSetSpecs a] -> t BG.BitGet a
-fromPer3 t@INTEGER cl = decodeInt3 cl
-fromPer3 t@(SEQUENCE s) cl = decodeSEQUENCE s
-fromPer3 t@(TAGGED _ u) cl = decode4 u cl
-fromPer3 t@(SEQUENCEOF s) cl = decodeSequenceOf s cl
-fromPer3 t@(BITSTRING _) cl = decodeBitString cl
-
-\end{code}
-
-\section{Decoding Length Determinants}
-
-This function decodes the length determinant as defined in 10.9.
-It does not currently cover 10.9.3.4: the determinant being a normally small length.
-
-Note that it assumes that the ASN.1 type makes semantic sense.
-For example, if the upper bound of the size constraint ("ub") is 0 and the
-lower bound ("lb") is negative, then the result is undefined.
-
-
-\begin{code}
-
-decodeLengthDeterminant ::
-   ASNMonadTrans t =>
-   IntegerConstraint -> (Integer -> ASNType a -> t BG.BitGet [b]) -> ASNType a -> t BG.BitGet [b]
-decodeLengthDeterminant c f t
-   | ub /= maxBound &&
-     ub == lb &&
-     v <= 64*(2^10) = f v t
-   | ub == maxBound = decodeLargeLengthDeterminant3' f t -- FIXME: We don't seem to check if the number
-                                                         -- of elements satisfies the lower constraint.
-   | v <= 64*(2^10) = do k <- decode4 (ConstrainedType (BuiltinType INTEGER) (rangeConstraint (lb,ub))) []
-                         let (Val l) = k
-                         f l t
-   | otherwise      = decodeLargeLengthDeterminant3' f t
-   where
-      ub = upper c
-      lb = lower c
-      (Val v) = ub
-
-      rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
-      rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
-
-\end{code}
-
-This function decodes the length determinant for unconstrained length or large "ub".
-See 10.9.4 and 10.9.3.4 -- 10.9.3.8.4 for further details. Note that we don't currently
-cover 10.9.3.4!!! It does so by taking a function which itself takes an iteration count,
-an ASN.1 type and returns a (monadic) list of decoded values which may or may not be
-values of the ASN.1 type.
-
-\begin{code}
-
-decodeLargeLengthDeterminant3 f t =
-   do p <- lift BG.getBit
-      if (not p)
-         then
-            do j <- lift $ BG.getLeftByteString 7
-               let l = fromNonNegativeBinaryInteger' 7 j
-               f l t
-         else
-            do q <- lift BG.getBit
-               if (not q)
-                  then
-                     do k <- lift $ BG.getLeftByteString 14
-                        let m = fromNonNegativeBinaryInteger' 14 k
-                        f m t
-                  else
-                     do n <- lift $ BG.getLeftByteString 6
-                        let fragSize = fromNonNegativeBinaryInteger' 6 n
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError (DecodeError (fragError ++ show fragSize))
-                           else do frag <- f (fragSize * 16 * (2^10)) t
-                                   rest <- decodeLargeLengthDeterminant3 f t
-                                   return (B.append frag rest)
-                        where
-                           fragError = "Unable to decode with fragment size of "
-
-decodeLargeLengthDeterminant3' f t =
-   do p <- lift BG.getBit
-      if (not p)
-         then
-            do j <- lift $ BG.getLeftByteString 7
-               let l = fromNonNegativeBinaryInteger' 7 j
-               f l t
-         else
-            do q <- lift BG.getBit
-               if (not q)
-                  then
-                     do k <- lift $ BG.getLeftByteString 14
-                        let m = fromNonNegativeBinaryInteger' 14 k
-                        f m t
-                  else
-                     do n <- lift $ BG.getLeftByteString 6
-                        let fragSize = fromNonNegativeBinaryInteger' 6 n
-                        if fragSize <= 0 || fragSize > 4
-                           then throwError (DecodeError (fragError ++ show fragSize))
-                           else do frag <- f (fragSize * 16 * (2^10)) t
-                                   rest <- decodeLargeLengthDeterminant3' f t
-                                   return (frag ++ rest)
-                        where
-                           fragError = "Unable to decode with fragment size of "
-
-\end{code}
-
-\section {INTEGER Decoding}
-
-Constrained {\em INTEGER}s are encoded as non-negative binary in
-the least number of bits
-unless the range is 1 (in which case the answer is the lower and upper bound) --- see Note 2 in Clause 12.
-
-Semi-constrained and unconstrained {\em INTEGER}s are encoded in a list of chunks of
-8 bits (octets) as non-negative binary or as two's complement respectively with a
-\lq\lq large\rq\rq\ length determinant (as there are no constraints on the length
-determinant itself in this particular case).
-
-
-\begin{code}
-
-decodeInt3 :: ASNMonadTrans t => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
-decodeInt3 [] =
-   lDecConsInt3 (return bottom) undefined (return bottom)
-decodeInt3 cs =
-   lDecConsInt3 effRoot extensible effExt
-   where
-      effCon :: Either String (ExtBS (ConType IntegerConstraint))
-      effCon = lSerialEffCons integerConElements top cs
-      extensible = eitherExtensible effCon
-      effRoot = either (\x -> throwError (ConstraintError "Invalid root"))
-                    (return . conType . getRC) effCon
-      effExt = either (\x -> throwError (ConstraintError "Invalid extension"))
-                    (return . conType . getEC) effCon
-
-
-lDecConsInt3 :: ASNMonadTrans t =>
-                 t BG.BitGet IntegerConstraint -> Bool -> t BG.BitGet IntegerConstraint -> t BG.BitGet InfInteger
-lDecConsInt3 mrc isExtensible mec =
-   do rc <- mrc
-      ec <- mec
-      let extensionConstraint    = ec /= bottom
-          tc                     = rc `ljoin` ec
-          extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
-          rootConstraint         = rc /= bottom
-          rootLower              = let Val x = lower rc in x
-          rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
-          numOfRootBits          = (genericLength . snd . extractValue) $ (encodeConstrainedInt (rootRange - 1, rootRange - 1))
-          numOfExtensionBits     = (genericLength . snd . extractValue) $ (encodeConstrainedInt (extensionRange - 1, extensionRange - 1))
-          emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
-          inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
-          unconstrained x        = (lower x) == minBound
-          semiconstrained x      = (upper x) == maxBound
-          constrained x          = not (unconstrained x) && not (semiconstrained x)
-          constraintType x
-             | unconstrained x   = UnConstrained
-             | semiconstrained x = SemiConstrained
-             | otherwise         = Constrained
-          decodeRootConstrained =
-             if rootRange <= 1
-                then
-                   return (Val rootLower)
-                else
-                   do j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
-                      let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
-                      if v `inRange` rc
-                         then
-                            return (Val v)
-                         else
-                            throwError (BoundsError "Value not in root constraint")
-          decodeExtensionConstrained =
-             do v <- decodeUInt3
-                if v `inRange` tc
-                   then
-                      return (Val v)
-                   else
-                      throwError (BoundsError "Value not in extension constraint: could be invalid value or unsupported extension")
-          foobar
-             | emptyConstraint
-                  = do x <- decodeUInt3
-                       return (Val x)
-             | rootConstraint &&
-               extensionConstraint
-                  = do isExtension <- lift $ BG.getBit
-                       if isExtension
-                          then
-                             decodeExtensionConstrained
-                          else
-                             decodeRootConstrained
-             | rootConstraint &&
-               isExtensible
-                  = do isExtension <- lift $ BG.getBit
-                       if isExtension
-                          then
-                             throwError (ExtensionError "Extension for constraint not supported")
-                          else
-                             decodeRootConstrained
-             | rootConstraint
-                  = decodeRootConstrained
-             | extensionConstraint
-                  = throwError (ConstraintError "Extension constraint without a root constraint")
-             | otherwise
-                  = throwError (OtherError "Unexpected error decoding INTEGER")
-      foobar
-
-decodeUInt3 :: ASNMonadTrans t => t BG.BitGet Integer
-decodeUInt3 =
-   do o <- octets
-      return (from2sComplement' o)
-   where
-      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
-      octets   = decodeLargeLengthDeterminant3 chunkBy8 undefined
-
-\end{code}
-
-
-\section{SEQUENCE Decoding}
-
-\begin{code}
-
-decodeSEQUENCE s =
-   do ps <- lift $ bitMask (l s)
-      decodeSEQUENCEAux ps s
-
-l :: Integral n => Sequence a -> n
-l EmptySequence = 0
-l (AddComponent (MandatoryComponent _) ts) = l ts
-l (AddComponent (OptionalComponent  _) ts) = 1 + (l ts)
-
-bitMask n = sequence $ take n $ repeat $ BG.getBit
-
-type BitMap = [Bool]
-
-decodeSEQUENCEAux :: ASNMonadTrans t => BitMap -> Sequence a -> t BG.BitGet a
-decodeSEQUENCEAux _ EmptySequence = return Empty -- ignoring the bit map doesn't look right - it's probably an error if it's not empty
-decodeSEQUENCEAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) =
-   do x <- decode4 t []
-      xs <- decodeSEQUENCEAux bitmap ts
-      return (x :*: xs)
-
-\end{code}
-
-\section{SEQUENCE OF Decoding}
-
-\begin{code}
-
-nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
-
-decodeSequenceOf :: ASNMonadTrans t =>
-                    ASNType a -> [ElementSetSpecs [a]] -> t BG.BitGet [a]
-decodeSequenceOf t [] = decodeLargeLengthDeterminant3' (flip nSequenceOfElements []) t
-decodeSequenceOf t cs = decodeSequenceOfAux t (errorize (effSeqOfCon cs)) (errorize (validSeqOfCon cs))
-
-decodeSequenceOfAux :: ASNMonadTrans t =>
-                       ASNType a ->
-                       t BG.BitGet (ExtBS (ConType IntegerConstraint)) ->
-                       t BG.BitGet (ExtBS (ConType ValidIntegerConstraint)) ->
-                       t BG.BitGet [a]
-decodeSequenceOfAux t me mv =
-   do e <- me
-      v <- mv
-      let rc = conType . getBSRC $ e
-      decodeLengthDeterminant rc (flip nSequenceOfElements []) t
-
-\end{code}
-
-\subsection{BIT STRING --- Clause 15}
-
-{\em BIT STRING}s are encoded with a length determinant but the type
-is immaterial hence we use $\bottom$ as the type argument to
-{\em decodeLengthDeterminant}; the (function) argument to
-decode the individual components merely takes 1 bit at a time.
-
-The above may now be rubbish and the code below could well be
-highly inefficient.
-
-\begin{code}
-
-class (MonadError ASNError (t BG.BitGet), MonadTrans t) => ASNMonadTrans t
-
-instance ASNMonadTrans (ErrorT ASNError)
-
-decodeBitString :: ASNMonadTrans t => [ElementSetSpecs BitString] -> t BG.BitGet BitString
-decodeBitString constraints =
-   do xs <- decodeBitStringAux (errorize (lSerialEffCons lBSConE top constraints))
-      return (BitString . concat . (map bitString) $ xs)
-
-decodeBitStringAux :: ASNMonadTrans t => t BG.BitGet (ExtBS (ConType IntegerConstraint)) -> t BG.BitGet [BitString]
-decodeBitStringAux mx =
-   do x <- mx
-      let rc = conType . getBSRC $ x
-      decodeLengthDeterminant rc chunkBy1 undefined
-      where
-         chunkBy1 = let compose = (.).(.) in lift `compose` (flip (const (sequence . return . (liftM BitString) . getBits . fromIntegral)))
-
-getBits 0 =
-   return []
-getBits n =
-   do x <- BG.getBit
-      xs <- getBits (n-1)
-      return (fromEnum x:xs)
-
-\end{code}
-
-\section{Object Identifier}
-
-\begin{code}
-
-newtype OID = OID {subIds :: [Int]}
-   deriving Show
-
--- type BMonad = ErrorT ASNError BP.BitPut' ()
-
--- encodeOID :: OID -> BMonad ()
-encodeOID x = undefined
-   where
-      encodeOIDAux []       = undefined -- throwError (BoundsError "encodeOID: an OID must contain at least two object identifier components")
-      encodeOIDAux (x:[])   = undefined -- throwError (BoundsError "encodeOID: an OID must contain at least two object identifier components")
-      encodeOIDAux (x:y:zs) = if (x >= 0 && x <= 2) && (y >=0 && y <= 39)
-                                 then toNonNegativeBinaryInteger 8 ((x*40) + y)
-                                 else undefined -- throwError (BoundsError ("encodeOID: invalide oid components: " ++ show x))
-
-\end{code}
 
 \section{Bibliography}
 
