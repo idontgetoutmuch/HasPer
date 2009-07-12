@@ -14,6 +14,10 @@ import Control.Monad.Error
 import Data.Bits
 import Test.HUnit
 
+import Distribution.Version
+import Paths_PER (version)
+import Text.PrettyPrint
+
 {- FIXME: This will do for now until we have the correct               -}
 {- decoding monad (with the using a custom class constraint).          -}
 decodeEncode :: ASNType a -> a -> a
@@ -35,6 +39,11 @@ test2 = TestCase (do let v = Val (2^100)
                      e <- encodeTest "urk" rt1 v
                      assertEqual "INTEGER Inter-operability test 1" v (Val e))
 
+test3 = TestCase (do let v = Val 0
+                     e <- encodeTest "urk" rt1 v
+                     assertEqual "INTEGER Inter-operability test 2" v (Val e))
+
+
 bitStringConsTest1 =
    TestCase (
       assertEqual "Constrained BIT STRING Test 1" sibDataVariableValue dESibDataVariableValue
@@ -43,6 +52,9 @@ bitStringConsTest1 =
 tests =
    [ bitStringConsTest1
    , test2
+   , test3
    ]
 
-main = runTestTT (TestList tests)
+main = do
+   putStrLn ("Running tests for PER " ++ (render $ hcat $ punctuate (text ".") $ map int $ versionBranch $ version))
+   runTestTT (TestList tests)

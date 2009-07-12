@@ -10,6 +10,7 @@ Homepage:        http://www.haskell.org/asn1
 Synopsis:        ASN.1 PER support for Haskell
 Description:     A formal and executable specification of the Packed Encoding Rules (PER)
                  for ASN.1
+
 build-depends:   binary-strict == 0.4.2,
                  time,
                  HUnit,
@@ -22,7 +23,9 @@ build-depends:   binary-strict == 0.4.2,
                  mtl,
                  containers,
                  pretty,
-                 base
+                 base,
+                 Cabal
+
 build-type:      Custom
 
 Exposed-Modules: Language.ASN1.PER.Integer
