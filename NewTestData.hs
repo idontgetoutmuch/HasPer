@@ -1,6 +1,7 @@
 module NewTestData where
 
 import ASNTYPE
+import ConstraintGeneration
 
 ------------------------------------------------------------------------
 
@@ -53,3 +54,7 @@ tInteger1 = ReferencedType (Ref "INTEGER1") (BuiltinType INTEGER)
 vInteger1 = Val 4096
 
 v2_31 = (Val 2^31)
+
+tInteger2 = ConstrainedType (BuiltinType INTEGER) (rangeConstraint (1,214))
+vInteger2 = Val 8
+

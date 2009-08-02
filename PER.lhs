@@ -80,10 +80,11 @@ octet alignment. We have implemented the UNALIGNED variant of CANONICAL-PER.
 
 {-# OPTIONS_GHC -XMultiParamTypeClasses -XGADTs -XTypeOperators
                 -XEmptyDataDecls -XFlexibleInstances -XFlexibleContexts
-                -fwarn-unused-binds
 #-}
 {-
-                -fwarn-unused-imports -fwarn-incomplete-patterns
+                -fwarn-unused-binds
+                -fwarn-unused-imports
+                -fwarn-incomplete-patterns
 -}
 
 \end{code}
@@ -2615,9 +2616,6 @@ decodeLengthDeterminant c f t
       lb = lower c
       (Val v) = ub
 
-      rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
-      rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
-
 \end{code}
 
 This function decodes the length determinant for unconstrained length or large "ub".
@@ -2714,7 +2712,7 @@ lDecConsInt3 :: ASNMonadTrans t =>
 lDecConsInt3 mrc isExtensible mec =
    do rc <- mrc
       ec <- mec
-      let extensionConstraint    = ec /= bottom
+      let extensionConstraint    = ec /= top
           tc                     = rc `ljoin` ec
           extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
           rootConstraint         = rc /= bottom

@@ -573,3 +573,12 @@ lRootStringCons fn t cs
             return (makeEC r top False)
 
 \end{code}
+
+A useful function:
+
+\begin{code}
+
+rangeConstraint :: (ValueRange a) => (a, a) -> SubtypeConstraint a
+rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
+
+\end{code}

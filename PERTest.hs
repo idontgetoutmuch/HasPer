@@ -35,6 +35,8 @@ decodeEncode t x =
 
 dESibDataVariableValue = decodeEncode sibDataVariableType sibDataVariableValue
 
+deVInteger2 = decodeEncode tInteger2 vInteger2
+
 test2 = TestCase (do let v = Val (2^100)
                      e <- encodeTest "urk" rt1 v
                      assertEqual "INTEGER Inter-operability test 1" v (Val e))
@@ -49,8 +51,14 @@ bitStringConsTest1 =
       assertEqual "Constrained BIT STRING Test 1" sibDataVariableValue dESibDataVariableValue
    )
 
+integerConsTest1 =
+   TestCase (
+      assertEqual "Constrained INTEGER Test1" vInteger2 deVInteger2
+   )
+
 tests =
    [ bitStringConsTest1
+   , integerConsTest1  
    , test2
    , test3
    ]
