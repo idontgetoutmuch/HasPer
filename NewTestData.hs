@@ -21,8 +21,8 @@ rt3 =
       s1  = BuiltinType (SEQUENCE (AddComponent mc1 (AddComponent mc2 EmptySequence)))
 
 v3 = y where
-   x = (Val 5) :*: ((Val 3) :*: Empty)
-   y = x :*: ( x :*: Empty)
+   x = (Val 5) :*: (Val 3) :*: Empty
+   y = x :*: x :*: Empty
 
 sibDataVariableType =
    ConstrainedType  (BuiltinType (BITSTRING [])) (RootOnly (UnionSet (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,214)))))))))))))))

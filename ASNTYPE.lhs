@@ -646,6 +646,8 @@ Note that we have created our own heterogeneous list type using the following al
 
 \begin{code}
 data Nil = Empty
+
+infixr 5 :*:
 data a:*:l = a:*:l
 
 instance Show Nil where
