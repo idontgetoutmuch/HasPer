@@ -227,12 +227,12 @@ encodeInt} is called, and if it is a {\em CHOICE} type then {\em encodeChoice} i
 toPER :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> PERMonad ()
 toPER NULL _ _             = tell []
 toPER INTEGER x cl         = encodeInt cl x
-toPER VISIBLESTRING x cl   = encodeRCS cl x
-toPER PRINTABLESTRING x cl = encodeRCS cl x
-toPER NUMERICSTRING x cl   = encodeRCS cl x
-toPER IA5STRING x cl       = encodeRCS cl x
-toPER BMPSTRING x cl       = encodeRCS cl x
-toPER UNIVERSALSTRING x cl = encodeRCS cl x
+toPER VISIBLESTRING x cl   = encodeKMS cl x
+toPER PRINTABLESTRING x cl = encodeKMS cl x
+toPER NUMERICSTRING x cl   = encodeKMS cl x
+toPER IA5STRING x cl       = encodeKMS cl x
+toPER BMPSTRING x cl       = encodeKMS cl x
+toPER UNIVERSALSTRING x cl = encodeKMS cl x
 toPER BOOLEAN x cl         = encodeBool cl x
 toPER (ENUMERATED e) x cl  = encodeEnum e x -- no PER-Visible constraints
 toPER (BITSTRING nbs) x cl = encodeBitstring nbs cl x
@@ -479,7 +479,7 @@ encodeInt cs v = encodeIntWithConstraint cs v
 
 
 {\em encodeUnconsInt} encodes an integer value as a 2's-complement-binary-integer
-into a minimum number of octects using {\em to2sComplement}. This is prefixed by an explicit
+into a minimum number of octets using {\em to2sComplement}. This is prefixed by an explicit
 length encoding using {\em encodeOctetsWithLength}.
 
 \begin{code}
@@ -509,14 +509,14 @@ inputs. The three required for {\em encodeNonExtConsInt} and the two -- actual a
 encodeIntWithConstraint :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
 encodeIntWithConstraint cs v
     = if (not extensible)
-        then {- X691REF: 12.2 -} encodeNonExtConsInt validCon effCon v
-        else {- X691REF: 12.1 -} encodeExtConsInt validCon effCon v
+        then {- X691REF: 12.2 -} encodeNonExtConsInt actualCon effectiveCon v
+        else {- X691REF: 12.1 -} encodeExtConsInt actualCon effectiveCon v
       where
-          effCon :: Either String (ExtBS (ConType IntegerConstraint))
-          effCon = lSerialEffCons integerConElements top cs
-          validCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
-          validCon = lSerialEffCons integerConElements top cs
-          extensible = eitherExtensible effCon
+          effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
+          effectiveCon = lSerialEffCons integerConElements top cs
+          actualCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
+          actualCon = lSerialEffCons integerConElements top cs
+          extensible = eitherExtensible effectiveCon
 
 eitherExtensible (Right v) = isExtensible v
 eitherExtensible _ = False
@@ -549,7 +549,7 @@ encodeNonExtConsInt :: Either String (ExtBS (ConType ValidIntegerConstraint))
                      -> Either String (ExtBS (ConType IntegerConstraint))
                      -> InfInteger
                      -> PERMonad ()
-encodeNonExtConsInt (Right validCon) (Right effCon) n
+encodeNonExtConsInt (Right actualCon) (Right effectiveCon) n
     | isEmptyConstraint effRootCon
          = throwError (ConstraintError "Empty constraint")
     | isNonEmptyConstraint effRootCon && inRange n validRootCon
@@ -566,8 +566,8 @@ encodeNonExtConsInt (Right validCon) (Right effCon) n
     | otherwise
         = throwError (BoundsError "Value out of range")
           where
-            effRootCon   = conType $ getRC effCon
-            validRootCon = conType $ getRC validCon
+            effRootCon   = conType $ getRootConstraint effectiveCon
+            validRootCon = conType $ getRootConstraint actualCon
             rootLower    = lower effRootCon
             rootUpper    = upper effRootCon
 encodeNonExtConsInt _ _ _ = throwError (ConstraintError "Invalid constraint")
@@ -609,7 +609,7 @@ encodeExtConsInt :: Either String (ExtBS (ConType ValidIntegerConstraint))
                      -> Either String (ExtBS (ConType IntegerConstraint))
                      -> InfInteger
                      -> PERMonad ()
-encodeExtConsInt (Right validCon) (Right effCon)  n
+encodeExtConsInt (Right actualCon) (Right effectiveCon)  n
              | isEmptyConstraint effRootCon && isEmptyConstraint effExtCon
                   = throwError (ConstraintError "Empty constraint")
              | isNonEmptyConstraint effRootCon && inRange n validRootCon
@@ -630,10 +630,10 @@ encodeExtConsInt (Right validCon) (Right effCon)  n
              | otherwise
                   = throwError (BoundsError "Value out of range")
                     where
-                        effRootCon = conType $ getRC effCon
-                        validRootCon = conType $ getRC validCon
-                        effExtCon = conType $ getEC effCon
-                        validExtCon = conType $ getEC validCon
+                        effRootCon = conType $ getRootConstraint effectiveCon
+                        validRootCon = conType $ getRootConstraint actualCon
+                        effExtCon = conType $ getExtConstraint effectiveCon
+                        validExtCon = conType $ getExtConstraint actualCon
                         rootLower          = lower effRootCon
                         rootUpper          = upper effRootCon
 
@@ -839,7 +839,7 @@ called. Otherwise, {\em encodeBitstringWithConstraint} is called. Note that ther
 in which a BITSTRING type may have no PER-visible constraints. The first is when there are no
 constraints associated with the type. The second is when all of the serially applied
 constraints are non-PER visible. This is determined when generating the effective constraint
-for a type using the function {\em lSerialEffCon} defined in the module {\em
+for a type using the function {\em lSerialeffectiveCon} defined in the module {\em
 ConstraintGeneration}.
 
 \begin{code}
@@ -891,15 +891,15 @@ encodeBitstringWithConstraint :: NamedBits -> [SubtypeConstraint BitString] -> B
 encodeBitstringWithConstraint namedBits cs v
     = if (not extensible)
         then {- X691REF: 15.7 -}
-             encodeNonExtConsBitstring namedBits validCon effCon v
+             encodeNonExtConsBitstring namedBits actualCon effectiveCon v
         else {- X691REF: 15.6 -}
-             encodeExtConsBitstring namedBits validCon effCon v
+             encodeExtConsBitstring namedBits actualCon effectiveCon v
       where
-          effCon :: Either String (ExtBS (ConType IntegerConstraint))
-          effCon = lSerialEffCons lBSConE top cs
-          validCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
-          validCon = lSerialEffCons lBSConE top cs
-          extensible = eitherExtensible effCon
+          effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
+          effectiveCon = lSerialEffCons lBSConE top cs
+          actualCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
+          actualCon = lSerialEffCons lBSConE top cs
+          extensible = eitherExtensible effectiveCon
 
 \end{code}
 
@@ -932,10 +932,10 @@ encodeNonExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
            = {- X691REF: 15.8 - 15.11 -}
              encodeConstrainedBitstring [] nbs l u vrc vs
              where
-                rc = conType . getRC $ vsc
+                rc = conType . getRootConstraint $ vsc
                 l = lower rc
                 u = upper rc
-                vrc = conType . getRC $ ok
+                vrc = conType . getRootConstraint $ ok
 
 \end{code}
 
@@ -976,12 +976,12 @@ encodeExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
                            (\err -> do {- X691REF: 15.6 not in root -}
                                        encodeNonExtRootBitstring nbs rc ec vec vs)
              where
-                rc = conType . getRC $ vsc
+                rc = conType . getRootConstraint $ vsc
                 l = lower rc
                 u = upper rc
-                ec = conType . getEC $ vsc
-                vrc = conType . getRC $ ok
-                vec = conType . getEC $ ok
+                ec = conType . getExtConstraint $ vsc
+                vrc = conType . getRootConstraint $ ok
+                vec = conType . getExtConstraint $ ok
 
 \end{code}
 
@@ -1141,7 +1141,7 @@ in which a OCTETSTRING type may have no PER-visible constraints. The first is wh
 constraints associated with the type. The second is when all of the serially applied
 constraints are non-PER visible since a non-PER visible complete constraint is ignored.
 This is determined when generating the effective constraint
-for a type using the function {\em lSerialEffCon} defined in the module {\em ConstraintGeneration}.
+for a type using the function {\em lSerialeffectiveCon} defined in the module {\em ConstraintGeneration}.
 
 
 \begin{code}
@@ -1183,15 +1183,15 @@ encodeOctetstringWithConstraint :: [SubtypeConstraint OctetString] -> OctetStrin
 encodeOctetstringWithConstraint cs v
     = if (not extensible)
         then {- X691REF: 16.4 -}
-             encodeNonExtConsOctetstring validCon effCon v
+             encodeNonExtConsOctetstring actualCon effectiveCon v
         else {- X691REF: 16.3 -}
-             encodeExtConsOctetstring validCon effCon v
+             encodeExtConsOctetstring actualCon effectiveCon v
       where
-          effCon :: Either String (ExtBS (ConType IntegerConstraint))
-          effCon = lSerialEffCons lOSConE top cs
-          validCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
-          validCon = lSerialEffCons lOSConE top cs
-          extensible = eitherExtensible effCon
+          effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
+          effectiveCon = lSerialEffCons lOSConE top cs
+          actualCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
+          actualCon = lSerialEffCons lOSConE top cs
+          extensible = eitherExtensible effectiveCon
 
 \end{code}
 
@@ -1224,10 +1224,10 @@ encodeNonExtConsOctetstring (Right ok) (Right vsc) (OctetString vs)
            = {- X691REF: 16.5 - 16.8 -}
              encodeConstrainedOctetstring [] l u vrc vs
              where
-                rc = conType . getRC $ vsc
+                rc = conType . getRootConstraint $ vsc
                 l = lower rc
                 u = upper rc
-                vrc = conType . getRC $ ok
+                vrc = conType . getRootConstraint $ ok
 
 \end{code}
 
@@ -1269,12 +1269,12 @@ encodeExtConsOctetstring (Right ok) (Right vsc) (OctetString vs)
                            (\err -> do {- X691REF: 16.3 not in root -}
                                        encodeNonExtRootConOctetstring rc ec vec vs)
              where
-                rc = conType . getRC $ vsc
+                rc = conType . getRootConstraint $ vsc
                 l = lower rc
                 u = upper rc
-                ec = conType . getEC $ vsc
-                vrc = conType . getRC $ ok
-                vec = conType . getEC $ ok
+                ec = conType . getExtConstraint $ vsc
+                vrc = conType . getRootConstraint $ ok
+                vec = conType . getExtConstraint $ ok
 
 \end{code}
 
@@ -1551,7 +1551,7 @@ called. Otherwise, {\em encodeSequenceOfWithConstraint} is called. Note that the
 in which a SEQUENCEOF type may have no PER-visible constraints. The first is when there are no
 constraints associated with the type. The second is when all of the serially applied
 constraints are non-PER visible. This is determined when generating the effective constraint
-for a type using the function {\em lSerialEffCon} defined in the module {\em
+for a type using the function {\em lSerialeffectiveCon} defined in the module {\em
 ConstraintGeneration}.
 
 Note that a SEQUENCEOF value is represented as a Haskell list of components. The PER-visible
@@ -1591,15 +1591,15 @@ encodeSequenceOfWithConstraint :: ASNType a -> [SubtypeConstraint [a]] -> [a]
 encodeSequenceOfWithConstraint t cs v
     = if (not extensible)
         then
-             encodeNonExtConsSequenceOf t validCon effCon v
+             encodeNonExtConsSequenceOf t actualCon effectiveCon v
         else {- X691REF: 19.4 -}
-             encodeExtConsSequenceOf t validCon effCon v
+             encodeExtConsSequenceOf t actualCon effectiveCon v
       where
-          effCon :: Either String (ExtBS (ConType IntegerConstraint))
-          effCon = lSerialEffCons lSeqOfConE top cs
-          validCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
-          validCon = lSerialEffCons lSeqOfConE top cs
-          extensible = eitherExtensible effCon
+          effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
+          effectiveCon = lSerialEffCons lSeqOfConE top cs
+          actualCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
+          actualCon = lSerialEffCons lSeqOfConE top cs
+          extensible = eitherExtensible effectiveCon
 
 \end{code}
 
@@ -1631,10 +1631,10 @@ encodeNonExtConsSequenceOf t (Right ok) (Right vsc) vs
            = {- X691REF: 19.5 - 19.6 -}
              encodeConstrainedSequenceOf t [] l u vrc vs
              where
-                rc = conType . getRC $ vsc
+                rc = conType . getRootConstraint $ vsc
                 l = lower rc
                 u = upper rc
-                vrc = conType . getRC $ ok
+                vrc = conType . getRootConstraint $ ok
 
 \end{code}
 
@@ -1675,12 +1675,12 @@ encodeExtConsSequenceOf t (Right ok) (Right vsc) vs
                            (\err -> do {- X691REF: 19.4 not in root -}
                                        encodeNonExtRootConSequenceOf t rc ec vec vs)
              where
-                rc = conType . getRC $ vsc
+                rc = conType . getRootConstraint $ vsc
                 l = lower rc
                 u = upper rc
-                ec = conType . getEC $ vsc
-                vrc = conType . getRC $ ok
-                vec = conType . getEC $ ok
+                ec = conType . getExtConstraint $ vsc
+                vrc = conType . getRootConstraint $ ok
+                vec = conType . getExtConstraint $ ok
 
 \end{code}
 
@@ -1874,7 +1874,7 @@ encodeSetAuxCO ms (ExtensionAdditionGroup _ _ as) (x:*:xs)
 
 \section{ENCODING THE SET-OF TYPE}
 
-SET-OF types are encoded as SEQUENCE-OF types except that CANONICAL_PER requires that the component
+SET-OF types are encoded as SEQUENCE-OF types except that CANONICAL-PER requires that the component
 values of a SET-OF type are encoded in ascending order of their same-length encodings. That is, each
 encoding is converted to a integral multiple of octet encoding by appending with 0 bits, and then
 these are converted to the same length as the longest encoding by appending 0-octets.
@@ -1900,32 +1900,17 @@ The function {\em orderedSetOf} orders the component value encodings as required
 
 \begin{code}
 
-zero :: BitStream
-zero = [0,0,0,0,0,0,0,0]
-
-appendZeroes :: Int -> BitStream -> BitStream
-appendZeroes i bs
-    = if i == 0 then bs
-                else appendZeroes (i-1) (bs ++ zero)
-
 orderedSetOf :: ASNType a -> [a] -> PERMonad [BitStream]
 orderedSetOf t ls
     = let els = map (snd. extractValue . encode t []) ls
           pls = map padBits els
           nls = zipWith (++) els pls
           long = maximum (map genericLength  pls) `div` 8
---          xls = map (\x -> appendZeroes (long - (genericLength x `div` 8)) x) pls
           xls = map (\x -> appendZeroes (long - (genericLength x `div` 8)) []) nls
           ols = zip (zipWith (++) pls xls) els
       in
           return (map snd (sortBy order ols))
-					
-order (f,s) (x,y) = if (s ++ f) < (y ++ x)
-											 then LT
-											 else if (s ++ f) == (y ++ x) 
-											 				 then EQ
-															 else GT
-											 
+
 padBits :: BitStream -> BitStream
 padBits enc
     = let le  = length enc
@@ -1933,7 +1918,22 @@ padBits enc
           pad = if bts == 0
                            then []
                            else take (8-bts) [0,0..]
-			in pad	
+      in pad
+
+appendZeroes :: Int -> BitStream -> BitStream
+appendZeroes i bs
+    = if i == 0 then bs
+                else appendZeroes (i-1) (bs ++ zero)
+
+zero :: BitStream
+zero = [0,0,0,0,0,0,0,0]
+
+order :: (BitStream, BitStream) -> (BitStream, BitStream) -> Ordering
+order (f,s) (x,y)
+    |(s ++ f) < (y ++ x) = LT
+    |(s ++ f) == (y ++ x) = EQ
+    | otherwise = GT
+
 \end{code}
 
 
@@ -1949,15 +1949,15 @@ encodeSetOfWithConstraint :: ASNType a -> [SubtypeConstraint [a]] -> [a]
 encodeSetOfWithConstraint t cs v
     = if (not extensible)
         then
-             encodeNonExtConsSetOf t validCon effCon v
+             encodeNonExtConsSetOf t actualCon effectiveCon v
         else {- X691REF: 19.4 -}
-             encodeExtConsSetOf t validCon effCon v
+             encodeExtConsSetOf t actualCon effectiveCon v
       where
-          effCon :: Either String (ExtBS (ConType IntegerConstraint))
-          effCon = lSerialEffCons lSeqOfConE top cs
-          validCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
-          validCon = lSerialEffCons lSeqOfConE top cs
-          extensible = eitherExtensible effCon
+          effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
+          effectiveCon = lSerialEffCons lSeqOfConE top cs
+          actualCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
+          actualCon = lSerialEffCons lSeqOfConE top cs
+          extensible = eitherExtensible effectiveCon
 
 \end{code}
 
@@ -1989,10 +1989,10 @@ encodeNonExtConsSetOf t (Right ok) (Right vsc) vs
            = {- X691REF: 19.5 - 19.6 -}
              encodeConstrainedSetOf t [] l u vrc vs
              where
-                rc = conType . getRC $ vsc
+                rc = conType . getRootConstraint $ vsc
                 l = lower rc
                 u = upper rc
-                vrc = conType . getRC $ ok
+                vrc = conType . getRootConstraint $ ok
 
 \end{code}
 
@@ -2033,12 +2033,12 @@ encodeExtConsSetOf t (Right ok) (Right vsc) vs
                            (\err -> do {- X691REF: 19.4 not in root -}
                                        encodeNonExtRootConSetOf t rc ec vec vs)
              where
-                rc = conType . getRC $ vsc
+                rc = conType . getRootConstraint $ vsc
                 l = lower rc
                 u = upper rc
-                ec = conType . getEC $ vsc
-                vrc = conType . getRC $ ok
-                vec = conType . getEC $ ok
+                ec = conType . getExtConstraint $ vsc
+                vrc = conType . getRootConstraint $ ok
+                vec = conType . getExtConstraint $ ok
 
 \end{code}
 
@@ -2086,352 +2086,526 @@ encodeNonExtRootConSetOf t rc ec (Valid erc) xs
 
 \section{ENCODING THE CHOICE TYPE}
 
-encodeChoice encodes CHOICE values. It is not dissimilar to
-encodeSet in that the possible choice components must be
+{\em encodeChoice} encodes CHOICE values. It is not dissimilar to
+{\em encodeSet} in that the possible choice components must be
 assigned an index based on their canonical ordering. This index,
 which starts from 0, prefixes the value encoding and is absent if
-there is only a single choice. The auxillary function
-encodeChoiceAux deals with the possible cases, and
-encodeChoiceAux' is called once a value has been encoded to ensure
-that only one choice value is encoded.
+there is only a single choice.
 
 \begin{code}
 
 encodeChoice :: Choice a -> ExactlyOne a SelectionMade -> PERMonad ()
 encodeChoice c x
-   = let ts = getCTags c
-     in case (encodeChoiceAux [] [] c x) of
-         Right (ea, ec) ->
-           if length ec == 1
-             then mapM_ tell ec
-             else
-                let ps  = zip ts ec
-                    os  = mergesort choicePred ps
-                    pps = zip [0..] os
-                    fr  = (head . filter (not . nullValue)) pps
-                    ls  = genericLength os
-                in
-                 if null ea
-                    then do encodeConstrainedInt (fromInteger $ fst fr,fromInteger $ ls-1)
-                            tell $ (snd .snd) fr
-                    else
-                       if length ec <= 63
-                       then do tell ea
-                               tell [0]
-                               encodeConstrainedInt (fromInteger $ fst fr, fromInteger 63)
-                               tell $ (snd.snd) fr
-                       else do tell ea
-                               tell [1]
-                               encodeOctetsWithLength (encodeNonNegBinaryIntInOctets (fromInteger $ fst fr))
-                               tell $ (snd.snd) fr
-         Left s -> throwError (OtherError s)
+   = let (b,(r,e)) = getCTags True ([],[]) c
+         {- X691REF: 22.2 -}
+         ids = assignIndices (r,e)
+     in
+        encodeChoiceAux (b,ids) c x
+
+exC1 = extractValue $ encode (BuiltinType (CHOICE choice1)) [] axVal
+
+choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
+            (ChoiceOption (NamedType "dan" (BuiltinType BOOLEAN))
+            (ChoiceExtensionMarker (ChoiceExtensionAdditionGroup NoVersionNumber
+                            (ChoiceOption (NamedType "e" (BuiltinType BOOLEAN))
+                                   (ChoiceOption (NamedType "f"  (BuiltinType IA5STRING))
+                                          (ChoiceExtensionAdditionGroup NoVersionNumber (ChoiceExtensionMarker EmptyChoice)))))))
+
+
+axVal =(AddNoValue NoValue (AddAValue True (AddNoValue NoValue (AddNoValue NoValue EmptyList))))
+
+
+
+
+type ChoiceRootIndices = [Int]
+type ChoiceExtIndices = [Int]
+
+assignIndices :: (ChoiceRootTags, ChoiceExtTags) -> (ChoiceRootIndices, ChoiceExtIndices)
+assignIndices (r,e)
+    = let ri = indices r
+          re = indices e
+      in
+        (ri,re)
+
+indices :: Ord a => [a] -> [Int]
+indices xs
+    = let sxs = sort xs
+      in
+        map (\(Just x) -> x) (indices' xs sxs)
+
+indices' :: Eq a => [a] -> [a] -> [Maybe Int]
+indices' [] sxs = []
+indices' (f:r) sxs
+        = (elemIndex f sxs : indices' r sxs)
 
 \end{code}
 
- IS THE ELSE CASE ABOVE CORRECT???
+The auxilliary function {\em encodeChoiceAux} manages the various choice cases. The cases are:
+
+\begin{itemize}
+\item
+if no choice is chosen as indicated by the constructor {\em EmptyChoice} then an error is
+thrown;
+\item
+an extension marker results in the function {\em encodeChoiceExtAux} being called. This deals
+with a choice that is not chosen from the extension root;
+\item
+if a root option is not chosen then the function {\em encodeChoiceAux'} is called. This
+indicates that there is at least two root options and thus the index must be encoded;
+\item
+if the first root option is chosen and there is only one root index as indicated by the
+Haskell singleton list {\em [f]}, then the choice index is not encoded. The encoding of the
+choice value is prefixed by a {\em 0} bit is the type is extensible;
+\item
+an extension addition group suggests an erroneous CHOICE type since this can only appear after
+an extension marker.
+\end{itemize}
+
+The function {\em encodeChoiceAux'} is similar to {\em encodeChoiceAux} except that there is
+not single root choice case.
 
 \begin{code}
 
-mergesort :: (a -> a -> Bool) -> [a] -> [a]
-mergesort pred [] = []
-mergesort pred [x] = [x]
-mergesort pred xs = merge pred (mergesort pred xs1) (mergesort pred xs2)
-                             where (xs1,xs2) = split xs
-split :: [a] -> ([a],[a])
-split xs = splitrec xs xs []
+type NoExtension = Bool
 
-splitrec :: [a] -> [a] -> [a] -> ([a],[a])
-splitrec [] ys zs = (reverse zs, ys)
-splitrec [x] ys zs = (reverse zs, ys)
-splitrec (x1:x2:xs) (y:ys) zs = splitrec xs ys (y:zs)
-splitrec (x1:x2:xs) [] zs = error "Impossible case when used by split"
-
-merge :: (a -> a -> Bool) -> [a] -> [a] -> [a]
-merge pred xs [] = xs
-merge pred [] ys = ys
-merge pred (x:xs) (y:ys)
-    = case pred x y
-        of True -> x: merge pred xs (y:ys)
-           False -> y: merge pred (x:xs) ys
-
-
-nullValue :: (Integer, (TagInfo, BitStream)) -> Bool
-nullValue (f,(s,t)) = null t
-
-
-choicePred :: (TagInfo, BitStream) -> (TagInfo, BitStream) -> Bool
-choicePred (t1,_) (t2,_) = t1 <= t2
-
-
-encodeChoiceAux :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n ->  Either String ([Int], [BitStream])
-encodeChoiceAux ext body EmptyChoice _ = return (ext, reverse body)
-encodeChoiceAux ext body (ChoiceExtensionMarker as) xs =
-   encodeChoiceExtAux [0] body as xs
-encodeChoiceAux ext body (ChoiceOption a as) (AddNoValue x xs) =
-   encodeChoiceAux ext ([]:body) as xs
-encodeChoiceAux ext body (ChoiceOption (NamedType t a) as) (AddAValue x xs)
+encodeChoiceAux :: (NoExtension, (ChoiceRootIndices, ChoiceExtIndices))
+                    -> Choice a -> ExactlyOne a n -> PERMonad ()
+encodeChoiceAux ids EmptyChoice _ = throwError (OtherError "No choice value!")
+encodeChoiceAux ids (ChoiceExtensionMarker as) xs = encodeChoiceExtAux ids as xs
+encodeChoiceAux (b,(f:r,e)) (ChoiceOption a as) (AddNoValue x xs)
+     =  let l = genericLength r
+        in encodeChoiceAux' l (b,(r,e)) as xs
+encodeChoiceAux (b, ([f],e)) (ChoiceOption (NamedType t a) as) (AddAValue x xs)
     = do
-        (err,bts) <- return (extractValue (encode a [] x))
-        encodeChoiceAux' ext (bts:body) as xs
-encodeChoiceAux _ _ (ChoiceExtensionAdditionGroup _ _) _
-    = throwError "Impossible case: EXTENSION ADDITON GROUP only appears in an extension."
+        if b then   {- X691REF: 22.4, 22.5 and 22.7 -}
+                    tell [0]
+             else   {- X691REF: 22.4 and 22.6 -}
+                    tell []
+        encode a [] x
+encodeChoiceAux (b, ((f:g:r),e)) (ChoiceOption (NamedType t a) as) (AddAValue x xs)
+    = do
+        if b then   {- X691REF: 22.5 and 22.7 -}
+                    tell [0]
+             else   {- X691REF: 22.6 -}
+                    tell []
+        encodeConstrainedInt (fromInteger $ toInteger  f, fromInteger $ genericLength (g:r))
+        encode a [] x
+encodeChoiceAux _ (ChoiceExtensionAdditionGroup _ _) _
+    = throwError (OtherError "Impossible case: EXTENSION ADDITION GROUP only appears in an extension.")
 
-
-encodeChoiceAux' :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n -> Either String ([Int], [BitStream])
-encodeChoiceAux' ext body EmptyChoice _ = return (ext, reverse body)
-encodeChoiceAux' ext body (ChoiceExtensionMarker as) xs =
-   encodeChoiceExtAux' ext body as xs
-encodeChoiceAux' ext body (ChoiceOption a as) (AddNoValue x xs) =
-   encodeChoiceAux' ext ([]:body) as xs
-encodeChoiceAux' ext body (ChoiceOption a as) (AddAValue x xs) =
-   encodeChoiceAux' ext ([]:body) as xs
+encodeChoiceAux' :: Integer -> (NoExtension, (ChoiceRootIndices, ChoiceExtIndices))
+                    -> Choice a -> ExactlyOne a n -> PERMonad ()
+encodeChoiceAux' l ids EmptyChoice _ = throwError (OtherError "No choice value!")
+encodeChoiceAux' l ids (ChoiceExtensionMarker as) xs = encodeChoiceExtAux ids as xs
+encodeChoiceAux' l (b,(f:r,e)) (ChoiceOption a as) (AddNoValue x xs) =
+   encodeChoiceAux' l (b,(r,e)) as xs
+encodeChoiceAux' l (b, (f:r,e)) (ChoiceOption (NamedType t a) as) (AddAValue x xs)
+    = do
+        if b then tell [0]
+             else tell []
+        encodeConstrainedInt (fromInteger $ toInteger  f, fromInteger l)
+        encode a [] x
 encodeChoiceAux' _ _ (ChoiceExtensionAdditionGroup _ _) _
-    = throwError "Impossible case: EXTENSION ADDITON GROUP only appears in an extension."
+    = throwError (OtherError "Impossible case: EXTENSION ADDITION GROUP only appears in an extension.")
 
+\end{code}
 
-encodeChoiceExtAux :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n -> Either String ([Int], [BitStream])
-encodeChoiceExtAux ext body EmptyChoice _ = return (ext,reverse body)
-encodeChoiceExtAux ext body (ChoiceExtensionMarker as) xs =
-   encodeChoiceAux ext body as xs
-encodeChoiceExtAux ext body (ChoiceExtensionAdditionGroup _ as) xs =
-   encodeChoiceExtAux ext body as xs
-encodeChoiceExtAux ext body (ChoiceOption a as) (AddNoValue x xs) =
-   encodeChoiceExtAux ext ([]:body) as xs
-encodeChoiceExtAux ext body (ChoiceOption (NamedType t a) as) (AddAValue x xs)
-    = do (err,bts) <- return (extractValue (encodeOpen a x))
-         encodeChoiceExtAux' [1](bts:body) as xs
+The function {\em encodeChoiceExtAux} processes values that are not in the extension root of a
+CHOICE type. It is similar to {\em encodeChoiceAux} except that:
+\begin{itemize}
+\item
+an extension addition group is a valid component and results in its components being
+processed;
+\item
+if the chosen value is in the extension then the choice index is encoded as a normally small
+non-negative integer, the value is encoded as an open type value, and these encodings are
+prefixed by a single {\em 1} bit.
+\end{itemize}
 
-encodeChoiceExtAux' :: [Int] -> [BitStream] -> Choice a -> ExactlyOne a n -> Either String ([Int], [BitStream])
-encodeChoiceExtAux' ext body EmptyChoice _ = return (ext, reverse body)
-encodeChoiceExtAux' ext body (ChoiceExtensionMarker as) xs =
-   encodeChoiceAux' ext body as xs
-encodeChoiceExtAux' ext body (ChoiceExtensionAdditionGroup _ as) xs =
-   encodeChoiceAux' ext body as xs
-encodeChoiceExtAux' ext body (ChoiceOption a as) (AddNoValue x xs) =
-   encodeChoiceExtAux' ext body as xs
-encodeChoiceExtAux' ext body (ChoiceOption a as) (AddAValue x xs) =
-   encodeChoiceExtAux' ext body as xs
+\begin{code}
 
+encodeChoiceExtAux :: (NoExtension, (ChoiceRootIndices, ChoiceExtIndices))
+                    -> Choice a -> ExactlyOne a n -> PERMonad ()
+encodeChoiceExtAux ids EmptyChoice _ = throwError (OtherError "No choice value!")
+encodeChoiceExtAux ids(ChoiceExtensionMarker as) xs =
+   encodeChoiceAux ids as xs
+encodeChoiceExtAux ids (ChoiceExtensionAdditionGroup _ as) xs =
+   encodeChoiceExtAux ids as xs
+encodeChoiceExtAux (b,(r, (f:e))) (ChoiceOption a as) (AddNoValue x xs) =
+   encodeChoiceExtAux (b, (r,e)) as xs
+encodeChoiceExtAux (b,(r, (f:e))) (ChoiceOption (NamedType t a) as) (AddAValue x xs)
+    = do {- X691REF: 22.5 and 22.8 -}
+         tell [1]
+         encodeNSNNInt (toInteger f) 0
+         encodeOpen a x
 
 \end{code}
 
 \section{ENCODING THE RESTRICTED CHARACTER STRING TYPES}
 
-If the type is extensible then a single bit shall be added to the
-encoding. This is set to 0 if the value is withing the range of
-the extension root and to 1 otherwise. If the value is outside the
-range then the encoding shall be as if there was no effective size
-constraint and shall have an effective permitted alphabet
-constraint that consists of the set of characters of the
-unconstrained type.
+There are two categories of restricted character string types -- known-multiplier character
+strings and others. We have currently only implemented the known-multiplier category.
 
-The first case of encodeVisString is for an unconstrained value.
-Note that a check on the validity of the string value is made
-before any encoding.
+{\em encodeKMS} takes the usual two inputs -- the list of serially applied constraints
+and the value to be encoded. If the constraint list is empty the function
+{\em encodeUnconstrainedKMS} is
+called. Otherwise, {\em encodeKMSWithConstraint} is called. Note that there are two ways
+in which a known-multiplier string type may have no PER-visible constraints. The first is when there are no
+constraints associated with the type. The second is when all of the serially applied
+constraints are non-PER visible since a non-PER visible complete constraint is ignored.
+This is determined when generating the effective constraint
+for a type using the function {\em lSerialeffectiveCon} defined in the module {\em ConstraintGeneration}.
+
+Note that {\em encodeKMS} is a constrained polymorphic type that applies to a set of
+known-multiplier string types. Each is a member of three type classes:
+
+\begin{itemize}
+\item
+{\em Eq} so that there values can be tested for equality;
+\item
+{\em RS} a type class of restricted string types defined in the module {\em LatticeMod}. It
+include methods to access the string from a restricted value and vice versa; and
+\item
+{\em Lattice} a type class also defined in {\em LatticeMod}. It specifies all of the
+behavioural requirements of a {\bf bounded lattice} such as join and meet operations and a
+greatest ({\em top}) and least ({\em bottom}) element. Note that each type will have its own
+greatest element which is the complete set of possible values as defined in X.691 27.5.3.
+\end{itemize}
+
+
+{- FIXME: Make sure distinguished between known-multiplier strings and others (see 27.5) -}
+
 \begin{code}
 
-encodeRCS :: (Eq a, RS a, Lattice a)
+encodeKMS :: (Eq a, RS a, Lattice a)
               => SerialSubtypeConstraints a -> a -> PERMonad ()
-encodeRCS [] vs
-        | rcsMatch vs top
-            = encodeResString vs
+encodeKMS [] x
+    = {- X691REF: 27.5.1 with no permitted alphabet constraint -}
+      encodeUnconstrainedKMS x
+encodeKMS cs x
+    = encodeKMSWithConstraint cs x
+
+\end{code}
+
+{\em encodeUnconstrainedKMS} encodes an unconstrained known-multiplier type value. If the
+string is formed of characters from the required type then it calls {\em encodeKMString}. The
+test is done by the function {\em isOKString}.
+
+\begin{code}
+
+encodeUnconstrainedKMS :: (Eq a, RS a, Lattice a) => a -> PERMonad ()
+encodeUnconstrainedKMS vs
+        | isOKString vs top
+            = encodeKMString vs
         | otherwise
             = throwError (BoundsError "Invalid value!")
-encodeRCS cs vs
-        | rcsMatch vs top
-            = lEncValidRCS (effCon cs) (validCon cs) vs
+
+
+isOKString :: RS a => a -> a -> Bool
+isOKString x y = elems (getString x) (getString y)
+
+elems :: Eq a => [a] -> [a] -> Bool
+elems xs ys = all (flip elem ys) xs
+
+\end{code}
+
+{\em encodeKMString} encodes a known-multiplier string with unconstrained length and a
+permitted-alphabet constraint of the whole type. {\em encodeKMPermAlph} encodes each
+character in a string based on the rules specified in X.691 27.5.2 and 27.5.4.
+
+\begin{code}
+
+encodeKMString :: (RS a, Lattice a) => a -> PERMonad ()
+encodeKMString vs
+    = let t = getTop vs
+      in {- X691REF: 27.5.7 -}
+         encodeWithLength top (encodeKMPermAlph (getString t))  (getString vs) {- FIXME check top here -}
+
+getTop :: (RS a, Lattice a) => a -> a
+getTop m = top
+
+encodeKMPermAlph :: String -> Char -> PERMonad ()
+encodeKMPermAlph p c
+    = {- X691REF: 27.5.2 and 27.5.4 -}
+      let sp  = sort p
+          lp  = genericLength p
+          b   = minExp 2 0 lp
+          mp  = maximum p
+      in
+        if ord mp < 2^b -1
+            then {- X691REF: 27.5.4 (a) -}
+                 encodeCharInBits lp c
+            else {- X691REF: 27.5.4 (b) -}
+                 let v = (genericLength . findV c) sp
+                     l = fromInteger $ lp-1
+                 in encodeConstrainedInt (v,l)
+
+minExp :: (Num a, Integral b, Ord a) => a -> b -> a -> b
+minExp n e p
+    = if n^e < p
+        then minExp n (e+1) p
+        else e
+\end{code}
+
+Each character is encoded by {\em encodeCharInBits}
+which encodes the Unicode value of the character in the required number of bits. This is
+achieved by converting a character to its Unicode value and then encoding the number as a
+constrained integer using {\em encodeConstrainedInt}.
+
+\begin{code}
+
+encodeCharInBits :: Integer -> Char -> PERMonad ()
+encodeCharInBits i c = encodeConstrainedInt (fromInteger $ (fromIntegral.ord) c, fromInteger i)
+
+\end{code}
+
+{\em encodeKMSWithConstraint} calls {\em encodeNonExtConsKMS} if the constraint is not
+extensible and the input is valid (for the particular known-multiplier string).
+If it is extensible and the input is valid then {\em encodeExtConsKMS} is called. They both take the
+effective constraint and actual constraint associated with the type as input.
+
+
+\begin{code}
+
+encodeKMSWithConstraint :: (Eq a, RS a, Lattice a)
+                            => SerialSubtypeConstraints a -> a -> PERMonad ()
+encodeKMSWithConstraint cs vs
+        | isOKString vs top && not extensible
+            = encodeNonExtConsKMS (effectiveCon cs) (actualCon cs) vs
+        | isOKString vs top
+            =   {- X691REF: 27.4 -}
+                encodeExtConsKMS (effectiveCon cs) (actualCon cs) vs
         | otherwise
             = throwError (BoundsError "Invalid value!")
+            where
+                extensible = eitherExtensible (effectiveCon cs)
 
+effectiveCon :: (RS a, Lattice a, Eq a) => SerialSubtypeConstraints a ->
+                Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
+effectiveCon cs = lSerialEffCons lResConE top cs
 
-effCon :: (RS a, Lattice a, Eq a)
-          => SerialSubtypeConstraints a -> Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
-effCon cs = lSerialEffCons lResConE top cs
+actualCon :: (RS a, Lattice a, Eq a) => SerialSubtypeConstraints a ->
+                Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
+actualCon cs = lSerialEffCons lResConE top cs
 
-validCon :: (RS a, Lattice a, Eq a)
-            => SerialSubtypeConstraints a -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
-validCon cs = lSerialEffCons lResConE top cs
+\end{code}
 
+{- FIXME
 -- The first case of encVS deals with non-per visible constraint.
 -- If the constraint is non-per visible then we treat the value as
 -- unconstrained.
 -- NEED TO DEAL WITH CASE WHEN ROOT AND EXTENSION ARE DIFFERENT
 -- CONSTRAINTS
+\}
 
-rcsMatch :: RS a => a -> a -> Bool
-rcsMatch x y = stringMatch (getString x) (getString y)
+{\em encodeNonExtConsKMS} has several cases:
+\begin{itemize}
+\item
+if there is no valid effective constraint (signalled by a {\em Left} value) then an error
+indicating this problem is thrown;
+\item
+if the constraint is empty then an error is thrown since the constraint can never be
+satisfied;
+\item
+if the constraint is a mixture of a size and permitted alphabet constraint and both are
+satisfied by the input value then {\em encodeSizeAndPAConsKMS} is called;
+\item
+if the constraint is only a permitted alphabet constraint then {\em encodePAConsKMS} is
+called;
+\item
+if the constraint is only a size constraint then {\em encodeSizeConsKMS} is called;
+\item
+otherwise the input value does not satisfy the constraint and an error is thrown.
+\end{itemize}
 
-stringMatch [] s = True
-stringMatch (f:r) s = elem f s && stringMatch r s
 
 
-lEncValidRCS :: (RS a, Eq a, Lattice a) =>
-                 Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
-                 -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
-                 -> a -> PERMonad ()
-lEncValidRCS m@(Right vsc) n v
-    = if extensible vsc
-            then lEncExtRCS m n v
-            else lEncNonExtRCS m n v
-lEncValidRCS (Left s) n v
-    = throwError (ConstraintError s)
+\begin{code}
 
-
-{-
-A value is out of range if it is not within the constraint. This
-includes the cases where either the size or PA constraint is
-bottom which by default cannot be satisfied.
-No constraint is represented by the lattice attribute top which is
-the default value when generating an effective constraint.
--}
-
-lEncNonExtRCS :: (RS a, Eq a, Lattice a) =>
+encodeNonExtConsKMS :: (RS a, Eq a, Lattice a) =>
                 Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
                 -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
                 -> a
                 -> PERMonad ()
-lEncNonExtRCS (Right vsc) (Right ok) vs
+encodeNonExtConsKMS (Left s) _ _ = throwError (OtherError s)
+encodeNonExtConsKMS (Right vsc) (Right ok) vs
      | isEmptyConstraint rc
          = throwError (ConstraintError "Empty constraint")
-     | not noSC && not noPAC && inPA pac && inSizeRange (getString vs) oksc
-         = encodeRCSSzF sc pac vs
-     | noSC && not noPAC && inPA pac
-         = encodeRCSF pac vs
-     | noPAC && not noSC && inSizeRange (getString vs) oksc
-         = encodeRCSSz sc vs
+     | not noSizeConstraint && not noPAConstraint && inPA pac && inSizeRange (getString vs) oksc
+         = encodeSizeAndPAConsKMS l u pac vs
+     | noSizeConstraint && not noPAConstraint && inPA pac
+         = encodePAConsKMS pac vs
+     | noPAConstraint && not noSizeConstraint && inSizeRange (getString vs) oksc
+         = encodeSizeConsKMS l u vs
      | otherwise
          = throwError (BoundsError "Value out of range")
            where
-                rc = getRC vsc
-                okrc = getRC ok
-                sc = getSC rc
-                Valid oksc = getSC okrc
-                pac = getPAC rc
-                noSC  = sc == top
-                noPAC = pac == top
-                inPA x  = stringMatch (getString vs) (getString x)
+                rc = getRootConstraint vsc
+                okrc = getRootConstraint ok
+                sc = getSizeConstraint rc
+                Valid oksc = getSizeConstraint okrc
+                pac = getPAConstraint rc
+                noSizeConstraint  = sc == top
+                noPAConstraint = pac == top
+                inPA x  = elems (getString vs) (getString x)
+                l = lower sc
+                u = upper sc
+
+\end{code}
+
+{\em encodeExtConsKMS} has several cases:
+\begin{itemize}
+\item
+if there is no valid effective constraint (signalled by a {\em Left} value) then an error
+indicating this problem is thrown;
+\item
+if the constraint is empty then an error is thrown since the constraint can never be
+satisfied;
+\item
+if the constraint is a mixture of a size and permitted alphabet constraint and both are
+satisfied by the input value then {\em encodeSizeAndPAConsKMS} is called;
+\item
+if the constraint is only a permitted alphabet constraint then {\em encodePAConsKMS} is
+called;
+\item
+if the constraint is only a size constraint then {\em encodeSizeConsKMS} is called;
+\item
+otherwise the input value does not satisfy the constraint and an error is thrown.
+\end{itemize}
+
+\begin{code}
 
 
-lEncExtRCS :: (RS a, Eq a, Lattice a) =>
+
+encodeExtConsKMS :: (RS a, Eq a, Lattice a) =>
               Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
               -> Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
               -> a
               -> PERMonad ()
-lEncExtRCS (Right vsc) (Right ok) vs
-    =   let rc = getRC vsc
-            ec = getEC vsc
-            okrc = getRC ok
-            okec = getEC ok
-            rsc = getSC rc
-            Valid okrsc = getSC okrc
-            rpac = getPAC rc
-            esc = getSC ec
-            Valid okesc = getSC okec
-            epac = getPAC ec
-            concStrs :: RS a => ResStringConstraint a i ->
-                                  ResStringConstraint a i -> a
-            concStrs rc ec
-                  = let r = (getString . getPAC) rc
-                        e = (getString . getPAC) ec
-                    in makeString (r++e)
-            expac = concStrs rc ec
-            noRC  = rc == top
-            noEC  = ec == top
-            noRSC  = rsc == top
-            noRPAC = rpac == top
-            noESC  = esc == top
-            noEPAC = epac == top
-            inPA x  = stringMatch (getString vs) (getString x)
-            foobar
-                | isEmptyConstraint rc
-                    = throwError (ConstraintError "Empty constraint")
-                | otherwise = foobarREC
-            foobarREC
-                | noEC = foobarRC
-                | noRC = foobarEC
-                | otherwise = foobarBoth
-            foobarRC
-                | noRSC && inPA rpac
-                    = do tell [0]
-                         encodeRCSF rpac vs
-                | noRPAC && inSizeRange (getString vs) okrsc
-                    = do tell [0]
-                         encodeRCSSz rsc vs
-                | inPA rpac && inSizeRange (getString vs) okrsc
-                    = do tell [0]
-                         encodeRCSSzF rsc rpac vs
-                | otherwise
+encodeExtConsKMS (Left s) _ _ = throwError (OtherError s)
+encodeExtConsKMS (Right vsc) (Right ok) vs
+    | isEmptyConstraint rc
+           = throwError (ConstraintError "Empty constraint")
+    | otherwise
+           = do
+                catchError (do {- X691REF: 19.4 within root -}
+                               encodeConstrainedKMS [0] l u pc vrc vs)
+                           (\err -> do {- X691REF: 19.4 not in root -}
+                                       encodeNonExtRootConKMS rc ec vrc vec vs)
+    where   rc = getRootConstraint vsc
+            ec = getExtConstraint vsc
+            vrc = getRootConstraint ok
+            vec = getExtConstraint ok
+            rsc = getSizeConstraint rc
+            pc = getPAConstraint rc
+            l = lower rsc
+            u = upper rsc
+
+
+encodeConstrainedKMS :: (RS a, Eq a, Lattice a) =>
+                        PrefixBit -> InfInteger -> InfInteger -> a -> ResStringConstraint a ValidIntegerConstraint ->
+                                a -> PERMonad ()
+encodeConstrainedKMS pb l u pc vrc vs
+        | noRootSizeConstraint && inPA pc
+                    = do tell pb
+                         encodePAConsKMS pc vs
+        | noRootPAConstraint && inSizeRange (getString vs) vrsc
+                    = do tell pb
+                         encodeSizeConsKMS l u vs
+        | inPA pc && inSizeRange (getString vs) vrsc
+                    = do tell pb
+                         encodeSizeAndPAConsKMS l u pc vs
+       | otherwise
                     = throwError (BoundsError "Value out of range")
-            foobarEC
-                | noESC && inPA epac
-                    = do tell [1]
-                         encodeRCSF top vs
-                | noEPAC && inSizeRange (getString vs) okesc
-                    = do tell [1]
-                         encodeResString vs
-                | inPA epac && inSizeRange (getString vs) okesc
-                    = do tell [1]
-                         encodeRCSF top vs
-                | otherwise
-                    = throwError (BoundsError "Value out of range")
-            foobarBoth
-                | not noRPAC && inPA rpac && not noRSC && inSizeRange (getString vs) okrsc
-                    = do tell [0]
-                         encodeRCSSzF rsc rpac vs
-                | noRPAC && noEPAC && not noRSC && inSizeRange (getString vs) okrsc
-                    = do tell [0]
-                         encodeRCSSz rsc vs
-                | noRSC && noESC && not noRPAC && inPA rpac
-                    = do tell [0]
-                         encodeRCSF rpac vs
-                | noRPAC && noEPAC && not noESC && inSizeRange (getString vs) okesc
-                    = do tell [1]
-                         encodeResString vs
-                | (not noRSC && inSizeRange (getString vs) okrsc && noRPAC && not noEPAC &&
+       where
+            Valid vrsc = getSizeConstraint vrc
+            noRootSizeConstraint = l == NegInf && u == PosInf
+            noRootPAConstraint = pc == top
+            inPA x  = elems (getString vs) (getString x)
+
+{- FIXME check top here -}
+encodePAConsKMS :: (RS a) => a -> a -> PERMonad ()
+encodePAConsKMS rcs1 rcs2 = encodeWithLength top (encodeKMPermAlph (getString rcs1)) (getString rcs2)
+
+
+encodeSizeConsKMS :: (RS a, Lattice a) => InfInteger -> InfInteger -> a -> PERMonad ()
+encodeSizeConsKMS l u v
+    | range == 1 && u < 65536
+         = mapM_ (encodeKMPermAlph (getString t)) x
+    | u >= 65536
+         = encodeKMString v
+    | otherwise
+         = let Val r = range
+               Val v = l
+           in do encodeConstrainedInt ((fromInteger $ genericLength x - v), fromInteger $ r-1)
+                 mapM_ (encodeKMPermAlph (getString t)) x
+          where t = getTop v
+                range = u - l + 1
+                x = getString v
+
+encodeSizeAndPAConsKMS :: (RS a) => InfInteger -> InfInteger -> a -> a -> PERMonad ()
+encodeSizeAndPAConsKMS l u rcs v
+    | range == 1 && u < 65536
+         = mapM_ (encodeKMPermAlph (getString rcs)) x
+    | u >= 65536
+         = encodePAConsKMS rcs v
+    | otherwise
+         = let Val r = range
+               Val v = l
+           in do encodeConstrainedInt ((fromInteger $ genericLength x - v), fromInteger $ r-1)
+                 mapM_ (encodeKMPermAlph (getString rcs)) x
+          where
+                range = u - l + 1
+                x = getString v
+
+
+encodeNonExtRootConKMS ::  (RS a, Eq a, Lattice a) => ResStringConstraint a IntegerConstraint
+                                -> ResStringConstraint a IntegerConstraint
+                                -> ResStringConstraint a ValidIntegerConstraint
+                                -> ResStringConstraint a ValidIntegerConstraint
+                                -> a -> PERMonad ()
+encodeNonExtRootConKMS rc ec okrc okec vs
+                | (not noRootSizeConstraint && inSizeRange (getString vs) okrsc && noRootPAConstraint && not noExtPAConstraint &&
                    inPA epac) ||
-                  (not noRSC && inSizeRange (getString vs) okrsc && not noRPAC && not noEPAC &&
+                  (not noRootSizeConstraint && inSizeRange (getString vs) okrsc && not noRootPAConstraint && not noExtPAConstraint &&
                    not (inPA epac) && inPA expac) ||
-                  (not noESC && inSizeRange (getString vs) okesc && not noRPAC && inPA rpac) ||
-                  (not noESC && inSizeRange (getString vs) okesc && noRPAC && not noEPAC &&
+                  (not noExtSizeConstraint && inSizeRange (getString vs) okesc && not noRootPAConstraint && inPA rpac) ||
+                  (not noExtSizeConstraint && inSizeRange (getString vs) okesc && noRootPAConstraint && not noExtPAConstraint &&
                   inPA epac) ||
-                  (not noESC && inSizeRange (getString vs) okesc && not noRPAC && not noEPAC &&
+                  (not noExtSizeConstraint && inSizeRange (getString vs) okesc && not noRootPAConstraint && not noExtPAConstraint &&
                   not (inPA epac) && inPA expac) ||
-                  (noRSC && noESC && ((noRPAC && not noEPAC && inPA epac) ||
-                  (not noRPAC && not noEPAC && not (inPA epac) && inPA expac)))
+                  (noRootSizeConstraint && noExtSizeConstraint && ((noRootPAConstraint && not noExtPAConstraint && inPA epac) ||
+                  (not noRootPAConstraint && not noExtPAConstraint && not (inPA epac) && inPA expac)))
                      =  do tell [1]
-                           encodeRCSF top vs
+                           encodePAConsKMS top vs
+                | noRootPAConstraint && noExtPAConstraint && inSizeRange (getString vs) okesc
+                    = do tell [1]
+                         encodeKMString vs
                 | otherwise
-                     = throwError (BoundsError "Value out of range")
-        in foobar
+                    = throwError (BoundsError "Value out of range")
+            where
+                  Valid okesc = getSizeConstraint okec
+                  Valid okrsc = getSizeConstraint okrc
+                  rsc = getSizeConstraint rc
+                  rpac = getPAConstraint rc
+                  esc = getSizeConstraint ec
+                  epac = getPAConstraint ec
+                  concStrs :: RS a => ResStringConstraint a i ->
+                                  ResStringConstraint a i -> a
+                  concStrs rc ec
+                    = let r = (getString . getPAConstraint) rc
+                          e = (getString . getPAConstraint) ec
+                      in makeString (r++e)
+                  expac = concStrs rc ec
+                  noRootConstraint  = rc == top
+                  noExtConstraint  = ec == top
+                  noRootSizeConstraint  = rsc == top
+                  noRootPAConstraint = rpac == top
+                  noExtSizeConstraint  = esc == top
+                  noExtPAConstraint = epac == top
+                  inPA x  = elems (getString vs) (getString x)
 
-encodeRCSSz :: (RS a, Lattice a) => IntegerConstraint -> a -> PERMonad ()
-encodeRCSSz (IntegerConstraint l u) v
-    = let t = getTop v
-       in
-        manageRCS (encSF (getString t)) makeString encodeResString getString l u v
 
-
-manageRCS :: (RS a, Lattice a) => (String -> PERMonad ()) -> (String -> a) ->
-                       (a -> PERMonad ()) -> (a -> String) -> InfInteger
-                        -> InfInteger -> a -> PERMonad ()
-manageRCS e f g h l u v
-    = manageExtremes e (g . f) l u (h v)
-
-
-encodeResString :: (RS a, Lattice a) => a -> PERMonad ()
-encodeResString vs
-    = let t = getTop vs
-      in
-         encodeWithLength top (encSF (getString t))  [(getString vs)] {- FIXME check top here -}
-
-getTop :: (RS a, Lattice a) => a -> a
-getTop m = top
-
-encC :: Integer -> Char -> PERMonad ()
-encC i c = encodeConstrainedInt (fromInteger $ (fromIntegral.ord) c, fromInteger i)
-
-encS :: Integer -> String -> PERMonad ()
-encS i s  = mapM_ (encC i) s
 
 \end{code}
 
@@ -2440,50 +2614,11 @@ encS i s  = mapM_ (encC i) s
 
 \begin{code}
 
-encodeRCSSzF :: (RS a) => IntegerConstraint -> a -> a -> PERMonad ()
-encodeRCSSzF (IntegerConstraint l u) rcs1 rcs2
-        =  manageExtremes (encSF (getString rcs1))
-                          (encodeRCSF rcs1 . makeString) l u (getString rcs2)
-
-encodeRCSF :: (RS a) => a -> a -> PERMonad ()
-encodeRCSF rcs1 rcs2 = encodeWithLength top (encSF (getString rcs1)) [(getString rcs2)] {- FIXME check top here -}
-
-
-encSF p str
-    = let sp  = sort p
-          lp  = genericLength p
-          b   = minExp 2 0 lp
-          mp  = maximum p
-      in
-        if ord mp < 2^b -1
-            then
-                encS lp str
-            else
-                canEnc (fromInteger $ lp-1) sp str
-
-
-minExp n e p
-    = if n^e < p
-        then minExp n (e+1) p
-        else e
 
 -- The first two cases are described in X.691 27.5.6 and 25.5.7
 -- and the last case by 10.9 Note 3.
 
-manageExtremes :: ([a] -> PERMonad ()) -> ([a] -> PERMonad ()) -> InfInteger
-                        -> InfInteger -> [a] -> PERMonad ()
-manageExtremes fn1 fn2 l u x
-    = let range = u - l + 1
-        in
-            if range == 1 && u < 65536
-               then fn1 x
-               else if u >= 65536
-                    then fn2 x
-                    else
-                        let Val r = range
-                            Val v = l
-                        in do encodeConstrainedInt ((fromInteger $ genericLength x - v), fromInteger $ r-1)
-                              fn1 x
+
 
 \end{code}
 
@@ -2518,8 +2653,8 @@ encodeBitString nbs [] x =
    encodeLargeLengthDeterminant chunkBy1 undefined (bitString x) -- FIXME: We are ignoring named bits!
 
 encodeBitString nbs cl x =
-   do Valid vc  <- validConstraint -- FIXME: Nasty pattern match. We should use something like data Valid = Valid { valid :: ... }
-                                    -- and then we could say e.g. vc <- validConstraint >>= valid
+   do Valid vc  <- actualConstraint -- FIXME: Nasty pattern match. We should use something like data Valid = Valid { valid :: ... }
+                                    -- and then we could say e.g. vc <- actualConstraint >>= valid
       Valid vec <- validExtensionConstraint
       ec  <- effectiveConstraint
       eec <- effectiveExtensionConstraint
@@ -2549,8 +2684,8 @@ encodeBitString nbs cl x =
    where effectiveConstraint :: AMonad IntegerConstraint -- FIXME: These probably shouldn't be monadic; they can and should be pure.
                                                          -- Or maybe not since "constraints" is monadic!!!
          effectiveConstraint = constraints cl >>= return . conType . getBSRC
-         validConstraint :: AMonad ValidIntegerConstraint
-         validConstraint = constraints cl >>= return . conType . getBSRC
+         actualConstraint :: AMonad ValidIntegerConstraint
+         actualConstraint = constraints cl >>= return . conType . getBSRC
          isExtensibleConstraint ::  AMonad Bool
          isExtensibleConstraint = integerConstraints cl >>= return . extensibleBS
          -- FIXME: This is slightly odd having to pick a type by hand.
@@ -2698,13 +2833,13 @@ decodeInt3 [] =
 decodeInt3 cs =
    lDecConsInt3 effRoot extensible effExt
    where
-      effCon :: Either String (ExtBS (ConType IntegerConstraint))
-      effCon = lSerialEffCons integerConElements top cs
-      extensible = eitherExtensible effCon
+      effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
+      effectiveCon = lSerialEffCons integerConElements top cs
+      extensible = eitherExtensible effectiveCon
       effRoot = either (\x -> throwError (ConstraintError "Invalid root"))
-                    (return . conType . getRC) effCon
+                    (return . conType . getRootConstraint) effectiveCon
       effExt = either (\x -> throwError (ConstraintError "Invalid extension"))
-                    (return . conType . getEC) effCon
+                    (return . conType . getExtConstraint) effectiveCon
 
 
 lDecConsInt3 :: ASNMonadTrans t =>

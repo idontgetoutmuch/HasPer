@@ -686,7 +686,7 @@ In table \ref{sequenceEqs} we present some illustrative example sequences and th
 \hspace{0.25cm} {\em (ExtensionAdditionGroup NoVersionNumber} &\\
 \hspace{0.3cm} {\em (AddComponent integerComp2 EmptySequence)} &\\
 \hspace{0.35cm} {\em EmptySequence))} & {\em Sequence (InfInteger :*:}\\
-& \hspace{0.1cm}(Maybe (InfInteger :*: Nil):*: Nil))
+& \hspace{0.1cm} {\em (Maybe (InfInteger :*: Nil):*: Nil))}
 \end{tabular}
 \end{table}
 To avoid providing a full representation of sequence components we have given them names
@@ -716,7 +716,7 @@ four forms of component type.
 \item
 a mandatory named type component created by {\em MandatoryComponent};
 \item
-an optional named type component created by {\em OptionalComponent}. Note that once agin we
+an optional named type component created by {\em OptionalComponent}. Note that once again we
 have used the built-in Haskell type {\em Maybe} to represent that something is optional;
 \item
 a default named type component created by {\em DefaultComponent}. Here one also has to supply
@@ -747,16 +747,19 @@ Thus the components {\em aComponent} and {\em bComponent} used in table \ref{ASN
 defined as
 \begin{itemize}
 \item
-{\em MandatoryComponent (NamedType "a" (built-inType INTEGER))} and
+{\em MandatoryComponent (NamedType "a" (BuiltinType INTEGER))} and
 \item
-{\em MandatoryComponent (NamedType "b" (built-inType BOOLEAN))} respectively.
+{\em MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN))} respectively.
 \end{itemize}
 
-The encoding of the set type requires component tag information to order the components.
+ASN.1's set type is an unordered sequence.
+The encoding of a set type value requires component tag information to order the components.
 We provide the selector function {\em getCTI} to access tag information. It uses {\em getTI}
 which is applied to an {\em ASNTYPE} which in turn uses {\em getBuiltinTI} which returns the
 universal tag of a built-in ASN.1 type. The choice type requires a further function {\em
-getCTags} to access the tags of a choice. This is also used in the encoding of a choice value.
+getCTags} to access the tags of a choice. The tag assigned to a untagged CHOICE type is the smallest
+tag in the root of the CHOICE type. This may involve further nested untagged CHOICE types.
+The function {\em getCTags} is also used in the encoding of a choice value.
 
 \begin{code}
 getCTI :: ComponentType a -> TagInfo
@@ -790,16 +793,25 @@ getBuiltinTI (SEQUENCE s)       = (Universal, 16, Explicit)
 getBuiltinTI (SEQUENCEOF s)     = (Universal, 16, Explicit)
 getBuiltinTI (SET s)            = (Universal, 17, Explicit)
 getBuiltinTI (SETOF s)          = (Universal, 17, Explicit)
-getBuiltinTI (CHOICE c)         = (minimum . getCTags) c
+getBuiltinTI (CHOICE c)         = (minimum . fst . snd . getCTags True ([],[])) c
+getBuiltinTI (TAGGED t v)       = t
 
-getCTags :: Choice a -> [TagInfo]
-getCTags EmptyChoice                            = []
-getCTags (ChoiceExtensionMarker xs)             = getCTags xs
-getCTags (ChoiceExtensionAdditionGroup vn xs)   = getCTags xs
-getCTags (ChoiceOption (NamedType n (BuiltinType (TAGGED t a))) xs)
-        = t : getCTags xs
-getCTags (ChoiceOption (NamedType n a) xs)
-        = getTI a : getCTags xs
+type ChoiceRootTags = [TagInfo]
+type ChoiceExtTags = [TagInfo]
+type InRoot = Bool
+
+getCTags :: InRoot -> (ChoiceRootTags, ChoiceExtTags) -> Choice a -> (Bool, (ChoiceRootTags, ChoiceExtTags))
+getCTags b tgs EmptyChoice                             = (b, tgs)
+getCTags b tgs (ChoiceExtensionMarker xs)              = getCTags (not b) tgs xs
+getCTags b tgs (ChoiceExtensionAdditionGroup vn xs)    = getCTags b tgs xs
+getCTags b (r,e) (ChoiceOption (NamedType n (BuiltinType (TAGGED t a))) xs)
+     | b            = getCTags b (r ++ [t], e) xs
+     | otherwise    = getCTags b (r, e ++ [t]) xs
+getCTags b (r,e) (ChoiceOption (NamedType n a) xs)
+     | b            = getCTags b (r ++ [getTI a], e) xs
+     | otherwise    = getCTags b (r, e ++ [getTI a]) xs
+
+
 \end{code}
 
 \subsection{ASN.1 ChoiceType}

@@ -96,8 +96,8 @@ lEitherApply esrc m
         = do
             let foobar
                  = do x <- m
-                      let rc2 = getRC x
-                          rc1 = getRC esrc
+                      let rc2 = getRootConstraint x
+                          rc1 = getRootConstraint esrc
                           foobar1
                               = if isValid rc1 rc2
                                         then return (makeEC (updateV rc1 rc2) top False)
@@ -129,13 +129,13 @@ lLastApply :: (MonadError [Char] t,
               a (b i) -> t (a1 (b i)) -> t (a2 (b i))
 lLastApply esrc m
         = do
-           let r1 = getRC esrc
+           let r1 = getRootConstraint esrc
                foobar
                  = do
                     x <- m
                     let
-                       r2 = getRC x
-                       e2 = getEC x
+                       r2 = getRootConstraint x
+                       e2 = getExtConstraint x
                        foobar1
                          | not (isExtensible x) = lEitherApply esrc m
                          | isValid r1 r2 && isValid r1 e2
@@ -200,10 +200,10 @@ lExtendC m n
                     x <- m
                     y <- n
                     let
-                        r1 = getRC x
-                        e1 = getEC x
-                        r2 = getRC y
-                        e2 = getEC y
+                        r1 = getRootConstraint x
+                        e1 = getExtConstraint x
+                        r2 = getRootConstraint y
+                        e2 = getExtConstraint y
                         foobar1
                             | not (isExtensible x) && not (isExtensible y)
                                 = return (makeEC r1 (except r2 r1) True)
@@ -238,7 +238,7 @@ lExceptAll t m
          let foobar
                 = do
                     ersc <- m
-                    let rc = getRC ersc
+                    let rc = getRootConstraint ersc
                         emptyConstraint = rc == bottom
                         foobar1
                             | emptyConstraint = return (makeEC t top False)
@@ -283,10 +283,10 @@ lUnionC m n
              = do
                 c1 <- m
                 c2 <- n
-                let r1 = getRC c1
-                    e1 = getEC c1
-                    r2 = getRC c2
-                    e2 = getEC c2
+                let r1 = getRootConstraint c1
+                    e1 = getExtConstraint c1
+                    r2 = getRootConstraint c2
+                    e2 = getExtConstraint c2
                     foobar1
                         | not (isExtensible c1) && not (isExtensible c2)
                              = return (makeEC (r1 `ljoin` r2) top False)
@@ -337,10 +337,10 @@ lInterC m n
                                  (\err -> m)
              foobar2 c1 c2
                  = do
-                    let r1 = getRC c1
-                        e1 = getEC c1
-                        r2 = getRC c2
-                        e2 = getEC c2
+                    let r1 = getRootConstraint c1
+                        e1 = getExtConstraint c1
+                        r2 = getRootConstraint c2
+                        e2 = getExtConstraint c2
                         foobar3
                             | not (isExtensible c1) && not (isExtensible c2)
                                  = return (makeEC (r1 `meet` r2) top False)
@@ -397,10 +397,10 @@ lExceptC m n
                               (\err -> m)
              foobar2 c1 c2
                  = do
-                    let r1 = getRC c1
-                        e1 = getEC c1
-                        r2 = getRC c2
-                        e2 = getEC c2
+                    let r1 = getRootConstraint c1
+                        e1 = getExtConstraint c1
+                        r2 = getRootConstraint c2
+                        e2 = getExtConstraint c2
                         foobar3
                             | not (isExtensible c1)
                                 = return (makeEC (except r1 r2) top False)
@@ -569,7 +569,7 @@ lRootStringCons fn t cs
     = let m = lSerialEffCons fn t cs
       in do
             c <- m
-            r <- return (getRC c)
+            r <- return (getRootConstraint c)
             return (makeEC r top False)
 
 \end{code}

@@ -312,8 +312,8 @@ instance RS BMPString where
 class ExtConstraint a where
     isExtensible :: a b -> Bool
     makeEC :: b -> b -> Bool -> a b
-    getRC   :: a b -> b
-    getEC   :: a b -> b
+    getRootConstraint   :: a b -> b
+    getExtConstraint   :: a b -> b
 
 
 class Constraint b i where
@@ -325,8 +325,8 @@ class Constraint b i where
 instance ExtConstraint ExtResStringConstraint  where
     isExtensible = extensible
     makeEC x y b = ExtResStringConstraint x y b
-    getRC x     = getRSRC x
-    getEC x     = getRSEC x
+    getRootConstraint x     = getRSRC x
+    getExtConstraint x     = getRSEC x
 
 
 instance (IC i, Lattice a, RS a, Eq a) => Constraint (ResStringConstraint a) i where
@@ -339,8 +339,8 @@ instance (IC i, Lattice a, RS a, Eq a) => Constraint (ResStringConstraint a) i w
 instance ExtConstraint ExtBS where
     isExtensible = extensibleBS
     makeEC x y b = ExtBS x y b
-    getRC x      = getBSRC x
-    getEC x      = getBSEC x
+    getRootConstraint x      = getBSRC x
+    getExtConstraint x      = getBSEC x
 
 instance  IC i => Constraint ConType i where
     isValid (ConType x) (ConType y)  = within x y
@@ -394,11 +394,11 @@ getRSRC (ExtResStringConstraint r _ _) = r
 getRSEC :: ExtResStringConstraint a -> a
 getRSEC (ExtResStringConstraint _ e _) = e
 
-getSC :: ResStringConstraint a i -> i
-getSC (ResStringConstraint s i) = i
+getSizeConstraint :: ResStringConstraint a i -> i
+getSizeConstraint (ResStringConstraint s i) = i
 
-getPAC :: RS a => ResStringConstraint a i -> a
-getPAC (ResStringConstraint s i) = s
+getPAConstraint :: RS a => ResStringConstraint a i -> a
+getPAConstraint (ResStringConstraint s i) = s
 
 instance (Lattice a, Lattice i,RS a, Eq a, Eq i, IC i) => Lattice (ResStringConstraint a i) where
     bottom = ResStringConstraint bottom bottom
