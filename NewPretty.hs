@@ -34,6 +34,24 @@ prettySeq (AddComponent x EmptySequence) =
    prettyComponentType x
 prettySeq (AddComponent x xs) =
    vcat [prettyComponentType x <> comma, prettySeq xs]
+prettySeq (ExtensionMarker x) =
+   vcat [text "..." <> comma, prettySeq x <> comma]
+-- FIXME: What should we do with v?
+prettySeq (ExtensionAdditionGroup v x y) =
+   vcat [brackets (brackets (prettySeq x)) <> comma, prettySeq y]
+
+prettySeq' :: Sequence a -> [Doc]
+prettySeq' EmptySequence =
+  []
+prettySeq' (AddComponent x xs) =
+   (prettyComponentType x):(prettySeq' xs)
+prettySeq' (ExtensionMarker x) =
+   (text "..."):(prettySeq' x)
+-- FIXME: What should we do with v?
+prettySeq' (ExtensionAdditionGroup v x y) =
+   (brackets (brackets (vcat $ punctuate comma $ prettySeq' x))):(prettySeq' y)
+
+prettySeq'' x = vcat $ punctuate comma $ prettySeq' x
 
 prettyComponentType :: ComponentType a -> Doc
 prettyComponentType (MandatoryComponent m) = prettyNamedType m
@@ -53,11 +71,18 @@ prettyBuiltinType IA5STRING =
 prettyBuiltinType (CHOICE c) =
    text "CHOICE" <+> braces (prettyChoice c)
 prettyBuiltinType (SEQUENCE s) =
-   text "SEQUENCE" <> space <> braces (prettySeq s)
+   text "SEQUENCE" <> space <> braces (prettySeq'' s)
 prettyBuiltinType (SET s) =
    text "SET" <> space <> braces (prettySeq s)
 prettyBuiltinType (SEQUENCEOF t) =
    text "SEQUENCE OF" <+> prettyType t
+prettyBuiltinType OCTETSTRING     = text "OCTETSTRING"
+prettyBuiltinType VISIBLESTRING   = text "VISIBLESTRING"
+prettyBuiltinType NUMERICSTRING   = text "NUMERICSTRING"
+prettyBuiltinType UNIVERSALSTRING = text "UNIVERSALSTRING"
+prettyBuiltinType BMPSTRING       = text "BMPSTRING"
+prettyBuiltinType NULL            = text "NULL"
+
 
 prettyReferencedType r t = text (ref r) <+> text "::=" <+> prettyType t
 
@@ -68,6 +93,12 @@ prettyChoice (ChoiceOption nt EmptyChoice) =
    prettyNamedType nt
 prettyChoice (ChoiceOption nt xs) =
    vcat [prettyNamedType nt <> comma, prettyChoice xs]
+prettyChoice (ChoiceExtensionMarker x) =
+   vcat [text "..." <> comma, prettyChoice x <> comma]
+-- FIXME: What should we do with v?
+prettyChoice (ChoiceExtensionAdditionGroup v x) =
+   brackets (brackets (prettyChoice x))
+
 
 prettyNamedType :: NamedType a -> Doc
 prettyNamedType (NamedType n ct) = text n <+> prettyType ct

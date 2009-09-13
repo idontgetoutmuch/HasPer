@@ -58,3 +58,44 @@ v2_31 = (Val 2^31)
 tInteger2 = ConstrainedType (BuiltinType INTEGER) (rangeConstraint (1,214))
 vInteger2 = Val 8
 
+con1 = RootOnly (UnionSet (IC (ATOM (E (V (R (250,253)))))))
+
+axSeq = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (BuiltinType INTEGER) con1)))
+                (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN)))
+                    (AddComponent (MandatoryComponent (NamedType "c" (BuiltinType (CHOICE choice1))))
+                        (ExtensionMarker
+                          (ExtensionAdditionGroup NoVersionNumber eag1
+                           (ExtensionMarker (AddComponent (OptionalComponent (NamedType "i" (BuiltinType BMPSTRING)))
+                                (AddComponent (OptionalComponent (NamedType "j" (BuiltinType PRINTABLESTRING)))
+                                    EmptySequence)))))))
+
+eag1 = AddComponent (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RootOnly pac5))))
+        (AddComponent (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) EmptySequence)
+
+choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
+            (ChoiceExtensionMarker (ChoiceExtensionAdditionGroup NoVersionNumber
+                            (ChoiceOption (NamedType "e" (BuiltinType BOOLEAN))
+                                   (ChoiceOption (NamedType "f"  (BuiltinType IA5STRING))
+                                          (ChoiceExtensionAdditionGroup NoVersionNumber (ChoiceExtensionMarker EmptyChoice))))))
+
+choice2 = ChoiceOption (NamedType "d" (BuiltinType INTEGER)) (ChoiceExtensionMarker EmptyChoice)
+
+pac5 = UnionSet (IC (ATOM ((E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (3,3))))))))))))))
+
+choiceType1 = BuiltinType $ SEQUENCE axSeq
+
+choiceType2 = BuiltinType $ SEQUENCE axSer
+
+choiceType3 = BuiltinType $ CHOICE choice1
+
+choiceType4 = BuiltinType $ CHOICE choice2
+
+axSer = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (BuiltinType INTEGER) con1)))
+                (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN)))
+                    (AddComponent (MandatoryComponent (NamedType "c" (BuiltinType BOOLEAN)))
+                        (ExtensionMarker
+                          (ExtensionAdditionGroup NoVersionNumber eag1
+                           (ExtensionMarker (AddComponent (OptionalComponent (NamedType "i" (BuiltinType BMPSTRING)))
+                                (AddComponent (OptionalComponent (NamedType "j" (BuiltinType PRINTABLESTRING)))
+                                    EmptySequence)))))))
+
