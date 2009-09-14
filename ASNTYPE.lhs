@@ -621,8 +621,9 @@ which is presented below. It has four constructors for building sequence types.
 since no new component types are added;
 \item
 {\em ExtensionAdditionGroup} which takes a (possibly empty) version number, an extension addition group
-(represented as a sequence type) and the current sequence, and returns the new sequence possibly with
-the new extension addition group.
+(represented as a {\em Sequence'} type) and the current sequence, and returns the new sequence possibly with
+the new extension addition group. We use the {\em Sequence'} type to restrict the possible
+components of an extension addition group;
 An extension addition group is optional and thus we need to provide for the inclusion or not of this
 component. This is achieved by using the Haskell type {\em Maybe};
 \item
@@ -634,10 +635,19 @@ existing sequence type.
 data Sequence a where
    EmptySequence            :: Sequence Nil
    ExtensionMarker          :: Sequence l -> Sequence l
-   ExtensionAdditionGroup   :: VersionNumber -> Sequence a -> Sequence l
+   ExtensionAdditionGroup   :: VersionNumber -> Sequence' a -> Sequence l
                                                 -> Sequence (Maybe a :*: l)
    AddComponent             :: ComponentType a -> Sequence l
                                                 -> Sequence (a:*:l)
+
+data Sequence' a where
+   EmptySequence'           :: Sequence' Nil
+   AddComponent'            :: ComponentType a -> Sequence' l
+                                                -> Sequence' (a:*:l)
+
+makeSequence :: Sequence' a -> Sequence a
+makeSequence EmptySequence' = EmptySequence
+makeSequence (AddComponent' c s) = AddComponent c (makeSequence s)
 
 data VersionNumber = NoVersionNumber | Version Int
 \end{code}
@@ -803,7 +813,7 @@ type InRoot = Bool
 getCTags :: InRoot -> (ChoiceRootTags, ChoiceExtTags) -> Choice a -> (Bool, (ChoiceRootTags, ChoiceExtTags))
 getCTags b tgs EmptyChoice                             = (b, tgs)
 getCTags b tgs (ChoiceExtensionMarker xs)              = getCTags (not b) tgs xs
-getCTags b tgs (ChoiceExtensionAdditionGroup vn xs)    = getCTags b tgs xs
+getCTags b tgs (ChoiceExtensionAdditionGroup vn xs)    = getCTags' b tgs xs
 getCTags b (r,e) (ChoiceOption (NamedType n (BuiltinType (TAGGED t a))) xs)
      | b            = getCTags b (r ++ [t], e) xs
      | otherwise    = getCTags b (r, e ++ [t]) xs
@@ -811,6 +821,16 @@ getCTags b (r,e) (ChoiceOption (NamedType n a) xs)
      | b            = getCTags b (r ++ [getTI a], e) xs
      | otherwise    = getCTags b (r, e ++ [getTI a]) xs
 
+
+getCTags' :: InRoot -> (ChoiceRootTags, ChoiceExtTags) -> Choice' a -> (Bool, (ChoiceRootTags, ChoiceExtTags))
+getCTags' b tgs EmptyChoice'              = (b, tgs)
+getCTags' b tgs ChoiceExtensionMarker'    = (b, tgs)
+getCTags' b (r,e) (ChoiceOption' (NamedType n (BuiltinType (TAGGED t a))) xs)
+     | b            = getCTags' b (r ++ [t], e) xs
+     | otherwise    = getCTags' b (r, e ++ [t]) xs
+getCTags' b (r,e) (ChoiceOption' (NamedType n a) xs)
+     | b            = getCTags' b (r ++ [getTI a], e) xs
+     | otherwise    = getCTags' b (r, e ++ [getTI a]) xs
 
 \end{code}
 
@@ -828,8 +848,13 @@ We use a new GADT {\em Choice} which is presented below.
 data Choice a where
     EmptyChoice                     :: Choice Nil
     ChoiceExtensionMarker           :: Choice l -> Choice l
-    ChoiceExtensionAdditionGroup    :: VersionNumber -> Choice l -> Choice l
+    ChoiceExtensionAdditionGroup    :: VersionNumber -> Choice' l -> Choice l
     ChoiceOption                    :: NamedType a -> Choice l -> Choice (a:*:l)
+
+data Choice' a where
+    EmptyChoice'                    :: Choice' Nil
+    ChoiceOption'                   :: NamedType a -> Choice' l -> Choice' (a:*:l)
+    ChoiceExtensionMarker'          :: Choice' Nil
 \end{code}
 
 
@@ -844,8 +869,10 @@ the one used for a sequence in order to avoid type ambiguity when the constructo
 \item
 {\em ChoiceExtensionAdditionGroup} whose semantics are different from the sequence {\em
 ExtensionAdditionGroup} constructor. Here we are adding a collection of potential new choices
-but only one may ever be used for a particular incarnation. Thus we are simply indicating the
-presence of an extension addition group to aid pretty printing and version identification;
+but only one may ever be used for a particular incarnation. Note that unlike
+a sequence an extension addition group may only be followed by an extension marker or nothing. The type
+{\em Choice'} is used to represent the components of an extension addition group where {\em ChoiceExtensionMarker} indicates
+the termination of the group followed by the terminating extension marker;
 \item
 {\em ChoiceOption} which adds a new choice option to the current collection of choices.
 \end{itemize}

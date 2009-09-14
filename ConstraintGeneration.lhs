@@ -9,9 +9,15 @@ import LatticeMod
 import Control.Monad.Error
 \end{code}
 
+This module provides the functions that convert a list of subtype constraints -- the Haskell
+list type is used to represent zero or more serially applied constraints -- into a single
+effective constraint and a single actual constraint. A type's effective constraint is used to
+PER-encode a value of the type. The actual constraint is used to test the validity of a value.
+Note that only PER-visible constraints are used in the generation of an effective constraint
+(X.691: 9.3.18) but all constraints are used in the generation of an actual constraint.
 
 
-
+{- FIXME: Remove this or use this later!
 
 GENERATION OF EFFECTIVE STRING CONSTRAINT
 
@@ -29,21 +35,41 @@ GENERATION OF EFFECTIVE STRING CONSTRAINT
  expected (hence a bit prefix in the encoding) or not.
  ResStringConstraint is a parameterised type (to allow for the different restricted string types)
  encompassing the (size,permittedAlphabet) constraint pair.
+-}
 
 
-serialEffCons takes a list of constraints (representing
-serially applied constraints) and generates the resulting
-effective constraint (if it exists).
+{\em generateConstraint} takes a list of constraints (representing
+serially applied constraints) and generates the resulting constraint (if it exists).
+It is a recursive function which takes three inputs:
+\begin{\itemize}
+\item
+a type-specific function that processes the element constraints appropriately for the given
+type and whether one is generating an effective constraint or a validity-testing constraint.
+Thus when one is generating an effective constraint an error will be thrown if the constraint
+is non-PER visible;
+\item
+an accumulation parameter which presents the current status of the constraint; and
+\item
+the list of serially-applied constraints to be processed.
+\end{itemize}
 
-{- NOTE WE WANT THE TYPE TO BE MORE GENERAL e.g. replaced VisibleString with RS a => a -}
-
-serialEffCons takes a list of constraints (representing
-serially applied constraints) and generates the resulting
-effective constraint (if it exists).
+The function has three cases:
+\begin{itemize}
+\item
+the empty list of constraints where no further constraints need to be processed and the
+accumulated value is simply returned;
+\item
+the singleton list of constraints which represents the last constraint to be processed. This
+is managed by the function {\em applyLastConstraint}; and
+\item
+a list of at least two constraints where the accumulating parameter is updated using {\em
+applyConstraint} and {\em generateConstraint} is recursively called with the result of {\em applyConstraint}
+as the second input.
+\end{itemize}
 
 \begin{code}
 
-lSerialEffCons :: (MonadError [Char] t,
+generateConstraint :: (MonadError [Char] t,
                       ExtConstraint a1,
                       Eq (b i),
                       Constraint b i,
@@ -51,19 +77,29 @@ lSerialEffCons :: (MonadError [Char] t,
                       ExtConstraint a) =>
                      (Element t1 -> Bool -> t (a (b i))) -> t (a1 (b i))
                         -> [SubtypeConstraint t1] -> t (a1 (b i))
-lSerialEffCons fn m ls
+generateConstraint fn m ls
     = do
         let foobar
                 = do
                     esrc <- m
                     let foobar1 [] = m
-                        foobar1 [c] = lSerialApplyLast fn esrc c
-                        foobar1 (f:r) = lSerialEffCons fn (lSerialApply fn esrc f) r
+                        foobar1 [c] = applyLastConstraint fn esrc c
+                        foobar1 (f:r) = generateConstraint fn (applyConstraint fn esrc f) r
                     foobar1 ls
         foobar
 
+\end{code}
 
-lSerialApply :: (Eq (b i),
+{\em applyConstraint} takes the same first two inputs as {\em generateConstraint} and the next constraint to be serially applied.
+It calls {\em makeConstraint} which, if the new constraint is valid -- its root values are a subset of the root of the constraint
+represented by the accumulating parameter -- then it is serially applied, and, if not, the function {\em constraintApplicationError} is called
+whose behaviour depends on the type of error.
+
+{- FIXME: Is serial application valid simply if the root constraint match? -}
+
+\begin{code}
+
+applyConstraint :: (Eq (b i),
                  Constraint b i,
                  Lattice (b i),
                  ExtConstraint a1,
@@ -73,26 +109,28 @@ lSerialApply :: (Eq (b i),
                 -> a (b i)
                 -> SubtypeConstraint t
                 -> m (a (b i))
-lSerialApply fn ersc c
-    = catchError (lEitherApply ersc (lEffCons False fn c)) (serialError ersc)
-
-serialError esrc "Invisible!" = return esrc
-serialError esrc err          = throwError err
+applyConstraint fn ersc c
+    = catchError (makeConstraint ersc (lEffCons False fn c)) (constraintApplicationError ersc)
 
 \end{code}
-Note that if a complete constraint in serial application is not PER-visible then it is simply
-ignored (X.691 B.2.2.2).
+
+{\em makeConstraint} simply accesses the root constraints of the current constraint (represented by the accumulating parameter)
+and the new constraint, and if the new constraint is valid it modifies the accumulated constraint using the function {\em makeEC}. Note that
+{\em makeEC} simply updates the root constraint and makes the extension {\em top} -- all possible values -- which indicates no constraint.
+This is because the serial application of a constraint removes the extension from the existing constraint.
+
+{- FIXME: Need reference to manual here! -}
 
 \begin{code}
 
-lEitherApply :: (MonadError [Char] m,
+makeConstraint :: (MonadError [Char] m,
                  ExtConstraint a,
                  ExtConstraint a1,
                  Constraint b i,
                  Lattice (b i),
                  ExtConstraint a2) =>
                 a (b i) -> m (a1 (b i)) -> m (a2 (b i))
-lEitherApply esrc m
+makeConstraint esrc m
         = do
             let foobar
                  = do x <- m
@@ -105,9 +143,17 @@ lEitherApply esrc m
                       foobar1
             foobar
 
+constraintApplicationError esrc "Invisible!" = return esrc
+constraintApplicationError esrc err          = throwError err
 
+\end{code}
 
-lSerialApplyLast :: (Eq (b i),
+Note that if a complete constraint in serial application is not PER-visible then it is simply
+ignored (X.691 B.2.2.2).
+
+\begin{code}
+
+applyLastConstraint :: (Eq (b i),
                      Constraint b i,
                      Lattice (b i),
                      ExtConstraint a1,
@@ -117,7 +163,7 @@ lSerialApplyLast :: (Eq (b i),
                     -> a (b i)
                     -> SubtypeConstraint t
                     -> m (a (b i))
-lSerialApplyLast fn x c = catchError (lLastApply x (lEffCons False fn c)) (serialError x)
+applyLastConstraint fn x c = catchError (lLastApply x (lEffCons False fn c)) (constraintApplicationError x)
 
 
 lLastApply :: (MonadError [Char] t,
@@ -137,7 +183,7 @@ lLastApply esrc m
                        r2 = getRootConstraint x
                        e2 = getExtConstraint x
                        foobar1
-                         | not (isExtensible x) = lEitherApply esrc m
+                         | not (isExtensible x) = makeConstraint esrc m
                          | isValid r1 r2 && isValid r1 e2
                             = return (makeEC (updateV r1 r2)
                                                     (updateV r1 e2) True)
@@ -443,7 +489,7 @@ integerConElements (V (R (l,u))) b = return (makeEC (makeSC $ makeIC l u) top b)
 
 lProcessCT :: (IC a, Lattice a, Eq a, Show a) =>
               ASNType InfInteger -> [SubtypeConstraint InfInteger] -> Either String (ExtBS (ConType a))
-lProcessCT (BuiltinType INTEGER) cl = lSerialEffCons integerConElements top cl
+lProcessCT (BuiltinType INTEGER) cl = generateConstraint integerConElements top cl
 lProcessCT (ConstrainedType t c) cl  = lProcessCT t (c:cl)
 
 {- FIXME: Note that boolean input is thrown away -}
@@ -566,7 +612,7 @@ lRootStringCons :: (ExtConstraint a,
                     MonadError [Char] t1) =>
                    (Element t -> Bool -> t1 (a (b i))) -> t1 (a (b i)) -> [SubtypeConstraint t] -> t1 (a (b i))
 lRootStringCons fn t cs
-    = let m = lSerialEffCons fn t cs
+    = let m = generateConstraint fn t cs
       in do
             c <- m
             r <- return (getRootConstraint c)

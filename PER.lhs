@@ -513,9 +513,9 @@ encodeIntWithConstraint cs v
         else {- X691REF: 12.1 -} encodeExtConsInt actualCon effectiveCon v
       where
           effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
-          effectiveCon = lSerialEffCons integerConElements top cs
+          effectiveCon = generateConstraint integerConElements top cs
           actualCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
-          actualCon = lSerialEffCons integerConElements top cs
+          actualCon = generateConstraint integerConElements top cs
           extensible = eitherExtensible effectiveCon
 
 eitherExtensible (Right v) = isExtensible v
@@ -896,9 +896,9 @@ encodeBitstringWithConstraint namedBits cs v
              encodeExtConsBitstring namedBits actualCon effectiveCon v
       where
           effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
-          effectiveCon = lSerialEffCons lBSConE top cs
+          effectiveCon = generateConstraint lBSConE top cs
           actualCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
-          actualCon = lSerialEffCons lBSConE top cs
+          actualCon = generateConstraint lBSConE top cs
           extensible = eitherExtensible effectiveCon
 
 \end{code}
@@ -1188,9 +1188,9 @@ encodeOctetstringWithConstraint cs v
              encodeExtConsOctetstring actualCon effectiveCon v
       where
           effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
-          effectiveCon = lSerialEffCons lOSConE top cs
+          effectiveCon = generateConstraint lOSConE top cs
           actualCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
-          actualCon = lSerialEffCons lOSConE top cs
+          actualCon = generateConstraint lOSConE top cs
           extensible = eitherExtensible effectiveCon
 
 \end{code}
@@ -1390,6 +1390,44 @@ encodeSequence s v
            = do odb <- pass $ encodeSequenceAux (False, False) [] s v
                 return ()
 
+axSeq = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (BuiltinType INTEGER) con1)))
+                (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN)))
+                    (AddComponent (MandatoryComponent (NamedType "c" (BuiltinType (CHOICE choice1))))
+                        (ExtensionMarker
+                          (ExtensionAdditionGroup NoVersionNumber eag1
+                           (ExtensionMarker (AddComponent (OptionalComponent (NamedType "i" (BuiltinType BMPSTRING)))
+                                (AddComponent (OptionalComponent (NamedType "j" (BuiltinType PRINTABLESTRING)))
+                                    EmptySequence)))))))
+
+
+
+choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
+            (ChoiceExtensionMarker (ChoiceExtensionAdditionGroup NoVersionNumber
+                            (ChoiceOption' (NamedType "e" (BuiltinType BOOLEAN))
+                                   (ChoiceOption' (NamedType "f"  (BuiltinType IA5STRING))
+                                          ChoiceExtensionMarker'))))
+
+
+
+
+
+eag1 = AddComponent' (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RootOnly pac5))))
+        (AddComponent' (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) EmptySequence')
+
+con1 = RootOnly (UnionSet (IC (ATOM (E (V (R (250,253)))))))
+
+pac5 = UnionSet (IC (ATOM ((E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (3,3))))))))))))))
+
+axVal = Val 253 :*:
+        (True :*:
+            ((AddNoValue NoValue (AddAValue True (AddNoValue NoValue EmptyList))) :*:
+                    ((Just ((NumericString "123") :*: (Just True :*: Empty))) :*:
+                        (Nothing :*: (Nothing :*: Empty)))))
+
+
+
+
+
 encodeSequenceAux :: ExtAndUsed -> OptDefBits -> Sequence a -> a
                 -> PERMonad (OptDefBits, BitStream -> BitStream)
 encodeSequenceAux eu od EmptySequence Empty
@@ -1475,7 +1513,7 @@ encodeSequenceAuxExt b odb eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
 encodeSequenceAuxExt (b1,b2) odb eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
     = do {- X691REF: 18.7 with extension addition present -}
          {- X691REF: 18.9 with ExtensionAdditionGroup extension -}
-         encodeOpen (BuiltinType (SEQUENCE a)) x
+         encodeOpen (BuiltinType (SEQUENCE (makeSequence a))) x
          encodeSequenceAuxExt (b1, True) odb (eb ++ [1]) as xs
 encodeSequenceAuxExt b odb eb (ExtensionMarker as) xs
     = return (b, eb, odb, encodeSequenceAux b odb as xs)
@@ -1596,9 +1634,9 @@ encodeSequenceOfWithConstraint t cs v
              encodeExtConsSequenceOf t actualCon effectiveCon v
       where
           effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
-          effectiveCon = lSerialEffCons lSeqOfConE top cs
+          effectiveCon = generateConstraint lSeqOfConE top cs
           actualCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
-          actualCon = lSerialEffCons lSeqOfConE top cs
+          actualCon = generateConstraint lSeqOfConE top cs
           extensible = eitherExtensible effectiveCon
 
 \end{code}
@@ -1824,7 +1862,7 @@ encodeSetAuxExt b ms eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
 encodeSetAuxExt (b1,b2) ms eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
     = do {- X691REF: 18.7 with extension addition present -}
          {- X691REF: 18.9 with ExtensionAdditionGroup extension -}
-         encodeOpen (BuiltinType (SEQUENCE a)) x
+         encodeOpen (BuiltinType (SEQUENCE (makeSequence a))) x
          encodeSetAuxExt (b1, True) ms (eb ++ [1]) as xs
 encodeSetAuxExt b ms eb (ExtensionMarker as) xs
     = return (b, eb, encodeSetAux b ms as xs)
@@ -1954,9 +1992,9 @@ encodeSetOfWithConstraint t cs v
              encodeExtConsSetOf t actualCon effectiveCon v
       where
           effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
-          effectiveCon = lSerialEffCons lSeqOfConE top cs
+          effectiveCon = generateConstraint lSeqOfConE top cs
           actualCon :: Either String (ExtBS (ConType ValidIntegerConstraint))
-          actualCon = lSerialEffCons lSeqOfConE top cs
+          actualCon = generateConstraint lSeqOfConE top cs
           extensible = eitherExtensible effectiveCon
 
 \end{code}
@@ -2102,20 +2140,6 @@ encodeChoice c x
      in
         encodeChoiceAux (b,ids) c x
 
-exC1 = extractValue $ encode (BuiltinType (CHOICE choice1)) [] axVal
-
-choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
-            (ChoiceOption (NamedType "dan" (BuiltinType BOOLEAN))
-            (ChoiceExtensionMarker (ChoiceExtensionAdditionGroup NoVersionNumber
-                            (ChoiceOption (NamedType "e" (BuiltinType BOOLEAN))
-                                   (ChoiceOption (NamedType "f"  (BuiltinType IA5STRING))
-                                          (ChoiceExtensionAdditionGroup NoVersionNumber (ChoiceExtensionMarker EmptyChoice)))))))
-
-
-axVal =(AddNoValue NoValue (AddAValue True (AddNoValue NoValue (AddNoValue NoValue EmptyList))))
-
-
-
 
 type ChoiceRootIndices = [Int]
 type ChoiceExtIndices = [Int]
@@ -2190,7 +2214,7 @@ encodeChoiceAux (b, ((f:g:r),e)) (ChoiceOption (NamedType t a) as) (AddAValue x 
                     tell []
         encodeConstrainedInt (fromInteger $ toInteger  f, fromInteger $ genericLength (g:r))
         encode a [] x
-encodeChoiceAux _ (ChoiceExtensionAdditionGroup _ _) _
+encodeChoiceAux _ (ChoiceExtensionAdditionGroup _ _ ) _
     = throwError (OtherError "Impossible case: EXTENSION ADDITION GROUP only appears in an extension.")
 
 encodeChoiceAux' :: Integer -> (NoExtension, (ChoiceRootIndices, ChoiceExtIndices))
@@ -2205,7 +2229,7 @@ encodeChoiceAux' l (b, (f:r,e)) (ChoiceOption (NamedType t a) as) (AddAValue x x
              else tell []
         encodeConstrainedInt (fromInteger $ toInteger  f, fromInteger l)
         encode a [] x
-encodeChoiceAux' _ _ (ChoiceExtensionAdditionGroup _ _) _
+encodeChoiceAux' _ _ (ChoiceExtensionAdditionGroup _ _ ) _
     = throwError (OtherError "Impossible case: EXTENSION ADDITION GROUP only appears in an extension.")
 
 \end{code}
@@ -2230,10 +2254,23 @@ encodeChoiceExtAux ids EmptyChoice _ = throwError (OtherError "No choice value!"
 encodeChoiceExtAux ids(ChoiceExtensionMarker as) xs =
    encodeChoiceAux ids as xs
 encodeChoiceExtAux ids (ChoiceExtensionAdditionGroup _ as) xs =
-   encodeChoiceExtAux ids as xs
+   encodeChoiceExtAux' ids as xs
 encodeChoiceExtAux (b,(r, (f:e))) (ChoiceOption a as) (AddNoValue x xs) =
    encodeChoiceExtAux (b, (r,e)) as xs
 encodeChoiceExtAux (b,(r, (f:e))) (ChoiceOption (NamedType t a) as) (AddAValue x xs)
+    = do {- X691REF: 22.5 and 22.8 -}
+         tell [1]
+         encodeNSNNInt (toInteger f) 0
+         encodeOpen a x
+
+
+encodeChoiceExtAux' :: (NoExtension, (ChoiceRootIndices, ChoiceExtIndices))
+                    -> Choice' a -> ExactlyOne a n -> PERMonad ()
+encodeChoiceExtAux' ids EmptyChoice' _ = throwError (OtherError "No choice value!")
+encodeChoiceExtAux' ids ChoiceExtensionMarker' _ = throwError (OtherError "No choice value!")
+encodeChoiceExtAux' (b,(r, (f:e))) (ChoiceOption' a as) (AddNoValue x xs) =
+   encodeChoiceExtAux' (b, (r,e)) as xs
+encodeChoiceExtAux' (b,(r, (f:e))) (ChoiceOption' (NamedType t a) as) (AddAValue x xs)
     = do {- X691REF: 22.5 and 22.8 -}
          tell [1]
          encodeNSNNInt (toInteger f) 0
@@ -2272,9 +2309,6 @@ greatest ({\em top}) and least ({\em bottom}) element. Note that each type will 
 greatest element which is the complete set of possible values as defined in X.691 27.5.3.
 \end{itemize}
 
-
-{- FIXME: Make sure distinguished between known-multiplier strings and others (see 27.5) -}
-
 \begin{code}
 
 encodeKMS :: (Eq a, RS a, Lattice a)
@@ -2284,6 +2318,27 @@ encodeKMS [] x
       encodeUnconstrainedKMS x
 encodeKMS cs x
     = encodeKMSWithConstraint cs x
+
+
+conV1 :: SubtypeConstraint VisibleString
+conV1 = RootOnly (UnionSet (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R(1,4))))))))))))))
+
+conV2 :: SubtypeConstraint VisibleString
+conV2 = RootOnly (UnionSet (IC (ATOM (E (P (FR (EmptyExtension
+                (UnionSet (IC (ATOM (E (S (SV (VisibleString "ABCD"))))))))))))))
+
+
+extCon :: SubtypeConstraint VisibleString
+extCon = EmptyExtension (UnionSet (IC (ATOM (E (P (FR (NonEmptyExtension
+                (UnionSet (IC (ATOM (E (S (SV (VisibleString "ABC")))))))
+                (UnionSet (IC (ATOM (E (S (SV (VisibleString "0123456789"))))))))))))))
+
+extCon2 :: SubtypeConstraint VisibleString
+extCon2 = RootOnly (UnionSet (IC (ATOM (E (P (FR (NonEmptyExtension
+                (UnionSet (IC (ATOM (E (S (SV (VisibleString "ABC")))))))
+                (UnionSet (IC (ATOM (E (S (SV (VisibleString "0123456789"))))))))))))))
+
+
 
 \end{code}
 
@@ -2311,7 +2366,10 @@ elems xs ys = all (flip elem ys) xs
 
 {\em encodeKMString} encodes a known-multiplier string with unconstrained length and a
 permitted-alphabet constraint of the whole type. {\em encodeKMPermAlph} encodes each
-character in a string based on the rules specified in X.691 27.5.2 and 27.5.4.
+character in a string based on the rules specified in X.691 27.5.2 and 27.5.4. Since the
+permitted-alphabet constraint is the entire alphabet we use the {\em LatticeMod} entity {\em top}
+which represents the greatest element of the particular known-multiplier string type --
+the entire alphabet.
 
 \begin{code}
 
@@ -2319,7 +2377,7 @@ encodeKMString :: (RS a, Lattice a) => a -> PERMonad ()
 encodeKMString vs
     = let t = getTop vs
       in {- X691REF: 27.5.7 -}
-         encodeWithLength top (encodeKMPermAlph (getString t))  (getString vs) {- FIXME check top here -}
+         encodeWithLength top (encodeKMPermAlph (getString t))  (getString vs)
 
 getTop :: (RS a, Lattice a) => a -> a
 getTop m = top
@@ -2364,7 +2422,6 @@ extensible and the input is valid (for the particular known-multiplier string).
 If it is extensible and the input is valid then {\em encodeExtConsKMS} is called. They both take the
 effective constraint and actual constraint associated with the type as input.
 
-
 \begin{code}
 
 encodeKMSWithConstraint :: (Eq a, RS a, Lattice a)
@@ -2382,21 +2439,14 @@ encodeKMSWithConstraint cs vs
 
 effectiveCon :: (RS a, Lattice a, Eq a) => SerialSubtypeConstraints a ->
                 Either String (ExtResStringConstraint (ResStringConstraint a IntegerConstraint))
-effectiveCon cs = lSerialEffCons lResConE top cs
+effectiveCon cs = generateConstraint lResConE top cs
 
 actualCon :: (RS a, Lattice a, Eq a) => SerialSubtypeConstraints a ->
                 Either String (ExtResStringConstraint (ResStringConstraint a ValidIntegerConstraint))
-actualCon cs = lSerialEffCons lResConE top cs
+actualCon cs = generateConstraint lResConE top cs
 
 \end{code}
 
-{- FIXME
--- The first case of encVS deals with non-per visible constraint.
--- If the constraint is non-per visible then we treat the value as
--- unconstrained.
--- NEED TO DEAL WITH CASE WHEN ROOT AND EXTENSION ARE DIFFERENT
--- CONSTRAINTS
-\}
 
 {\em encodeNonExtConsKMS} has several cases:
 \begin{itemize}
@@ -2414,6 +2464,9 @@ if the constraint is only a permitted alphabet constraint then {\em encodePACons
 called;
 \item
 if the constraint is only a size constraint then {\em encodeSizeConsKMS} is called;
+\item
+if there is no PER-visible constraint (such as an extensible permitted alphabet constraint)
+then the value is unconstrained and {\em encodeUnconstrainedLMS} is called;
 \item
 otherwise the input value does not satisfy the constraint and an error is thrown.
 \end{itemize}
@@ -2437,6 +2490,8 @@ encodeNonExtConsKMS (Right vsc) (Right ok) vs
          = encodePAConsKMS pac vs
      | noPAConstraint && not noSizeConstraint && inSizeRange (getString vs) oksc
          = encodeSizeConsKMS l u vs
+     | noPAConstraint && noSizeConstraint
+         = encodeUnconstrainedKMS vs
      | otherwise
          = throwError (BoundsError "Value out of range")
            where
@@ -2834,7 +2889,7 @@ decodeInt3 cs =
    lDecConsInt3 effRoot extensible effExt
    where
       effectiveCon :: Either String (ExtBS (ConType IntegerConstraint))
-      effectiveCon = lSerialEffCons integerConElements top cs
+      effectiveCon = generateConstraint integerConElements top cs
       extensible = eitherExtensible effectiveCon
       effRoot = either (\x -> throwError (ConstraintError "Invalid root"))
                     (return . conType . getRootConstraint) effectiveCon
@@ -2957,8 +3012,8 @@ nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
 decodeSequenceOf :: ASNMonadTrans t =>
                     ASNType a -> [ElementSetSpecs [a]] -> t BG.BitGet [a]
 decodeSequenceOf t [] = decodeLargeLengthDeterminant3' (flip nSequenceOfElements []) t
-decodeSequenceOf t cs = decodeSequenceOfAux t (errorize (lSerialEffCons lSeqOfConE top cs))
-                                (errorize (lSerialEffCons lSeqOfConE top cs))
+decodeSequenceOf t cs = decodeSequenceOfAux t (errorize (generateConstraint lSeqOfConE top cs))
+                                (errorize (generateConstraint lSeqOfConE top cs))
 
 decodeSequenceOfAux :: ASNMonadTrans t =>
                        ASNType a ->
@@ -2991,7 +3046,7 @@ instance ASNMonadTrans (ErrorT ASNError)
 
 decodeBitString :: ASNMonadTrans t => [ElementSetSpecs BitString] -> t BG.BitGet BitString
 decodeBitString constraints =
-   do xs <- decodeBitStringAux (errorize (lSerialEffCons lBSConE top constraints))
+   do xs <- decodeBitStringAux (errorize (generateConstraint lBSConE top constraints))
       return (BitString . concat . (map bitString) $ xs)
 
 decodeBitStringAux :: ASNMonadTrans t => t BG.BitGet (ExtBS (ConType IntegerConstraint)) -> t BG.BitGet [BitString]
@@ -3045,7 +3100,7 @@ temporaryConvert (Right x) = tell x
 type AMonad a = ErrorT ASNError (WriterT BitStream Identity) a
 
 constraints :: (Eq a, Show a, Lattice a, IC a) => [SubtypeConstraint BitString] -> AMonad (ExtBS (ConType a))
-constraints cs = errorize (lSerialEffCons lBSConE top cs)
+constraints cs = errorize (generateConstraint lBSConE top cs)
 
 errorize :: (MonadError ASNError m) => Either String a -> m a
 errorize (Left e)  = throwError (ConstraintError e)
