@@ -389,23 +389,20 @@ provides for each of these cases.
 
 \begin{code}
 
-data SubtypeConstraint a where
-    RootOnly :: ConstraintSet a -> SubtypeConstraint a
-    EmptyExtension :: ConstraintSet a -> SubtypeConstraint a
-    NonEmptyExtension :: ConstraintSet a -> ConstraintSet a -> SubtypeConstraint a
+data SubtypeConstraint a = RootOnly (ElementSetSpec a)
+                            | EmptyExtension (ElementSetSpec a)
+                            | NonEmptyExtension (ElementSetSpec a) (ElementSetSpec a)
 
 \end{code}
 
 The root and extension addition components of a subtype constraint are values of type
-{\em ConstraintSet}. These are constraints that are specified as a set combination of
+{\em ElementSetSpec}. These are constraints that are specified as a set combination of
 various elemental constraints. At the top-most level a constraint is either a union of
 sub-constraints or the complement of a constraint.
 
 \begin{code}
 
-data ConstraintSet a where
-    UnionSet        :: Union a -> ConstraintSet a
-    ComplementSet   :: Exclusions a  -> ConstraintSet a
+data ElementSetSpec a = UnionSet (Unions a) | ComplementSet (Exclusions a)
 
 \end{code}
 
@@ -416,10 +413,12 @@ constraints.
 
 \begin{code}
 
-data Union a = IC (Intersection a) | UC (Union a) (Intersection a)
+data Unions a = NoUnion (Intersections a) | UnionMark (Unions a) (Intersections a)
 data Exclusions a = EXCEPT (Element a)
-data Intersection a = INTER (Intersection a) (IE a) | ATOM (IE a)
-data IE a = E (Element a) | Exc (Element a) (Exclusions a)
+data Intersections a
+    = NoIntersection (IntersectionElements a) | IntersectionMark (Intersections a) (IntersectionElements a)
+data IntersectionElements a
+    = ElementConstraint (Element a) | ExclusionConstraint (Element a) (Exclusions a)
 
 \end{code}
 
@@ -587,19 +586,16 @@ constrained x       = not (unconstrained x) && not (semiconstrained x)
 The type {\em ResStringConstraint} represents the distinct components --
 the permitted alphabet constraint and the size constraint -- of a root or extension
 constraint of a restricted character string type. It is a polymorphic type to allow for the
-various restricted character string types. {\em ExtResStringConstraint} supports the
+various restricted character string types. {\em ExtensibleConstraint} supports the
 combination of root and extension constraints. The boolean component indicates whether an
 extension constraint exists.
-{- FIXME: could this be replaced by ExtBS? -}
+
 \begin{code}
 
 data ResStringConstraint a i = ResStringConstraint a i
     deriving (Show,Eq)
 
-data ExtResStringConstraint a = ExtResStringConstraint a a Bool
-    deriving (Show, Eq)
-
-data ExtBS i = ExtBS i i Bool
+data ExtensibleConstraint i = ExtensibleConstraint i i Bool
     deriving (Show, Eq)
 
 \end{code}

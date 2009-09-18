@@ -9,16 +9,16 @@ import Data.List
 import Control.Monad.Error
 import ASNTYPE
 
-data ConType i = ConType {conType :: i}
+data ConstructConstraint i = ConstructConstraint {constructConstraint :: i}
    deriving (Show, Eq)
 
-class IC a where
-    makeIC :: InfInteger -> InfInteger -> a
+class IntegerCon a where
+    makeIntegerConstraint :: InfInteger -> InfInteger -> a
     getLower :: a -> InfInteger
     getUpper :: a -> InfInteger
     within :: a -> a -> Bool
     serialCombine :: a -> a -> a
-    exceptIC :: a -> a -> a
+    exceptIntegerConstraint :: a -> a -> a
 
 
 class RS a where
@@ -39,11 +39,11 @@ class Lattice a => BooleanAlgebra a where
 
 
 -- These are similar to ExtResStringConstraint functions
-getBSRC (ExtBS r _ _) = r
-getBSEC (ExtBS _ e _) = e
+getBSRC (ExtensibleConstraint r _ _) = r
+getBSEC (ExtensibleConstraint _ e _) = e
 
-instance IC IntegerConstraint where
-    makeIC l u = IntegerConstraint l u
+instance IntegerCon IntegerConstraint where
+    makeIntegerConstraint l u = IntegerConstraint l u
     getLower (IntegerConstraint l u) = l
     getUpper (IntegerConstraint l u) = u
     within a b
@@ -64,26 +64,26 @@ instance IC IntegerConstraint where
         | u2 == PosInf && l2 >= l1
                       = IntegerConstraint l2 u1
         | otherwise = b
-    exceptIC = exceptIntCon
+    exceptIntegerConstraint = exceptIntCon
 
 
-instance IC ValidIntegerConstraint where
-    makeIC l u = Valid [makeIC l u]
+instance IntegerCon ValidIntegerConstraint where
+    makeIntegerConstraint l u = Valid [makeIntegerConstraint l u]
     getLower (Valid ls) = (getLower . head) ls
     getUpper (Valid ls) = (getUpper . last) ls
     within (Valid ls) (Valid []) = True
     within (Valid ls) (Valid (f:r))
         = or (map (flip within f) ls) && within (Valid ls) (Valid r)
     serialCombine (Valid ls) (Valid xs)
-        = Valid (map (updateVIC ls) xs)
+        = Valid (map (updateConstraintIC ls) xs)
           where
-            updateVIC (x:y) f
+            updateConstraintIC (x:y) f
                 | within x f = serialCombine x f
-                | otherwise = updateVIC y f
-    exceptIC = exceptVIC
+                | otherwise = updateConstraintIC y f
+    exceptIntegerConstraint = exceptVIC
 
 
-exceptCTIC (ConType a) (ConType b) = ConType (exceptIC a b)
+exceptCTIC (ConstructConstraint a) (ConstructConstraint b) = ConstructConstraint (exceptIntegerConstraint a b)
 
 -- Note that this instantiation generates effective
 -- constraint-based meet and join. For example,
@@ -99,32 +99,32 @@ instance Lattice IntegerConstraint where
       | l2 > u1   = bottom
       | otherwise = IntegerConstraint (max l1 l2) (min u1 u2)
 
-instance Lattice i => Lattice (ConType i) where
-    bottom = ConType bottom
-    top = ConType top
-    (ConType a) `ljoin` (ConType b) = ConType (a `ljoin` b)
-    (ConType a) `meet` (ConType b) = ConType (a `meet` b)
+instance Lattice i => Lattice (ConstructConstraint i) where
+    bottom = ConstructConstraint bottom
+    top = ConstructConstraint top
+    (ConstructConstraint a) `ljoin` (ConstructConstraint b) = ConstructConstraint (a `ljoin` b)
+    (ConstructConstraint a) `meet` (ConstructConstraint b) = ConstructConstraint (a `meet` b)
 
-instance (IC i, Lattice i) => Lattice (ExtBS (ConType i)) where
-   bottom = ExtBS bottom bottom False
-   top = ExtBS top top False
-   (ExtBS r1 e1 False) `ljoin` (ExtBS r2 e2 False)
-        = ExtBS (r1 `ljoin` r2) bottom False
-   (ExtBS r1 e1 False) `ljoin` (ExtBS r2 e2 True)
-        = ExtBS (r1 `ljoin` r2) e2 True
-   (ExtBS r1 e1 True) `ljoin` (ExtBS r2 e2 False)
-        = ExtBS (r1 `ljoin` r2) e1 True
-   (ExtBS r1 e1 True) `ljoin` (ExtBS r2 e2 True)
-        = ExtBS (r1 `ljoin` r2)
+instance (IntegerCon i, Lattice i) => Lattice (ExtensibleConstraint (ConstructConstraint i)) where
+   bottom = ExtensibleConstraint bottom bottom False
+   top = ExtensibleConstraint top top False
+   (ExtensibleConstraint r1 e1 False) `ljoin` (ExtensibleConstraint r2 e2 False)
+        = ExtensibleConstraint (r1 `ljoin` r2) bottom False
+   (ExtensibleConstraint r1 e1 False) `ljoin` (ExtensibleConstraint r2 e2 True)
+        = ExtensibleConstraint (r1 `ljoin` r2) e2 True
+   (ExtensibleConstraint r1 e1 True) `ljoin` (ExtensibleConstraint r2 e2 False)
+        = ExtensibleConstraint (r1 `ljoin` r2) e1 True
+   (ExtensibleConstraint r1 e1 True) `ljoin` (ExtensibleConstraint r2 e2 True)
+        = ExtensibleConstraint (r1 `ljoin` r2)
             (exceptCTIC ((r1 `ljoin` e1) `ljoin` (r2 `ljoin` e2)) (r1 `ljoin` r2))  True
-   (ExtBS r1 e1 False) `meet` (ExtBS r2 e2 False)
-        = ExtBS (r1 `meet` r2) bottom False
-   (ExtBS r1 e1 False) `meet` (ExtBS r2 e2 True)
-        = ExtBS (r1 `meet` r2) (r1 `meet` e2) True
-   (ExtBS r1 e1 True) `meet` (ExtBS r2 e2 False)
-        = ExtBS (r1 `meet` r2) (r2 `meet` e1) True
-   (ExtBS r1 e1 True) `meet` (ExtBS r2 e2 True)
-        = ExtBS (r1 `meet` r2)
+   (ExtensibleConstraint r1 e1 False) `meet` (ExtensibleConstraint r2 e2 False)
+        = ExtensibleConstraint (r1 `meet` r2) bottom False
+   (ExtensibleConstraint r1 e1 False) `meet` (ExtensibleConstraint r2 e2 True)
+        = ExtensibleConstraint (r1 `meet` r2) (r1 `meet` e2) True
+   (ExtensibleConstraint r1 e1 True) `meet` (ExtensibleConstraint r2 e2 False)
+        = ExtensibleConstraint (r1 `meet` r2) (r2 `meet` e1) True
+   (ExtensibleConstraint r1 e1 True) `meet` (ExtensibleConstraint r2 e2 True)
+        = ExtensibleConstraint (r1 `meet` r2)
             (exceptCTIC ((r1 `ljoin` e1) `meet` (r2 `ljoin` e2)) (r1 `meet` r2))  True
 
 instance Lattice ValidIntegerConstraint where
@@ -311,53 +311,48 @@ instance RS BMPString where
 
 class ExtConstraint a where
     isExtensible :: a b -> Bool
-    makeEC :: b -> b -> Bool -> a b
+    makeExtensibleConstraint :: b -> b -> Bool -> a b
     getRootConstraint   :: a b -> b
     getExtConstraint   :: a b -> b
 
 
-class Constraint b i where
+class ConstructedConstraint b i where
     isValid :: b i -> b i -> Bool
-    updateV :: b i -> b i -> b i
-    except  :: b i -> b i -> b i
-    makeSC  :: i -> b i
-
-instance ExtConstraint ExtResStringConstraint  where
-    isExtensible = extensible
-    makeEC x y b = ExtResStringConstraint x y b
-    getRootConstraint x     = getRSRC x
-    getExtConstraint x     = getRSEC x
+    updateConstraint :: b i -> b i -> b i
+    except :: b i -> b i -> b i
+    makeConstructedConstraint  :: i -> b i
 
 
-instance (IC i, Lattice a, RS a, Eq a) => Constraint (ResStringConstraint a) i where
+instance (IntegerCon i, Lattice a, RS a, Eq a)
+    => ConstructedConstraint (ResStringConstraint a) i where
     isValid x y  = lValidResCon x y
-    updateV x y = lUpdateResCon x y
+    updateConstraint x y = lUpdateResCon x y
     except      = exceptRSC
-    makeSC i    = ResStringConstraint top i
+    makeConstructedConstraint i    = ResStringConstraint top i
 
 
-instance ExtConstraint ExtBS where
+instance ExtConstraint ExtensibleConstraint where
     isExtensible = extensibleBS
-    makeEC x y b = ExtBS x y b
+    makeExtensibleConstraint x y b = ExtensibleConstraint x y b
     getRootConstraint x      = getBSRC x
     getExtConstraint x      = getBSEC x
 
-instance  IC i => Constraint ConType i where
-    isValid (ConType x) (ConType y)  = within x y
-    updateV (ConType x) (ConType y)  = ConType (serialCombine x y)
-    except (ConType x) (ConType y)   = ConType (exceptIC x y)
-    makeSC i     = ConType i
+instance  IntegerCon i => ConstructedConstraint ConstructConstraint i where
+    isValid (ConstructConstraint x) (ConstructConstraint y)  = within x y
+    updateConstraint (ConstructConstraint x) (ConstructConstraint y)  = ConstructConstraint (serialCombine x y)
+    except (ConstructConstraint x) (ConstructConstraint y)   = ConstructConstraint (exceptIntegerConstraint x y)
+    makeConstructedConstraint i     = ConstructConstraint i
 
 
 
 
 
-lValidResCon :: (IC i, Lattice a, RS a, Eq a) =>
+lValidResCon :: (IntegerCon i, Lattice a, RS a, Eq a) =>
     ResStringConstraint a i -> ResStringConstraint a i -> Bool
 lValidResCon (ResStringConstraint p1 s1) (ResStringConstraint p2 s2)
     = within s1 s2 && lValidPA p1 p2
 
-lUpdateResCon :: (IC t, Lattice t1, RS t1, Eq t1) =>
+lUpdateResCon :: (IntegerCon t, Lattice t1, RS t1, Eq t1) =>
                  ResStringConstraint t1 t
                  -> ResStringConstraint t1 t
                  -> ResStringConstraint t1 t
@@ -382,17 +377,17 @@ lValidPA x y
         else and (map (flip elem (getString x)) (getString y))
 
 
-extensible :: ExtResStringConstraint a -> Bool
-extensible (ExtResStringConstraint _ _ b) = b
+extensible :: ExtensibleConstraint a -> Bool
+extensible (ExtensibleConstraint _ _ b) = b
 
-extensibleBS :: ExtBS i -> Bool
-extensibleBS (ExtBS _ _ b) = b
+extensibleBS :: ExtensibleConstraint i -> Bool
+extensibleBS (ExtensibleConstraint _ _ b) = b
 
-getRSRC :: ExtResStringConstraint a -> a
-getRSRC (ExtResStringConstraint r _ _) = r
+getRSRC :: ExtensibleConstraint a -> a
+getRSRC (ExtensibleConstraint r _ _) = r
 
-getRSEC :: ExtResStringConstraint a -> a
-getRSEC (ExtResStringConstraint _ e _) = e
+getRSEC :: ExtensibleConstraint a -> a
+getRSEC (ExtensibleConstraint _ e _) = e
 
 getSizeConstraint :: ResStringConstraint a i -> i
 getSizeConstraint (ResStringConstraint s i) = i
@@ -400,39 +395,37 @@ getSizeConstraint (ResStringConstraint s i) = i
 getPAConstraint :: RS a => ResStringConstraint a i -> a
 getPAConstraint (ResStringConstraint s i) = s
 
-instance (Lattice a, Lattice i,RS a, Eq a, Eq i, IC i) => Lattice (ResStringConstraint a i) where
+instance (Lattice a, Lattice i,RS a, Eq a, Eq i, IntegerCon i) => Lattice (ResStringConstraint a i) where
     bottom = ResStringConstraint bottom bottom
     top = ResStringConstraint top top
     (ResStringConstraint s1 i1) `ljoin` (ResStringConstraint s2 i2)
-        = if (s1 == bottom && i2 == bottom) || (i1 == bottom && s2 == bottom)
-               then top
-               else ResStringConstraint (s1 `ljoin` s2) (i1 `ljoin` i2)
+        = ResStringConstraint (s1 `ljoin` s2) (i1 `ljoin` i2)
     (ResStringConstraint s1 i1) `meet` (ResStringConstraint s2 i2)
         = ResStringConstraint (s1 `meet` s2) (i1 `meet` i2)
 
 
-instance (RS a, IC i, Lattice (ResStringConstraint a i))
-    => Lattice (ExtResStringConstraint (ResStringConstraint a i)) where
-    bottom = ExtResStringConstraint bottom bottom False
-    top = ExtResStringConstraint top top False
-    (ExtResStringConstraint r1 e1 False) `ljoin` (ExtResStringConstraint r2 e2 False)
-        = ExtResStringConstraint (r1 `ljoin` r2) bottom False
-    (ExtResStringConstraint r1 e1 False) `ljoin` (ExtResStringConstraint r2 e2 True)
-        = ExtResStringConstraint (r1 `ljoin` r2) e2 True
-    (ExtResStringConstraint r1 e1 True) `ljoin` (ExtResStringConstraint r2 e2 False)
-        = ExtResStringConstraint (r1 `ljoin` r2) e1 True
-    (ExtResStringConstraint r1 e1 True) `ljoin` (ExtResStringConstraint r2 e2 True)
-        = ExtResStringConstraint (r1 `ljoin` r2)
+instance (RS a, IntegerCon i, Lattice (ResStringConstraint a i))
+    => Lattice (ExtensibleConstraint (ResStringConstraint a i)) where
+    bottom = ExtensibleConstraint bottom bottom False
+    top = ExtensibleConstraint top top False
+    (ExtensibleConstraint r1 e1 False) `ljoin` (ExtensibleConstraint r2 e2 False)
+        = ExtensibleConstraint (r1 `ljoin` r2) bottom False
+    (ExtensibleConstraint r1 e1 False) `ljoin` (ExtensibleConstraint r2 e2 True)
+        = ExtensibleConstraint (r1 `ljoin` r2) e2 True
+    (ExtensibleConstraint r1 e1 True) `ljoin` (ExtensibleConstraint r2 e2 False)
+        = ExtensibleConstraint (r1 `ljoin` r2) e1 True
+    (ExtensibleConstraint r1 e1 True) `ljoin` (ExtensibleConstraint r2 e2 True)
+        = ExtensibleConstraint (r1 `ljoin` r2)
             (exceptRSC ((r1 `ljoin` e1) `ljoin` (r2 `ljoin` e2)) (r1 `ljoin` r2))  True
-    (ExtResStringConstraint r1 e1 False) `meet` (ExtResStringConstraint r2 e2 False)
-        = ExtResStringConstraint (r1 `meet` r2) bottom False
-    (ExtResStringConstraint r1 e1 False) `meet` (ExtResStringConstraint r2 e2 True)
-        = ExtResStringConstraint (r1 `meet` r2) (r1 `meet` e2) True
-    (ExtResStringConstraint r1 e1 True) `meet` (ExtResStringConstraint r2 e2 False)
-        = ExtResStringConstraint (r1 `meet` r2) (r2 `meet` e1) True
-    (ExtResStringConstraint r1 e1 True) `meet` (ExtResStringConstraint r2 e2 True)
-        = ExtResStringConstraint (r1 `meet` r2)
+    (ExtensibleConstraint r1 e1 False) `meet` (ExtensibleConstraint r2 e2 False)
+        = ExtensibleConstraint (r1 `meet` r2) bottom False
+    (ExtensibleConstraint r1 e1 False) `meet` (ExtensibleConstraint r2 e2 True)
+        = ExtensibleConstraint (r1 `meet` r2) (r1 `meet` e2) True
+    (ExtensibleConstraint r1 e1 True) `meet` (ExtensibleConstraint r2 e2 False)
+        = ExtensibleConstraint (r1 `meet` r2) (r2 `meet` e1) True
+    (ExtensibleConstraint r1 e1 True) `meet` (ExtensibleConstraint r2 e2 True)
+        = ExtensibleConstraint (r1 `meet` r2)
             (exceptRSC ((r1 `ljoin` e1) `meet` (r2 `ljoin` e2)) (r1 `meet` r2))  True
 
 exceptRSC (ResStringConstraint s1 i1) (ResStringConstraint s2 i2)
-    = ResStringConstraint (exceptPAC s1 s2) (exceptIC i1 i2)
+    = ResStringConstraint (exceptPAC s1 s2) (exceptIntegerConstraint i1 i2)
