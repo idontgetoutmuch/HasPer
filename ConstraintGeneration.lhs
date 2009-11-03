@@ -1,3 +1,5 @@
+\section{Constraint Generating Functions}
+
 \begin{code}
 {-# OPTIONS_GHC -XTypeOperators -XGADTs -XEmptyDataDecls
                 -XFlexibleInstances -XFlexibleContexts
@@ -15,18 +17,28 @@ effective constraint and a single actual constraint. A type's effective constrai
 PER-encode a value of the type. The actual constraint is used to test the validity of a value.
 Note that only PER-visible constraints are used in the generation of an effective constraint
 (X.691: 9.3.18) but all constraints are used in the generation of an actual constraint.
+We first present in section \ref{congen} the non-type specific functions used in constraint generation. This is followed in section \ref{contype}
+with the type-specific functions that process the element constraints of each type.
 
-{\em generateConstraint} takes a list of constraints (representing
-serially applied constraints) and generates the resulting constraint (if it exists).
+\subsection{Non-Type Specific Constraint Generation Functions}
+\label{congen}
+
+{\em evaluateConstraint} takes a list of constraints (representing
+serially applied constraints) and returns the resulting constraint (if it exists). It is used to evaluate
+both the effective constraint and the validity-testing constraint.
 It is a recursive function which takes three inputs:
 \begin{\itemize}
 \item
 a type-specific function that processes the element constraints appropriately for the given
-type and whether one is generating an effective constraint or a validity-testing constraint.
-Thus when one is generating an effective constraint an error will be thrown if the constraint
+type. That is, each type has a collection of applicable constraints as presented in table 9 of
+section 47.1 of X.680. The function used depends on whether one is generating an effective constraint -- in which
+case some of the elements are non-PER visible -- or a validity-testing constraint where all valid constraints
+are visible. When one is generating an effective constraint an error will be thrown if the constraint
 is non-PER visible;
 \item
-an accumulation parameter which presents the current status of the constraint; and
+an accumulation parameter which presents the current status of the constraint. That is, as the serially-applied
+constraints are evaluated they are serially-applied to the constraint hosted by this parameter. We will refer to
+this constraint as the {\bf parent constraint}; and
 \item
 the list of serially-applied constraints to be processed.
 \end{itemize}
@@ -43,57 +55,57 @@ is semantically different from the others in that the extensibility of the resul
 last constraint (X.680: G.4.2.3); and
 \item
 a list of at least two constraints where the accumulating parameter is updated using {\em
-applyConstraint} and {\em generateConstraint} is recursively called with the result of {\em applyConstraint}
+applyConstraint} and {\em evaluateConstraint} is recursively called with the result of {\em applyConstraint}
 as the second input.
 \end{itemize}
 
 \begin{code}
 
-generateConstraint :: (MonadError [Char] t,
-                      ExtConstraint a1,
-                      Eq (b i),
-                      ConstructedConstraint b i,
-                      Lattice (b i),
+evaluateConstraint :: (MonadError [Char] t,
+                      Eq c,
+                      Constraint c,
+                      Lattice c,
                       ExtConstraint a) =>
-                     (Element t1 -> Bool -> t (a (b i))) -> t (a1 (b i))
-                        -> [SubtypeConstraint t1] -> t (a1 (b i))
-generateConstraint fn m ls
+                     (Element t1 -> Bool -> t (a c)) -> t (a c)
+                        -> [SubtypeConstraint t1] -> t (a c)
+evaluateConstraint fn m ls
     = do
         let foobar
                 = do
                     esrc <- m
                     let foobar1 [] = m
                         foobar1 [c] = applyLastConstraint fn esrc c
-                        foobar1 (f:r) = generateConstraint fn (applyConstraint fn esrc f) r
+                        foobar1 (f:r) = evaluateConstraint fn (applyConstraint fn esrc f) r
                     foobar1 ls
         foobar
 
 \end{code}
 
-{\em applyConstraint} takes the same first two inputs as {\em generateConstraint} and the next constraint to be serially applied.
-It calls {\em makeConstraint} which, if the new constraint is valid then it is serially applied, and, if not, the function
+{\em applyConstraint} takes the same first two inputs as {\em evaluateConstraint} and the next constraint to be serially applied.
+It uses {\tt evaluateSingleConstraint} to create a single constraint from a constraint which is potentially defined using set operations,
+and applies {\em makeConstraint} to the parent constraint and the newly evaluated constraint. If the new
+constraint is valid -- its values lie within the root of the parent constraint -- then it is serially applied, and, if not, the function
 {\em constraintApplicationError} is called whose behaviour depends on the type of error.
 
 
 \begin{code}
 
-applyConstraint :: (Eq (b i),
-                 ConstructedConstraint b i,
-                 Lattice (b i),
-                 ExtConstraint a1,
+applyConstraint :: (Eq c,
+                 Constraint c,
+                 Lattice c,
                  MonadError [Char] m,
                  ExtConstraint a) =>
-                (Element t -> Bool -> m (a1 (b i)))
-                -> a (b i)
+                (Element t -> Bool -> m (a c))
+                -> a c
                 -> SubtypeConstraint t
-                -> m (a (b i))
+                -> m (a c)
 applyConstraint fn ersc c
-    = catchError (makeConstraint ersc (generateSingleConstraint False fn c)) (constraintApplicationError ersc)
+    = catchError (makeConstraint ersc (evaluateSingleConstraint False fn c)) (constraintApplicationError ersc)
 
 \end{code}
 
-{\em makeConstraint} simply accesses the root constraints of the current constraint (represented by the accumulating
-parameter)and the new constraint, and if the new constraint is valid it updates the accumulated constraint using the
+{\em makeConstraint} simply accesses the root constraints of the parent constraint and the new constraint, and if the new constraint is valid it
+updates the parent constraint using the
 function {\em makeExtensibleConstraint}. {\em makeExtensibleConstraint} is a method of the type class {\em ExtConstraint}
 defined in the module {\em LatticeMod} and is thus supported by all extensible constraints. Note that
 {\em makeExtensibleConstraint} simply updates the root constraint using {\em updateConstraint} which is a method of the type
@@ -105,17 +117,15 @@ root of the parent constraint (X680: G.4.2.3).
 
 The function {\em constraintApplicationError} results in the second constraint being ignored
 if the error reported indicates a non-PER visible constraint (X.691: B.2.2.2), and passes the error on
-otherwise. That is, any non-visibility error results in no constraint being generated.
+otherwise. That is, any non-visibility error results in no constraint being evaluated.
 
 \begin{code}
 
 makeConstraint :: (MonadError [Char] m,
                  ExtConstraint a,
-                 ExtConstraint a1,
-                 ConstructedConstraint b i,
-                 Lattice (b i),
-                 ExtConstraint a2) =>
-                a (b i) -> m (a1 (b i)) -> m (a2 (b i))
+                 Constraint c,
+                 Lattice c) =>
+                a c -> m (a c) -> m (a c)
 makeConstraint esrc m
         = do
             let foobar
@@ -137,32 +147,29 @@ constraintApplicationError esrc err          = throwError err
 \end{code}
 
 {\em applyLastConstraint} is similar to {\em applyConstraint} except that if the last
-constraint is extensible and valid then the generated constraint is extensible. The function
-{\em makeFinalConstraint} generates the final constraint.
+constraint is extensible and valid then the evaluated constraint is extensible. The function
+{\em makeFinalConstraint} evaluates the final constraint.
 
 \begin{code}
 
-applyLastConstraint :: (Eq (b i),
-                     ConstructedConstraint b i,
-                     Lattice (b i),
-                     ExtConstraint a1,
+applyLastConstraint :: (Eq c,
+                     Constraint c,
+                     Lattice c,
                      MonadError [Char] m,
                      ExtConstraint a) =>
-                    (Element t -> Bool -> m (a1 (b i)))
-                    -> a (b i)
+                    (Element t -> Bool -> m (a c))
+                    -> a c
                     -> SubtypeConstraint t
-                    -> m (a (b i))
+                    -> m (a c)
 applyLastConstraint fn x c
-    = catchError (makeFinalConstraint x (generateSingleConstraint False fn c)) (constraintApplicationError x)
+    = catchError (makeFinalConstraint x (evaluateSingleConstraint False fn c)) (constraintApplicationError x)
 
 
 makeFinalConstraint :: (MonadError [Char] t,
-               ExtConstraint a1,
-               ExtConstraint a2,
-               Lattice (b i),
-               ConstructedConstraint b i,
+               Lattice c,
+               Constraint c,
                ExtConstraint a) =>
-              a (b i) -> t (a1 (b i)) -> t (a2 (b i))
+              a c -> t (a c) -> t (a c)
 makeFinalConstraint esrc m
         = do
            let r1 = getRootConstraint esrc
@@ -184,9 +191,9 @@ makeFinalConstraint esrc m
 
 \end{code}
 
-{\em generateSingleConstraint} generates a single constraint which is then used in the serial
+{\em evaluateSingleConstraint} evaluates a single constraint which is then used in the serial
 application of constraints. Its construction is guided by the structure of a {\tt SubtypeConstraint} as presented
-in section 46 of X.680. {\em generateSingleConstraint} takes three inputs:
+in section 46 of X.680. {\em evaluateSingleConstraint} takes three inputs:
 \begin{itemize}
 \item
 a boolean value which indicates whether the constraint is extensible;
@@ -200,23 +207,23 @@ the constructor {\em EmptyExtension} and an extensible constraint with an extens
 indicated by the constructor {\em NonEmptyExtension}.
 \end{itemize}
 
-The rules for generating a (possibly extensible) constraint using set arithmetic are presented
-in X.680: G.4.3.8. The rules include a description of how to generate a constraint from an
+The rules for evaluating a (possibly extensible) constraint using set arithmetic are presented
+in X.680: G.4.3.8. The rules include a description of how to evaluate a constraint from an
 extensible constraint whose root and extension addition may themselves be extensible. The
 function {\em extensibleConstraint} implements these rules and the other set operations are
 implemented by {\em applySetOperations}.
 
 \begin{code}
 
-generateSingleConstraint :: (Eq (b i),
-                ConstructedConstraint b i,
-                Lattice (b i),
+evaluateSingleConstraint :: (Eq c,
+                Constraint c,
+                Lattice c,
                 ExtConstraint a,
                 MonadError [Char] t1) => Bool ->
-               (Element t -> Bool -> t1 (a (b i))) -> SubtypeConstraint t -> t1 (a (b i))
-generateSingleConstraint x fn (RootOnly c)              = applySetOperations fn c x
-generateSingleConstraint _ fn (EmptyExtension c)        = applySetOperations fn c True
-generateSingleConstraint _ fn (NonEmptyExtension c e)
+               (Element t -> Bool -> t1 (a c)) -> SubtypeConstraint t -> t1 (a c)
+evaluateSingleConstraint x fn (RootOnly c)              = applySetOperations fn c x
+evaluateSingleConstraint _ fn (EmptyExtension c)        = applySetOperations fn c True
+evaluateSingleConstraint _ fn (NonEmptyExtension c e)
         = extensibleConstraint (applySetOperations fn c False) (applySetOperations fn e False)
 
 \end{code}
@@ -230,30 +237,31 @@ ComplementSet}.
 
 applySetOperations :: (MonadError [Char] t1,
             ExtConstraint a,
-            Lattice (b i),
-            ConstructedConstraint b i,
-            Eq (b i)) =>
-           (Element t -> Bool -> t1 (a (b i))) -> ElementSetSpec t -> Bool -> t1 (a (b i))
+            Lattice c,
+            Constraint c,
+            Eq c) =>
+           (Element t -> Bool -> t1 (a c)) -> ElementSetSpec t -> Bool -> t1 (a c)
 applySetOperations fn (UnionSet u) b                = applyUnions fn u b
 applySetOperations fn (ComplementSet (EXCEPT e)) b  = applyExceptAll (fn e b)
 
 \end{code}
 
 {\em extensibleConstraint} implements the rules for an extension operator (...).
-Note that it needs to satisfy the rules regarding PER-visibility (X.691: B.2.2.10). That is,
+Note that when generating the effective constraint it needs to satisfy the rules regarding PER-visibility (X.691: B.2.2.10). That is,
 if either the root or extension component are non-PER visible then the overall constraint is
-non-PER visible. Note that {\em ljoin} is the lattice join operator defined in the type class
+non-PER visible. {\em ljoin} is the lattice join operator defined in the type class
 {\em Lattice} in the module {\em LatticeMod}.
+
+Note also that the only error that may be thrown is a non-PER-visible error. Haskell's type system will deal with any attempt
+to use an inapplicable constraint, and non-valid constraints are dealt with during serial application.
 
 \begin{code}
 
 extensibleConstraint :: (MonadError [Char] m,
-                Lattice (b i),
-                ExtConstraint a2,
-                ConstructedConstraint b i,
-                ExtConstraint a1,
+                Lattice c,
+                Constraint c,
                 ExtConstraint a) =>
-               m (a1 (b i)) -> m (a (b i)) -> m (a2 (b i))
+               m (a c) -> m (a c) -> m (a c)
 extensibleConstraint m n
     = do
         let foobar
@@ -280,23 +288,23 @@ extensibleConstraint m n
 
 \end{code}
 
-{\em applyExceptAll} generates an {\tt ALL Exclusions} constraint. If the excluded set is
+{\em applyExceptAll} evaluates an {\tt ALL Exclusions} constraint. If the excluded set is
 empty then there is no constraint and thus {\em top} is returned. Otherwise
 the complement set of the excluded set is returned. Note that since the constraint
 representing {\tt ALL} is non-extensible -- all the values are in the root -- the resulting
-constraint is non-extensible by the rule described in X.680: G.4.3.8. Note also that if the
-constraint representing the excluded values is non-PER visible then it is ignored and the
-resulting constraint is everything.
+constraint is non-extensible by the rule described in X.680: G.4.3.8. Hence the last input to
+{\tt makeExtensibleConstraint} is {\tt False}. Note also that if the
+constraint representing the excluded values is non-PER visible then, by X691: B.2.2.10,  it is ignored
+and the resulting constraint is everything.
 
 \begin{code}
 
 applyExceptAll :: (MonadError [Char] m,
-                  ConstructedConstraint b i,
-                  ExtConstraint a1,
-                  Eq (b i),
-                  Lattice (b i),
+                  Constraint c,
+                  Eq c,
+                  Lattice c,
                   ExtConstraint a) =>
-                 m (a (b i)) -> m (a1 (b i))
+                 m (a c) -> m (a c)
 applyExceptAll m
     = do
          let foobar
@@ -312,21 +320,21 @@ applyExceptAll m
 
 \end{code}
 
-{\em applyUnions} generates a {\tt Unions} constraint. It has two cases:
+{\em applyUnions} evaluates a {\tt Unions} constraint. It has two cases:
 \begin{itemize}
 \item
-the case when there is no union operator as undicated by the constructor {\em NoUnion}; and
+the case when there is no union operator as indicated by the constructor {\em NoUnion}; and
 \item
 the case where there is at least one union as indicated by the constructor {\em UnionMark}.
 \end{itemize}
 
 \begin{code}
 
-applyUnions :: (ConstructedConstraint b i,
-             Lattice (b i),
+applyUnions :: (Constraint c,
+             Lattice c,
              ExtConstraint a,
              MonadError [Char] t1) =>
-            (Element t -> Bool -> t1 (a (b i))) -> Unions t -> Bool -> t1 (a (b i))
+            (Element t -> Bool -> t1 (a c)) -> Unions t -> Bool -> t1 (a c)
 applyUnions fn (NoUnion i) b     = applyIntersections fn i b
 applyUnions fn (UnionMark u i) b = unionConstraints (applyIntersections fn i b) (applyUnions fn u False)
 
@@ -341,12 +349,10 @@ alphabet constraint is no constraint which is represent by the lattice value {\e
 \begin{code}
 
 unionConstraints :: (MonadError [Char] m,
-               ConstructedConstraint b i,
-               ExtConstraint a2,
-               Lattice (b i),
-               ExtConstraint a1,
+               Constraint c,
+               Lattice c,
                ExtConstraint a) =>
-              m (a1 (b i)) -> m (a (b i)) -> m (a2 (b i))
+              m (a c) -> m (a c) -> m (a c)
 unionConstraints m n
     = do
         let foobar
@@ -373,7 +379,7 @@ unionConstraints m n
 
 \end{code}
 
-{\em applyIntersections} generates a {\tt Intersections} constraint. It has two cases:
+{\em applyIntersections} evaluates a {\tt Intersections} constraint. It has two cases:
 \begin{itemize}
 \item
 the case when there is no intersection operator as undicated by the constructor {\em NoIntersection}; and
@@ -385,9 +391,9 @@ the case where there is at least one intersection as indicated by the constructo
 
 applyIntersections :: (MonadError [Char] t1,
              ExtConstraint a,
-             Lattice (b i),
-             ConstructedConstraint b i) =>
-            (Element t -> Bool -> t1 (a (b i))) -> Intersections t -> Bool -> t1 (a (b i))
+             Lattice c,
+             Constraint c) =>
+            (Element t -> Bool -> t1 (a c)) -> Intersections t -> Bool -> t1 (a c)
 applyIntersections fn (NoIntersection e) b    = intersectionElements fn e b
 applyIntersections fn (IntersectionMark i e) b
     = intersectionConstraints (intersectionElements fn e b) (applyIntersections fn i False)
@@ -395,18 +401,21 @@ applyIntersections fn (IntersectionMark i e) b
 
 \end{code}
 
-{\em intersectionConstraints} returns the intersection of constraints.
+{\em intersectionConstraints} evaluates the intersection of constraints.
 Note that {\em intersectionConstraints} needs to satisfy the rules regarding visibility
 -- a non-PER visible constraint is simply ignored (X.691: B.2.2.10) --
-and set operators and effective constraints (X.680: G.4.3.8).
+and set operators and effective constraints (X.680: G.4.3.8). Non-PER visible constraints are ignored
+in the definitions of {\tt foobar} and {\tt foobar1} by simply returning the other constraint. That is, if
+the evaluation of a constraint results in a error being thrown -- which could only be a non-PER visible error --
+then this is caught, thrown away and the other constraint returned.
 
 \begin{code}
 
-intersectionConstraints :: (Lattice (b i),
-               ConstructedConstraint b i,
+intersectionConstraints :: (Lattice c,
+               Constraint c,
                MonadError e t,
                ExtConstraint a) =>
-              t (a (b i)) -> t (a (b i)) -> t (a (b i))
+              t (a c) -> t (a c) -> t (a c)
 intersectionConstraints m n
     = do
          let foobar1 x
@@ -438,22 +447,22 @@ intersectionConstraints m n
 
 \end{code}
 
-{\em intersectionElements} generates a constraint from an {\tt IntersectionElements} value.
+{\em intersectionElements} evaluates a constraint from an {\tt IntersectionElements} value.
 There are two possible cases: a simple element constraint indicated by the constructor
 {\em ElementConstraint} or an exclusion constraint (the set difference of two constraints)
 indicated by the constructor {\em ExclusionConstraint). Note that for the {\em
-ElementConstraint} case, the element processing function which was provided as an input to the
-top-level function {\em generateConstraint} is now applied to the element constraint. In the
-other case the element encoding function is applied to each element constraint and {\em
+ElementConstraint} case, the element-processing function which was provided as an input to the
+top-level function {\em evaluateConstraint} is now applied to the element constraint. In the
+other case the element-processing function is applied to each element constraint and {\em
 exceptConstraints} is applied to their results.
 
 \begin{code}
 
 intersectionElements :: (ExtConstraint a,
              MonadError [Char] m,
-             Lattice (b i),
-             ConstructedConstraint b i) =>
-            (Element t -> Bool -> m (a (b i))) -> IntersectionElements t -> Bool -> m (a (b i))
+             Lattice c,
+             Constraint c) =>
+            (Element t -> Bool -> m (a c)) -> IntersectionElements t -> Bool -> m (a c)
 intersectionElements fn (ElementConstraint e) b  = fn e b
 intersectionElements fn (ExclusionConstraint e (EXCEPT ex)) b
                 = exceptConstraints (fn e b) (fn ex False)
@@ -463,17 +472,16 @@ intersectionElements fn (ExclusionConstraint e (EXCEPT ex)) b
 {\em exceptConstraints} returns the set difference of constraints.
 Note that {\em exceptConstraints} needs to satisfy the rules regarding visibility
 -- a non-PER visible constraint is ignored if it is the exception value but makes the whole
-constraint no-PER visible otherwise (X.691: B.2.2.10) --
+constraint non-PER visible otherwise (X.691: B.2.2.10) --
 and set operators and effective constraints (X.680: G.4.3.8).
 
 \begin{code}
 
-exceptConstraints  :: (ConstructedConstraint b i,
+exceptConstraints  :: (Constraint c,
                 ExtConstraint a,
-                Lattice (b i),
-                MonadError [Char] m,
-                ExtConstraint a1) =>
-               m (a1 (b i)) -> m (a (b i)) -> m (a1 (b i))
+                Lattice c,
+                MonadError [Char] m) =>
+               m (a c) -> m (a c) -> m (a c)
 exceptConstraints  m n
     = do
          let foobar1 x
@@ -506,41 +514,130 @@ exceptConstraints  m n
 
 \end{code}
 
-The following functions are the element processing functions for the types with PER-visible
-constraints.
+The the following section we present the element constraint-processing functions for ASN.1 types. 
+
+\subsection{Element Constraint-Processing Functions}
+\label{contype}
+
+For those types with PER-visible
+constraints we present two functions:
+\begin{itemize}
+\item
+one which processes the PER-visible constraints and returns an error message for the others. This function is prefixed in each case by {\em pv} and 
+is used in the evaluation of effective constraints.
+\item
+one which processes all applicable constraints. This function is used in the evaluation of validity-testing constraints.
+\end{itemize}
+
+All other types simply have a function used in the evaluation of validity-testing constraints.
+
+
+\subsubsection{BooleanType}
+
+{\em booleanElements} processes the various {\tt BooleanType} constraints, none of which are PER-visible. 
+Since all constraints are represented as potentially extensible constraints
+with the boolean parameter indicating extensible constraint or not, the processing results in
+a value of type {\em Either String (ExtensibleConstraint Bool)}. If a valid constraint
+is evaluated then an {\em ExtensibleConstraint Bool} value is returned.
+
+\begin{code}
+
+booleanElements :: Element Bool -> Bool -> Either String (ExtensibleConstraint BooleanConstraint)
+booleanElements (S (SV i)) b
+    = return (makeExtensibleConstraint
+                (BooleanConstraint [i]) top b)
+booleanElements (C (Inc t)) b
+    = containedBooleanType t []
+		
+\end{code}
+		
+{\em containedBooleanType} processes a contained {\tt BooleanType} constraint (X.680: 47.3).
+Note that only the extension root values of an extensible contained type are used (X.680:
+47.3.3). Thus the function {\em extensionRootOnly} is applied to the constraint returned by
+{\em evaluateConstraint}.
+
+\begin{code}
+
+containedBooleanType :: ASNType Bool -> [SubtypeConstraint Bool]
+               -> Either String (ExtensibleConstraint BooleanConstraint)
+containedBooleanType (BuiltinType BOOLEAN) cl
+    =  let  tp = ExtensibleConstraint top top False
+            tpp = Right tp
+        in
+            	extensionRootOnly $ evaluateConstraint booleanElements tpp cl
+containedBooleanType (ConstrainedType t c) cl
+    = containedBooleanType t (c:cl)
+			
+\end{code}
+			
+\subsubsection{IntegerType}
 
 {\em pvIntegerElements} processes the various {\tt IntegerType} constraints which are all
 PER-visible. Since all constraints are represented as potentially extensible constraints
 with the boolean parameter indicating extensible constraint or not, the processing results in
-a value of type {\em Either String (ExtensibleConstraint (ConstructConstraint a))}. If a valid constraint
-is generated then a {\em ExtensibleConstraint (ConstructConstraint a)} value is returned. The constructor
-{\em ConstructConstraint} is used simply to created a constructed constraint value from a simple
-constraint such as an {\em IntegerConstraint}.
+a value of type {\em Either String (ExtensibleConstraint a)}. If a valid constraint
+is evaluated then an {\em ExtensibleConstraint a} value is returned.
+
+Since all {\tt IntegerType} constraints are PER-visible, this function may also be used
+when evaluating a validity-testing constraint.
 
 \begin{code}
 
-
-pvIntegerElements :: (IntegerCon a, Lattice a, Eq a, Show a)
-    => Element InfInteger -> Bool -> Either String (ExtensibleConstraint (ConstructConstraint a))
+pvIntegerElements :: (Constraint a, IntegerCon a, Lattice a, Eq a, Show a)
+    => Element InfInteger -> Bool -> Either String (ExtensibleConstraint a)
 pvIntegerElements (S (SV i)) b
     = return (makeExtensibleConstraint
-                (makeConstructedConstraint $ makeIntegerConstraint i i) top b)
+                (makeIntegerConstraint i i) top b)
 pvIntegerElements (C (Inc t)) b
-    = lProcessCT t []
+    = containedIntegerType t []
 pvIntegerElements (V (R (l,u))) b
     = return (makeExtensibleConstraint
-                (makeConstructedConstraint $ makeIntegerConstraint l u) top b)
+                (makeIntegerConstraint l u) top b)
 
--- {- FIXME Parent type does not inherit extension of included type -}
+\end{code}
 
-lProcessCT :: (IntegerCon a, Lattice a, Eq a, Show a) =>
-              ASNType InfInteger -> [SubtypeConstraint InfInteger] -> Either String (ExtensibleConstraint (ConstructConstraint a))
-lProcessCT (BuiltinType INTEGER) cl = generateConstraint pvIntegerElements top cl
-lProcessCT (ConstrainedType t c) cl  = lProcessCT t (c:cl)
+{\em containedIntegerType} processes a contained {\tt IntegerType} constraint (X.680: 47.3).
+Note that only the extension root values of an extensible contained type are used (X.680:
+47.3.3). Thus the function {\em extensionRootOnly} is applied to the constraint returned by
+{\em evaluateConstraint}.
+
+\begin{code}
+
+containedIntegerType :: (Constraint a, IntegerCon a, Lattice a, Eq a, Show a) =>
+              ASNType InfInteger -> [SubtypeConstraint InfInteger]
+               -> Either String (ExtensibleConstraint a)
+containedIntegerType (BuiltinType INTEGER) cl
+    =   let t = makeIntegerConstraint NegInf PosInf
+            tp = ExtensibleConstraint t t False
+            tpp = Right tp
+        in
+            extensionRootOnly $ evaluateConstraint pvIntegerElements tpp cl
+containedIntegerType (ConstrainedType t c) cl
+    = containedIntegerType t (c:cl)
+			
+extensionRootOnly :: Lattice a =>
+                     Either String (ExtensibleConstraint a) -> Either String (ExtensibleConstraint a)
+extensionRootOnly (Right (ExtensibleConstraint r e b))
+   =     Right (ExtensibleConstraint r top False)
+extensionRootOnly x = x
+
+\end{code}
 
 {- FIXME: Note that boolean input is thrown away -}
 
-lResConE :: (RS a,
+{\em pvKnownMultiplierElements } processes the various known-multiplier restricted character string element constraints.
+The only PER-visible element constraints are the size constraint, non-extensible permitted
+alphabet constraint and type inclusion. For a non-extensible permitted alphabet constraint,
+{\em evaluateSingleConstraint} is called with {\tt pvPermittedAlphabetElements} as a processing
+function. The permitted alphabet element constraints are the same as the known-multiplier ones
+but with the addition of the {\tt ValueRange} constraint.
+
+{\em integerToKMConstraint} converts an {\tt IntegerType} constraint to a known-multiplier
+constraint.
+
+\begin{code}
+pvKnownMultiplierElements :: (Constraint i,
+             RS a,
                 IntegerCon i,
                 Lattice i,
                 Lattice a,
@@ -548,129 +645,142 @@ lResConE :: (RS a,
                 Show i,
                 Eq a) =>
                 Element a -> Bool ->  Either String (ExtensibleConstraint (ResStringConstraint a i))
-lResConE (SZ (SC v)) b            = convertIntToRS $ generateSingleConstraint b pvIntegerElements v
-lResConE (P (FR (EmptyExtension _))) b       = throwError "Invisible!"
-lResConE (P (FR (NonEmptyExtension _ _))) b = throwError "Invisible!"
-lResConE (P (FR (RootOnly p)))  b       = generateSingleConstraint b lPaConE (RootOnly p)
-lResConE (C (Inc c)) b            = lProcessCST lResConE c []
-lResConE (S (SV v))  b            = throwError "Invisible!"
+pvKnownMultiplierElements (SZ (SC v)) b
+    = integerToKMConstraint $ evaluateSingleConstraint b pvIntegerElements v
+pvKnownMultiplierElements (P (FR (EmptyExtension _))) b
+    = throwError "Invisible!"
+pvKnownMultiplierElements (P (FR (NonEmptyExtension _ _))) b
+    = throwError "Invisible!"
+pvKnownMultiplierElements (P (FR (RootOnly p)))  b
+    = evaluateSingleConstraint b pvPermittedAlphabetElements (RootOnly p)
+pvKnownMultiplierElements (C (Inc c)) b
+    = containedKnownMultType c []
+pvKnownMultiplierElements (S (SV v))  b
+    = throwError "Invisible!"
 
 
-convertIntToRS :: (RS a,
-                IntegerCon i,
-                Lattice i,
-                Lattice a,
-                Eq i,
-                Show i,
-                Eq a) => Either String (ExtensibleConstraint (ConstructConstraint i))
-                         -> Either String (ExtensibleConstraint (ResStringConstraint a i))
-convertIntToRS (Right (ExtensibleConstraint (ConstructConstraint x) (ConstructConstraint y) b))
-    = Right (ExtensibleConstraint (ResStringConstraint top x) (ResStringConstraint top y) b)
-convertIntToRS (Left s) = Left s
-
-{- FIXME: Note that boolean is thrown away -}
-
-lBSConE :: (Eq i,
-            Show i,
+pvPermittedAlphabetElements :: (Lattice a,
             Lattice i,
-            IntegerCon i) =>
-            Element BitString -> Bool -> Either String (ExtensibleConstraint (ConstructConstraint i))
-lBSConE (SZ (SC v)) b  = generateSingleConstraint b pvIntegerElements v
-lBSConE (C (Inc c)) b  = throwError "Invisible!"
-lBSConE (S (SV v))  b  = throwError "Invisible!"
-
-{- FIXME: Note that boolean input is thrown away -}
-lOSConE :: (Eq i,
-            Show i,
-            Lattice i,
-            IntegerCon i) =>
-            Element OctetString -> Bool -> Either String (ExtensibleConstraint (ConstructConstraint i))
-lOSConE (SZ (SC v)) b  = generateSingleConstraint b pvIntegerElements v
-lOSConE (C (Inc c)) b  = throwError "Invisible!"
-lOSConE (S (SV v))  b  = throwError "Invisible!"
-
-\end{code}
-
-paConE deals with the various visiblestring constraints
-Note that a permitted alphabet constraint uses value range
-constraint(s) and that extensible permitted alphabet
-constraints are not per-visible.
-The first case (size-constraint) we can make use of the
-functions that create an effective Integer constraint. We
-cannot use evalC since it includes serial application of
-constraints.
-
-\begin{code}
-
-lPaConE :: (Lattice a,
-            Lattice i,
+            Constraint i,
             RS a,
             Eq a,
             Eq i,
             Show i,
             IntegerCon i) =>
             Element a -> Bool -> Either String (ExtensibleConstraint (ResStringConstraint a i))
-lPaConE (V (R (l,u))) b
+pvPermittedAlphabetElements (V (R (l,u))) b
     = let ls = getString l
           us = getString u
           rs = [head ls..head us]
         in
-            return (ExtensibleConstraint (ResStringConstraint (makeString rs) bottom)
+            return (ExtensibleConstraint (ResStringConstraint (makeString rs) top)
                         (ResStringConstraint top top) b)
-lPaConE (C (Inc c)) b = lProcessCST lPaConE c []
-lPaConE (S (SV v)) b
-   = return (ExtensibleConstraint (ResStringConstraint v top)
+pvPermittedAlphabetElements (C (Inc c)) b
+    = containedKnownMultType c []
+pvPermittedAlphabetElements (S (SV v)) b
+    = return (ExtensibleConstraint (ResStringConstraint v top)
                                       (ResStringConstraint top top) b)
 
-{- FIXME: Note that boolean value is thrown away -}
 
-lSeqOfConE :: (Eq i,
-            Show i,
-            Lattice i,
-            IntegerCon i) =>
-            Element [a] -> Bool -> Either String (ExtensibleConstraint (ConstructConstraint i))
-lSeqOfConE (SZ (SC v)) b  = generateSingleConstraint b pvIntegerElements v
-lSeqOfConE (C (Inc c)) b  = throwError "Invisible!"
-lSeqOfConE (S (SV v))  b  = throwError "Invisible!"
-lSeqOfConE (IT (WC c)) b  = throwError "Invisible!"
-lSeqOfConE (IT WCS) b     = throwError "Invisible!"
-
-
-
-
-
-
-lProcessCST :: (Lattice (t1 (a1 (b i))),
-                MonadError [Char] t1,
-                ExtConstraint a1,
-                Eq (b i),
-                ConstructedConstraint b i,
-                Lattice (b i)) =>
-               (Element t -> Bool -> t1 (a1 (b i))) -> ASNType t -> [SubtypeConstraint t] -> t1 (a1 (b i))
-lProcessCST fn (BuiltinType _) cl = lRootStringCons fn top cl
-lProcessCST fn (ConstrainedType t c) cl = lProcessCST fn t (c:cl)
-
-
-lRootStringCons :: (ExtConstraint a,
-                    Lattice (b i),
-                    ConstructedConstraint b i,
-                    Eq (b i),
-                    MonadError [Char] t1) =>
-                   (Element t -> Bool -> t1 (a (b i))) -> t1 (a (b i)) -> [SubtypeConstraint t] -> t1 (a (b i))
-lRootStringCons fn t cs
-    = let m = generateConstraint fn t cs
-      in do
-            c <- m
-            r <- return (getRootConstraint c)
-            return (makeExtensibleConstraint r top False)
+integerToKMConstraint :: (RS a,
+                IntegerCon i,
+                Lattice i,
+                Lattice a,
+                Eq i,
+                Show i,
+                Eq a) => Either String (ExtensibleConstraint i)
+                         -> Either String (ExtensibleConstraint (ResStringConstraint a i))
+integerToKMConstraint (Right (ExtensibleConstraint x y b))
+    = Right (ExtensibleConstraint (ResStringConstraint top x) (ResStringConstraint top y) b)
+integerToKMConstraint (Left s) = Left s
 
 \end{code}
 
-A useful function:
+{\em containedKnownMultType} processes a contained known-multiplier type constraint (X.680: 47.3).
+Note that only the extension root values of an extensible contained type are used (X.680:
+47.3.3). Thus the function {\em extensionRootOnly} is applied to the constraint returned by
+{\em evaluateConstraint}.
 
 \begin{code}
 
-rangeConstraint :: (ValueRange a) => (a, a) -> SubtypeConstraint a
-rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
+containedKnownMultType :: (RS a,
+                Eq c,
+								Show c,
+                Constraint c,
+                Lattice c,
+                Lattice a,
+                Eq a,
+                IntegerCon c) =>
+                ASNType a -> [SubtypeConstraint a] -> Either String (ExtensibleConstraint (ResStringConstraint a c))
+containedKnownMultType (BuiltinType _) cl
+            =   let t = ResStringConstraint top top
+                    tp = ExtensibleConstraint t t False
+                    tpp = Right tp
+                in
+									extensionRootOnly $ evaluateConstraint pvKnownMultiplierElements tpp cl
+containedKnownMultType (ConstrainedType t c) cl 
+											 = containedKnownMultType t (c:cl)
+
+\end{code}
+
+{- FIXME: Note that boolean is thrown away -}
+
+{\em pvBitStringElements} processes the various {\tt BitStringType} constraints. The only PER-visible constraint
+is the size constraint.
+
+
+\begin{code}
+
+pvBitStringElements :: (Constraint i,
+            Eq i,
+            Show i,
+            Lattice i,
+            IntegerCon i) =>
+            Element BitString -> Bool -> Either String (ExtensibleConstraint i)
+pvBitStringElements (SZ (SC v)) b  = evaluateSingleConstraint b pvIntegerElements v
+pvBitStringElements (C (Inc c)) b  = throwError "Invisible!"
+pvBitStringElements (S (SV v))  b  = throwError "Invisible!"
+
+\end{code}
+{- FIXME: Note that boolean input is thrown away -}
+
+{\em pvOctetStringElements} processes the various {\tt OctetStringType} constraints. The only PER-visible constraint
+is the size constraint. 
+
+\begin{code}
+
+pvOctetStringElements :: (Constraint i,
+            Eq i,
+            Show i,
+            Lattice i,
+            IntegerCon i) =>
+            Element OctetString -> Bool -> Either String (ExtensibleConstraint i)
+pvOctetStringElements (SZ (SC v)) b  = evaluateSingleConstraint b pvIntegerElements v
+pvOctetStringElements (C (Inc c)) b  = throwError "Invisible!"
+pvOctetStringElements (S (SV v))  b  = throwError "Invisible!"
+
+\end{code}
+
+
+
+{- FIXME: Note that boolean value is thrown away -}
+
+{\em pvSequenceOfElements} processes the various {\tt SequenceOfType} constraints. The only PER-visible constraint
+is the size constraint. 
+
+\begin{code}
+
+pvSequenceOfElements :: (Constraint i,
+            Eq i,
+            Show i,
+            Lattice i,
+            IntegerCon i) =>
+            Element [a] -> Bool -> Either String (ExtensibleConstraint i)
+pvSequenceOfElements (SZ (SC v)) b  = evaluateSingleConstraint b pvIntegerElements v
+pvSequenceOfElements (C (Inc c)) b  = throwError "Invisible!"
+pvSequenceOfElements (S (SV v))  b  = throwError "Invisible!"
+pvSequenceOfElements (IT (WC c)) b  = throwError "Invisible!"
+pvSequenceOfElements (IT WCS) b     = throwError "Invisible!"
+
 
 \end{code}

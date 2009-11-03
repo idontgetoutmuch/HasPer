@@ -25,15 +25,17 @@ v3 = y where
    y = x :*: x :*: Empty
 
 sibDataVariableType =
-   ConstrainedType  (BuiltinType (BITSTRING [])) (RootOnly (UnionSet (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,214)))))))))))))))
+   ConstrainedType  (BuiltinType (BITSTRING [])) (RootOnly (UnionSet (NoUnion (NoIntersection (ElementConstraint 
+	 															 (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection (ElementConstraint (V (R (1,214)))))))))))))))
 
 sibDataVariableValue =
    BitString [1,1,1,1,1,1,1,1]
 
 incompleteSIBList = BuiltinType (SEQUENCEOF sibDataVariableType)
 
-completeSIBListConstraint :: ConstraintSet [BitString]
-completeSIBListConstraint = UnionSet (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,16)))))))))))))
+completeSIBListConstraint :: ElementSetSpec [BitString]
+completeSIBListConstraint = UnionSet (NoUnion (NoIntersection (ElementConstraint (SZ (SC (RootOnly (UnionSet 
+																		 (NoUnion (NoIntersection (ElementConstraint (V (R (1,16)))))))))))))
 
 completeSIBList = ConstrainedType  (BuiltinType (SEQUENCEOF sibDataVariableType)) (RootOnly completeSIBListConstraint)
 
@@ -41,8 +43,9 @@ completeSIBList = ConstrainedType  (BuiltinType (SEQUENCEOF sibDataVariableType)
 seqOf1Type = BuiltinType (SEQUENCEOF (BuiltinType INTEGER))
 seqOf1Val  = take 1 $ repeat (Val 1)
 
-seqOf1Constraint :: ConstraintSet [InfInteger]
-seqOf1Constraint = UnionSet (IC (ATOM (E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (1,16)))))))))))))
+seqOf1Constraint :: ElementSetSpec [InfInteger]
+seqOf1Constraint = UnionSet (NoUnion (NoIntersection (ElementConstraint (SZ (SC (RootOnly (UnionSet 
+								 	 					(NoUnion (NoIntersection (ElementConstraint (V (R (1,16)))))))))))))
 
 foo = ConstrainedType seqOf1Type (RootOnly seqOf1Constraint)
 
@@ -55,10 +58,10 @@ vInteger1 = Val 4096
 
 v2_31 = (Val 2^31)
 
-tInteger2 = ConstrainedType (BuiltinType INTEGER) (rangeConstraint (1,214))
+tInteger2 = ConstrainedType (BuiltinType INTEGER) 
+					(RootOnly (UnionSet (NoUnion (NoIntersection (ElementConstraint (V (R (1,214))))))))
 vInteger2 = Val 8
 
-con1 = RootOnly (UnionSet (IC (ATOM (E (V (R (250,253)))))))
 
 axSeq = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (BuiltinType INTEGER) con1)))
                 (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN)))
@@ -69,18 +72,31 @@ axSeq = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (Built
                                 (AddComponent (OptionalComponent (NamedType "j" (BuiltinType PRINTABLESTRING)))
                                     EmptySequence)))))))
 
-eag1 = AddComponent (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RootOnly pac5))))
-        (AddComponent (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) EmptySequence)
+
 
 choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
             (ChoiceExtensionMarker (ChoiceExtensionAdditionGroup NoVersionNumber
-                            (ChoiceOption (NamedType "e" (BuiltinType BOOLEAN))
-                                   (ChoiceOption (NamedType "f"  (BuiltinType IA5STRING))
-                                          (ChoiceExtensionAdditionGroup NoVersionNumber (ChoiceExtensionMarker EmptyChoice))))))
+                            (ChoiceOption' (NamedType "e" (BuiltinType BOOLEAN))
+                                   (ChoiceOption' (NamedType "f"  (BuiltinType IA5STRING))
+                                          ChoiceExtensionMarker'))))
+
+
+
+
+
+eag1 = AddComponent' (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RootOnly pac5))))
+        (AddComponent' (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) EmptySequence')
+
+con1 = RootOnly (UnionSet ( NoUnion (NoIntersection (ElementConstraint (V (R (250,253)))))))
+
+pac5 = UnionSet ( NoUnion (NoIntersection
+        ((ElementConstraint (SZ (SC (RootOnly (UnionSet ( NoUnion (NoIntersection
+            (ElementConstraint (V (R (3,3))))))))))))))
+
+
+
 
 choice2 = ChoiceOption (NamedType "d" (BuiltinType INTEGER)) (ChoiceExtensionMarker EmptyChoice)
-
-pac5 = UnionSet (IC (ATOM ((E (SZ (SC (RootOnly (UnionSet (IC (ATOM (E (V (R (3,3))))))))))))))
 
 choiceType1 = BuiltinType $ SEQUENCE axSeq
 

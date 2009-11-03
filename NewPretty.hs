@@ -38,7 +38,16 @@ prettySeq (ExtensionMarker x) =
    vcat [text "..." <> comma, prettySeq x <> comma]
 -- FIXME: What should we do with v?
 prettySeq (ExtensionAdditionGroup v x y) =
-   vcat [brackets (brackets (prettySeq x)) <> comma, prettySeq y]
+   vcat [brackets (brackets (prettySeq2 x)) <> comma, prettySeq y]
+
+	 
+prettySeq2 :: Sequence' a -> Doc
+prettySeq2 EmptySequence' =
+   empty
+prettySeq2 (AddComponent' x EmptySequence') =
+   prettyComponentType x
+prettySeq2 (AddComponent' x xs) =
+   vcat [prettyComponentType x <> comma, prettySeq2 xs]
 
 prettySeq' :: Sequence a -> [Doc]
 prettySeq' EmptySequence =
@@ -49,8 +58,17 @@ prettySeq' (ExtensionMarker x) =
    (text "..."):(prettySeq' x)
 -- FIXME: What should we do with v?
 prettySeq' (ExtensionAdditionGroup v x y) =
-   (brackets (brackets (vcat $ punctuate comma $ prettySeq' x))):(prettySeq' y)
+   (brackets (brackets (vcat $ punctuate comma $ prettySeq2' x))):(prettySeq' y)
 
+
+prettySeq2' :: Sequence' a -> [Doc]
+prettySeq2' EmptySequence' =
+  []
+prettySeq2' (AddComponent' x xs) =
+   (prettyComponentType x):(prettySeq2' xs)
+
+	 
+	 
 prettySeq'' x = vcat $ punctuate comma $ prettySeq' x
 
 prettyComponentType :: ComponentType a -> Doc
@@ -97,9 +115,20 @@ prettyChoice (ChoiceExtensionMarker x) =
    vcat [text "..." <> comma, prettyChoice x <> comma]
 -- FIXME: What should we do with v?
 prettyChoice (ChoiceExtensionAdditionGroup v x) =
-   brackets (brackets (prettyChoice x))
+   brackets (brackets (prettyChoice' x))
 
 
+prettyChoice' :: Choice' a -> Doc
+prettyChoice' EmptyChoice' =
+   empty
+prettyChoice' (ChoiceOption' nt EmptyChoice') =
+   prettyNamedType nt
+prettyChoice' (ChoiceOption' nt xs) =
+   vcat [prettyNamedType nt <> comma, prettyChoice' xs]
+prettyChoice' ChoiceExtensionMarker'  =
+   vcat [text "..."]
+ 
+	 
 prettyNamedType :: NamedType a -> Doc
 prettyNamedType (NamedType n ct) = text n <+> prettyType ct
 
@@ -118,14 +147,14 @@ prettyConstraint t (ComplementSet e) = prettyExcept t e
 
 prettyExcept t (EXCEPT e) = prettyElem t e
 
-prettyUnion t (IC ic) = prettyIntersectionConstraint t ic
-prettyUnion t (UC u i) = prettyUnion t u <+> text "|" <+> prettyIntersectionConstraint t i
+prettyUnion t (NoUnion ic) = prettyIntersectionConstraint t ic
+prettyUnion t (UnionMark u i) = prettyUnion t u <+> text "|" <+> prettyIntersectionConstraint t i
 
-prettyIntersectionConstraint t (ATOM ie) = prettyInterSectionElement t ie
-prettyIntersectionConstraint t (INTER ic ie) = prettyIntersectionConstraint t ic <+> text "^" <+> prettyInterSectionElement t ie
+prettyIntersectionConstraint t (NoIntersection ie) = prettyInterSectionElement t ie
+prettyIntersectionConstraint t (IntersectionMark ic ie) = prettyIntersectionConstraint t ic <+> text "^" <+> prettyInterSectionElement t ie
 
-prettyInterSectionElement t (E e) = prettyElem t e
-prettyInterSectionElement t (Exc e exc) = prettyElem t e <+> text "EXCEPT" <+> prettyExclusion t exc
+prettyInterSectionElement t (ElementConstraint e) = prettyElem t e
+prettyInterSectionElement t (ExclusionConstraint e exc) = prettyElem t e <+> text "EXCEPT" <+> prettyExclusion t exc
 
 prettyExclusion t (EXCEPT e) = prettyElem t e
 

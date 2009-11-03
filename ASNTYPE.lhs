@@ -532,14 +532,42 @@ processing of constraints.
 
 \subsection{Constraint Processing Types}
 
-In ASN.1 constraints can be applied in series. We represent the collection of this constraints
-using a list type which we call {\em SerialSubtypeConstraints}.
+ASN.1 type constraints can be applied in series. We represent the collection of these constraints
+using a list type which we call {\em SerialSubtypeConstraints}. It is a parameterised type because we want to match 
+the type of the constraint with the ASN.1 type to which it is being applied.
 
 \begin{code}
 type SerialSubtypeConstraints a = [SubtypeConstraint a]
 \end{code}
 
-The constraint {\em IntegerConstraint} is the type for effective integer constraints. These
+Now there are two types of constraints that may be generated:
+\begin{itemize}
+\item
+the effective constraint which is used when PER-encoding an ASN.1 value. This uses only the applicable subtype constraints
+that are PER-visible. The applicable subtype constraints are presented in section 47.7 of X.680. The PER-visible constraints are presented in 
+in section 9.3 of X.691.
+\item
+the validity-testing constraint. This uses all applicable subtype constraints.
+\end{itemize}
+
+Thus any type which has at least one applicable subtype constraint needs a Haskell type to represent a constraint. We present these types in the following 
+sections.
+
+\subsubsection{BooleanType Constraint}
+
+{\em BooleanConstraint} is the type for a validity-testing {\tt BooleanType} constraint -- there is no effective {\tt BooleanType} constraint
+since this type has no PER-visible constraints.
+
+\begin{code}
+
+data BooleanConstraint = BooleanConstraint [Bool]
+		 									 	 deriving (Show, Eq)
+
+\end{code}
+
+\subsubsection{IntegerType Constraints}
+
+{\em IntegerConstraint} is the type for effective integer constraints. These
 are contiguous sets of values and thus can be represented using a pair of values which
 indicate the lower and upper limits of the range. In constrast {\em ValidIntegerConstraint} is
 the type which represents the actual elements of a set combination of constraints which are

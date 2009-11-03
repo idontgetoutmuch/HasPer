@@ -83,8 +83,6 @@ instance IntegerCon ValidIntegerConstraint where
     exceptIntegerConstraint = exceptVIC
 
 
-exceptCTIC (ConstructConstraint a) (ConstructConstraint b) = ConstructConstraint (exceptIntegerConstraint a b)
-
 -- Note that this instantiation generates effective
 -- constraint-based meet and join. For example,
 -- (1..3) `ljoin` (5..8) is (1..8).
@@ -99,13 +97,17 @@ instance Lattice IntegerConstraint where
       | l2 > u1   = bottom
       | otherwise = IntegerConstraint (max l1 l2) (min u1 u2)
 
-instance Lattice i => Lattice (ConstructConstraint i) where
-    bottom = ConstructConstraint bottom
-    top = ConstructConstraint top
-    (ConstructConstraint a) `ljoin` (ConstructConstraint b) = ConstructConstraint (a `ljoin` b)
-    (ConstructConstraint a) `meet` (ConstructConstraint b) = ConstructConstraint (a `meet` b)
 
-instance (IntegerCon i, Lattice i) => Lattice (ExtensibleConstraint (ConstructConstraint i)) where
+instance Lattice BooleanConstraint where
+   bottom = BooleanConstraint []
+   top = BooleanConstraint [False,True]
+   (BooleanConstraint bs1) `ljoin` (BooleanConstraint bs2)
+        = BooleanConstraint (union bs1 bs2)
+   (BooleanConstraint bs1) `meet` (BooleanConstraint bs2)
+        = BooleanConstraint (intersect bs1 bs2)
+			
+			
+instance (IntegerCon i, Lattice i) => Lattice (ExtensibleConstraint i) where
    bottom = ExtensibleConstraint bottom bottom False
    top = ExtensibleConstraint top top False
    (ExtensibleConstraint r1 e1 False) `ljoin` (ExtensibleConstraint r2 e2 False)
@@ -116,7 +118,7 @@ instance (IntegerCon i, Lattice i) => Lattice (ExtensibleConstraint (ConstructCo
         = ExtensibleConstraint (r1 `ljoin` r2) e1 True
    (ExtensibleConstraint r1 e1 True) `ljoin` (ExtensibleConstraint r2 e2 True)
         = ExtensibleConstraint (r1 `ljoin` r2)
-            (exceptCTIC ((r1 `ljoin` e1) `ljoin` (r2 `ljoin` e2)) (r1 `ljoin` r2))  True
+            (exceptIntegerConstraint ((r1 `ljoin` e1) `ljoin` (r2 `ljoin` e2)) (r1 `ljoin` r2))  True
    (ExtensibleConstraint r1 e1 False) `meet` (ExtensibleConstraint r2 e2 False)
         = ExtensibleConstraint (r1 `meet` r2) bottom False
    (ExtensibleConstraint r1 e1 False) `meet` (ExtensibleConstraint r2 e2 True)
@@ -125,7 +127,7 @@ instance (IntegerCon i, Lattice i) => Lattice (ExtensibleConstraint (ConstructCo
         = ExtensibleConstraint (r1 `meet` r2) (r2 `meet` e1) True
    (ExtensibleConstraint r1 e1 True) `meet` (ExtensibleConstraint r2 e2 True)
         = ExtensibleConstraint (r1 `meet` r2)
-            (exceptCTIC ((r1 `ljoin` e1) `meet` (r2 `ljoin` e2)) (r1 `meet` r2))  True
+            (exceptIntegerConstraint ((r1 `ljoin` e1) `meet` (r2 `ljoin` e2)) (r1 `meet` r2))  True
 
 instance Lattice ValidIntegerConstraint where
    bottom = Valid [bottom]
@@ -315,21 +317,16 @@ class ExtConstraint a where
     getRootConstraint   :: a b -> b
     getExtConstraint   :: a b -> b
 
-
-class ConstructedConstraint b i where
-    isValid :: b i -> b i -> Bool
-    updateConstraint :: b i -> b i -> b i
-    except :: b i -> b i -> b i
-    makeConstructedConstraint  :: i -> b i
-
+class Constraint c where
+    isValid :: c -> c -> Bool
+    updateConstraint :: c -> c -> c
+    except :: c -> c -> c
 
 instance (IntegerCon i, Lattice a, RS a, Eq a)
-    => ConstructedConstraint (ResStringConstraint a) i where
+    => Constraint (ResStringConstraint a i) where
     isValid x y  = lValidResCon x y
     updateConstraint x y = lUpdateResCon x y
     except      = exceptRSC
-    makeConstructedConstraint i    = ResStringConstraint top i
-
 
 instance ExtConstraint ExtensibleConstraint where
     isExtensible = extensibleBS
@@ -337,14 +334,29 @@ instance ExtConstraint ExtensibleConstraint where
     getRootConstraint x      = getBSRC x
     getExtConstraint x      = getBSEC x
 
-instance  IntegerCon i => ConstructedConstraint ConstructConstraint i where
-    isValid (ConstructConstraint x) (ConstructConstraint y)  = within x y
-    updateConstraint (ConstructConstraint x) (ConstructConstraint y)  = ConstructConstraint (serialCombine x y)
-    except (ConstructConstraint x) (ConstructConstraint y)   = ConstructConstraint (exceptIntegerConstraint x y)
-    makeConstructedConstraint i     = ConstructConstraint i
+		
+instance Constraint BooleanConstraint where
+    isValid x y = validBooleanCon x y
+    updateConstraint (BooleanConstraint x) (BooleanConstraint y) = BooleanConstraint (intersect x y)
+    except (BooleanConstraint x) (BooleanConstraint y)   = BooleanConstraint (x \\ y)
+		
+validBooleanCon x (BooleanConstraint []) = True
+validBooleanCon (BooleanConstraint x) (BooleanConstraint (f:r)) 
+						= elem f x && isValid (BooleanConstraint x) (BooleanConstraint r)
+
+instance  Constraint IntegerConstraint where
+    isValid x y  = within x y
+    updateConstraint x y = serialCombine x y
+    except x y   = exceptIntegerConstraint x y
 
 
+instance  Constraint ValidIntegerConstraint where
+    isValid x y  = within x y
+    updateConstraint x y = serialCombine x y
+    except x y   = exceptIntegerConstraint x y
 
+		
+		
 
 
 lValidResCon :: (IntegerCon i, Lattice a, RS a, Eq a) =>

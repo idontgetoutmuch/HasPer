@@ -80,11 +80,10 @@ octet alignment. We have implemented the UNALIGNED variant of CANONICAL-PER.
 
 {-# OPTIONS_GHC -XMultiParamTypeClasses -XGADTs -XTypeOperators
                 -XEmptyDataDecls -XFlexibleInstances -XFlexibleContexts
+                -fwarn-unused-binds
 #-}
 {-
-                -fwarn-unused-binds
-                -fwarn-unused-imports
-                -fwarn-incomplete-patterns
+                -fwarn-unused-imports -fwarn-incomplete-patterns
 -}
 
 \end{code}
@@ -512,10 +511,10 @@ encodeIntWithConstraint cs v
         then {- X691REF: 12.2 -} encodeNonExtConsInt actualCon effectiveCon v
         else {- X691REF: 12.1 -} encodeExtConsInt actualCon effectiveCon v
       where
-          effectiveCon :: Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
-          effectiveCon = generateConstraint pvIntegerElements top cs
-          actualCon :: Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-          actualCon = generateConstraint pvIntegerElements top cs
+          effectiveCon :: Either String (ExtensibleConstraint IntegerConstraint)
+          effectiveCon = evaluateConstraint  pvIntegerElements top cs
+          actualCon :: Either String (ExtensibleConstraint ValidIntegerConstraint)
+          actualCon = evaluateConstraint  pvIntegerElements top cs
           extensible = eitherExtensible effectiveCon
 
 eitherExtensible (Right v) = isExtensible v
@@ -545,8 +544,8 @@ The value does not satisfy the constraint. An appropriate error is thrown.
 \end{itemize}
 
 \begin{code}
-encodeNonExtConsInt :: Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-                     -> Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+encodeNonExtConsInt :: Either String (ExtensibleConstraint ValidIntegerConstraint)
+                     -> Either String (ExtensibleConstraint IntegerConstraint)
                      -> InfInteger
                      -> PERMonad ()
 encodeNonExtConsInt (Right actualCon) (Right effectiveCon) n
@@ -566,8 +565,8 @@ encodeNonExtConsInt (Right actualCon) (Right effectiveCon) n
     | otherwise
         = throwError (BoundsError "Value out of range")
           where
-            effRootCon   = constructConstraint $ getRootConstraint effectiveCon
-            validRootCon = constructConstraint $ getRootConstraint actualCon
+            effRootCon   = getRootConstraint effectiveCon
+            validRootCon = getRootConstraint actualCon
             rootLower    = lower effRootCon
             rootUpper    = upper effRootCon
 encodeNonExtConsInt _ _ _ = throwError (ConstraintError "Invalid constraint")
@@ -605,8 +604,8 @@ integer using {\em encodeUnconsInt} prefixed by the bit 1.
 
 \begin{code}
 
-encodeExtConsInt :: Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-                     -> Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+encodeExtConsInt :: Either String (ExtensibleConstraint ValidIntegerConstraint)
+                     -> Either String (ExtensibleConstraint IntegerConstraint)
                      -> InfInteger
                      -> PERMonad ()
 encodeExtConsInt (Right actualCon) (Right effectiveCon)  n
@@ -630,12 +629,12 @@ encodeExtConsInt (Right actualCon) (Right effectiveCon)  n
              | otherwise
                   = throwError (BoundsError "Value out of range")
                     where
-                        effRootCon = constructConstraint $ getRootConstraint effectiveCon
-                        validRootCon = constructConstraint $ getRootConstraint actualCon
-                        effExtCon = constructConstraint $ getExtConstraint effectiveCon
-                        validExtCon = constructConstraint $ getExtConstraint actualCon
-                        rootLower          = lower effRootCon
-                        rootUpper          = upper effRootCon
+                        effRootCon = getRootConstraint effectiveCon
+                        validRootCon = getRootConstraint actualCon
+                        effExtCon = getExtConstraint effectiveCon
+                        validExtCon = getExtConstraint actualCon
+                        rootLower   = lower effRootCon
+                        rootUpper   = upper effRootCon
 
 
 \end{code}
@@ -895,10 +894,10 @@ encodeBitstringWithConstraint namedBits cs v
         else {- X691REF: 15.6 -}
              encodeExtConsBitstring namedBits actualCon effectiveCon v
       where
-          effectiveCon :: Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
-          effectiveCon = generateConstraint lBSConE top cs
-          actualCon :: Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-          actualCon = generateConstraint lBSConE top cs
+          effectiveCon :: Either String (ExtensibleConstraint IntegerConstraint)
+          effectiveCon = evaluateConstraint  pvBitStringElements top cs
+          actualCon :: Either String (ExtensibleConstraint ValidIntegerConstraint)
+          actualCon = evaluateConstraint  pvBitStringElements top cs
           extensible = eitherExtensible effectiveCon
 
 \end{code}
@@ -917,11 +916,11 @@ There is a PER-visible constraint. The function {\em encodeConstrainedBitstring}
 
 \begin{code}
 
-encodeNonExtConsBitstring :: NamedBits -> Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-                -> Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+encodeNonExtConsBitstring :: NamedBits -> Either String (ExtensibleConstraint ValidIntegerConstraint)
+                -> Either String (ExtensibleConstraint IntegerConstraint)
                 -> BitString
                 -> PERMonad ()
-encodeNonExtConsBitstring nbs _ (Right (ExtensibleConstraint (ConstructConstraint (IntegerConstraint NegInf PosInf)) _ _))
+encodeNonExtConsBitstring nbs _ (Right (ExtensibleConstraint (IntegerConstraint NegInf PosInf) _ _))
             (BitString vs)
     =   {- X691REF: 15.11 with ub unset -}
         encodeUnconstrainedBitstring nbs (BitString vs)
@@ -932,10 +931,10 @@ encodeNonExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
            = {- X691REF: 15.8 - 15.11 -}
              encodeConstrainedBitstring [] nbs l u vrc vs
              where
-                rc = constructConstraint . getRootConstraint $ vsc
+                rc = getRootConstraint vsc
                 l = lower rc
                 u = upper rc
-                vrc = constructConstraint . getRootConstraint $ ok
+                vrc = getRootConstraint ok
 
 \end{code}
 
@@ -957,13 +956,13 @@ manages the error/non-error cases.
 
 \begin{code}
 
-encodeExtConsBitstring :: NamedBits -> Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-                -> Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+encodeExtConsBitstring :: NamedBits -> Either String (ExtensibleConstraint ValidIntegerConstraint)
+                -> Either String (ExtensibleConstraint IntegerConstraint)
                 -> BitString
                 -> PERMonad()
 encodeExtConsBitstring nbs _
-    (Right (ExtensibleConstraint (ConstructConstraint (IntegerConstraint NegInf PosInf))
-                  (ConstructConstraint (IntegerConstraint NegInf PosInf)) _)) (BitString vs)
+    (Right (ExtensibleConstraint (IntegerConstraint NegInf PosInf)
+                  (IntegerConstraint NegInf PosInf) _)) (BitString vs)
     =   {- X691REF: 15.11 with ub unset -}
         encodeUnconstrainedBitstring nbs (BitString vs)
 encodeExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
@@ -976,12 +975,12 @@ encodeExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
                            (\err -> do {- X691REF: 15.6 not in root -}
                                        encodeNonExtRootBitstring nbs rc ec vec vs)
              where
-                rc = constructConstraint . getRootConstraint $ vsc
+                rc = getRootConstraint vsc
                 l = lower rc
                 u = upper rc
-                ec = constructConstraint . getExtConstraint $ vsc
-                vrc = constructConstraint . getRootConstraint $ ok
-                vec = constructConstraint . getExtConstraint $ ok
+                ec = getExtConstraint vsc
+                vrc = getRootConstraint ok
+                vec = getExtConstraint ok
 
 \end{code}
 
@@ -1187,10 +1186,10 @@ encodeOctetstringWithConstraint cs v
         else {- X691REF: 16.3 -}
              encodeExtConsOctetstring actualCon effectiveCon v
       where
-          effectiveCon :: Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
-          effectiveCon = generateConstraint lOSConE top cs
-          actualCon :: Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-          actualCon = generateConstraint lOSConE top cs
+          effectiveCon :: Either String (ExtensibleConstraint IntegerConstraint)
+          effectiveCon = evaluateConstraint  pvOctetStringElements top cs
+          actualCon :: Either String (ExtensibleConstraint ValidIntegerConstraint)
+          actualCon = evaluateConstraint  pvOctetStringElements top cs
           extensible = eitherExtensible effectiveCon
 
 \end{code}
@@ -1209,11 +1208,11 @@ There is a PER-visible constraint. The function {\em encodeConstrainedOctetstrin
 
 \begin{code}
 
-encodeNonExtConsOctetstring :: Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-                -> Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+encodeNonExtConsOctetstring :: Either String (ExtensibleConstraint ValidIntegerConstraint)
+                -> Either String (ExtensibleConstraint IntegerConstraint)
                 -> OctetString
                 -> PERMonad ()
-encodeNonExtConsOctetstring _ (Right (ExtensibleConstraint (ConstructConstraint (IntegerConstraint NegInf PosInf)) _ _))
+encodeNonExtConsOctetstring _ (Right (ExtensibleConstraint (IntegerConstraint NegInf PosInf) _ _))
             (OctetString vs)
     =   {- X691REF: 16.8 with ub unset -}
         encodeUnconstrainedOctetstring (OctetString vs)
@@ -1224,10 +1223,10 @@ encodeNonExtConsOctetstring (Right ok) (Right vsc) (OctetString vs)
            = {- X691REF: 16.5 - 16.8 -}
              encodeConstrainedOctetstring [] l u vrc vs
              where
-                rc = constructConstraint . getRootConstraint $ vsc
+                rc = getRootConstraint vsc
                 l = lower rc
                 u = upper rc
-                vrc = constructConstraint . getRootConstraint $ ok
+                vrc = getRootConstraint ok
 
 \end{code}
 
@@ -1250,13 +1249,13 @@ manages the error/non-error cases.
 
 \begin{code}
 
-encodeExtConsOctetstring :: Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-                -> Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+encodeExtConsOctetstring :: Either String (ExtensibleConstraint ValidIntegerConstraint)
+                -> Either String (ExtensibleConstraint IntegerConstraint)
                 -> OctetString
                 -> PERMonad()
 encodeExtConsOctetstring _
-    (Right (ExtensibleConstraint (ConstructConstraint (IntegerConstraint NegInf PosInf))
-                  (ConstructConstraint (IntegerConstraint NegInf PosInf)) _)) vs
+    (Right (ExtensibleConstraint (IntegerConstraint NegInf PosInf)
+                  (IntegerConstraint NegInf PosInf) _)) vs
     =   {- X691REF: 16.8 with ub unset -}
         encodeUnconstrainedOctetstring vs
 encodeExtConsOctetstring (Right ok) (Right vsc) (OctetString vs)
@@ -1269,12 +1268,12 @@ encodeExtConsOctetstring (Right ok) (Right vsc) (OctetString vs)
                            (\err -> do {- X691REF: 16.3 not in root -}
                                        encodeNonExtRootConOctetstring rc ec vec vs)
              where
-                rc =constructConstraint . getRootConstraint $ vsc
+                rc = getRootConstraint vsc
                 l = lower rc
                 u = upper rc
-                ec = constructConstraint . getExtConstraint $ vsc
-                vrc = constructConstraint . getRootConstraint $ ok
-                vec = constructConstraint . getExtConstraint $ ok
+                ec = getExtConstraint vsc
+                vrc = getRootConstraint ok
+                vec = getExtConstraint ok
 
 \end{code}
 
@@ -1635,10 +1634,10 @@ encodeSequenceOfWithConstraint t cs v
         else {- X691REF: 19.4 -}
              encodeExtConsSequenceOf t actualCon effectiveCon v
       where
-          effectiveCon :: Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
-          effectiveCon = generateConstraint lSeqOfConE top cs
-          actualCon :: Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-          actualCon = generateConstraint lSeqOfConE top cs
+          effectiveCon :: Either String (ExtensibleConstraint IntegerConstraint)
+          effectiveCon = evaluateConstraint  pvSequenceOfElements top cs
+          actualCon :: Either String (ExtensibleConstraint ValidIntegerConstraint)
+          actualCon = evaluateConstraint  pvSequenceOfElements top cs
           extensible = eitherExtensible effectiveCon
 
 \end{code}
@@ -1657,11 +1656,11 @@ There is a PER-visible constraint. The function {\em encodeConstrainedSequenceOf
 
 \begin{code}
 
-encodeNonExtConsSequenceOf :: ASNType a -> Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-                -> Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+encodeNonExtConsSequenceOf :: ASNType a -> Either String (ExtensibleConstraint ValidIntegerConstraint)
+                -> Either String (ExtensibleConstraint IntegerConstraint)
                 -> [a]
                 -> PERMonad ()
-encodeNonExtConsSequenceOf t _ (Right (ExtensibleConstraint (ConstructConstraint (IntegerConstraint NegInf PosInf)) _ _)) vs
+encodeNonExtConsSequenceOf t _ (Right (ExtensibleConstraint (IntegerConstraint NegInf PosInf) _ _)) vs
     =   {- X691REF: 19.6 with ub unset -}
         encodeUnconstrainedSequenceOf t vs
 encodeNonExtConsSequenceOf t (Right ok) (Right vsc) vs
@@ -1671,10 +1670,10 @@ encodeNonExtConsSequenceOf t (Right ok) (Right vsc) vs
            = {- X691REF: 19.5 - 19.6 -}
              encodeConstrainedSequenceOf t [] l u vrc vs
              where
-                rc = constructConstraint . getRootConstraint $ vsc
+                rc = getRootConstraint vsc
                 l = lower rc
                 u = upper rc
-                vrc = constructConstraint . getRootConstraint $ ok
+                vrc = getRootConstraint ok
 
 \end{code}
 
@@ -1696,13 +1695,13 @@ Haskell library function {\em catchError} manages the error/non-error cases.
 
 \begin{code}
 
-encodeExtConsSequenceOf :: ASNType a -> Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-                -> Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+encodeExtConsSequenceOf :: ASNType a -> Either String (ExtensibleConstraint ValidIntegerConstraint)
+                -> Either String (ExtensibleConstraint IntegerConstraint)
                 -> [a]
                 -> PERMonad()
 encodeExtConsSequenceOf t _
-    (Right (ExtensibleConstraint (ConstructConstraint (IntegerConstraint NegInf PosInf))
-                  (ConstructConstraint (IntegerConstraint NegInf PosInf)) _)) vs
+    (Right (ExtensibleConstraint (IntegerConstraint NegInf PosInf)
+                  (IntegerConstraint NegInf PosInf) _)) vs
     =   {- X691REF: 19.6 with ub unset -}
         encodeUnconstrainedSequenceOf t vs
 encodeExtConsSequenceOf t (Right ok) (Right vsc) vs
@@ -1715,12 +1714,12 @@ encodeExtConsSequenceOf t (Right ok) (Right vsc) vs
                            (\err -> do {- X691REF: 19.4 not in root -}
                                        encodeNonExtRootConSequenceOf t rc ec vec vs)
              where
-                rc = constructConstraint . getRootConstraint $ vsc
+                rc = getRootConstraint vsc
                 l = lower rc
                 u = upper rc
-                ec = constructConstraint . getExtConstraint $ vsc
-                vrc = constructConstraint . getRootConstraint $ ok
-                vec = constructConstraint . getExtConstraint $ ok
+                ec = getExtConstraint vsc
+                vrc = getRootConstraint ok
+                vec = getExtConstraint ok
 
 \end{code}
 
@@ -1993,10 +1992,10 @@ encodeSetOfWithConstraint t cs v
         else {- X691REF: 19.4 -}
              encodeExtConsSetOf t actualCon effectiveCon v
       where
-          effectiveCon :: Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
-          effectiveCon = generateConstraint lSeqOfConE top cs
-          actualCon :: Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-          actualCon = generateConstraint lSeqOfConE top cs
+          effectiveCon :: Either String (ExtensibleConstraint IntegerConstraint)
+          effectiveCon = evaluateConstraint  pvSequenceOfElements top cs
+          actualCon :: Either String (ExtensibleConstraint ValidIntegerConstraint)
+          actualCon = evaluateConstraint  pvSequenceOfElements top cs
           extensible = eitherExtensible effectiveCon
 
 \end{code}
@@ -2015,11 +2014,11 @@ There is a PER-visible constraint. The function {\em encodeConstrainedSetOf} is 
 
 \begin{code}
 
-encodeNonExtConsSetOf :: ASNType a -> Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-                -> Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+encodeNonExtConsSetOf :: ASNType a -> Either String (ExtensibleConstraint ValidIntegerConstraint)
+                -> Either String (ExtensibleConstraint IntegerConstraint)
                 -> [a]
                 -> PERMonad ()
-encodeNonExtConsSetOf t _ (Right (ExtensibleConstraint (ConstructConstraint (IntegerConstraint NegInf PosInf)) _ _)) vs
+encodeNonExtConsSetOf t _ (Right (ExtensibleConstraint (IntegerConstraint NegInf PosInf) _ _)) vs
     =   {- X691REF: 19.6 with ub unset -}
         encodeUnconstrainedSetOf t vs
 encodeNonExtConsSetOf t (Right ok) (Right vsc) vs
@@ -2029,10 +2028,10 @@ encodeNonExtConsSetOf t (Right ok) (Right vsc) vs
            = {- X691REF: 19.5 - 19.6 -}
              encodeConstrainedSetOf t [] l u vrc vs
              where
-                rc = constructConstraint . getRootConstraint $ vsc
+                rc = getRootConstraint vsc
                 l = lower rc
                 u = upper rc
-                vrc = constructConstraint . getRootConstraint $ ok
+                vrc = getRootConstraint ok
 
 \end{code}
 
@@ -2054,13 +2053,13 @@ Haskell library function {\em catchError} manages the error/non-error cases.
 
 \begin{code}
 
-encodeExtConsSetOf :: ASNType a -> Either String (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint))
-                -> Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+encodeExtConsSetOf :: ASNType a -> Either String (ExtensibleConstraint ValidIntegerConstraint)
+                -> Either String (ExtensibleConstraint IntegerConstraint)
                 -> [a]
                 -> PERMonad()
 encodeExtConsSetOf t _
-    (Right (ExtensibleConstraint (ConstructConstraint (IntegerConstraint NegInf PosInf))
-                  (ConstructConstraint (IntegerConstraint NegInf PosInf)) _)) vs
+    (Right (ExtensibleConstraint (IntegerConstraint NegInf PosInf)
+                  (IntegerConstraint NegInf PosInf) _)) vs
     =   {- X691REF: 19.6 with ub unset -}
         encodeUnconstrainedSetOf t vs
 encodeExtConsSetOf t (Right ok) (Right vsc) vs
@@ -2073,12 +2072,12 @@ encodeExtConsSetOf t (Right ok) (Right vsc) vs
                            (\err -> do {- X691REF: 19.4 not in root -}
                                        encodeNonExtRootConSetOf t rc ec vec vs)
              where
-                rc = constructConstraint . getRootConstraint $ vsc
+                rc = getRootConstraint vsc
                 l = lower rc
                 u = upper rc
-                ec = constructConstraint . getExtConstraint $ vsc
-                vrc = constructConstraint . getRootConstraint $ ok
-                vec = constructConstraint . getExtConstraint $ ok
+                ec = getExtConstraint vsc
+                vrc = getRootConstraint ok
+                vec = getExtConstraint ok
 
 \end{code}
 
@@ -2322,10 +2321,10 @@ encodeKMS cs x
     = encodeKMSWithConstraint cs x
 
 c11 :: Either String (ExtensibleConstraint (ResStringConstraint VisibleString IntegerConstraint))
-c11 = generateSingleConstraint False lResConE extCon3
+c11 = evaluateSingleConstraint   False pvKnownMultiplierElements extCon3
 
 c12 :: Either String (ExtensibleConstraint (ResStringConstraint VisibleString IntegerConstraint))
-c12 = generateSingleConstraint False lResConE pac1
+c12 = evaluateSingleConstraint   False pvKnownMultiplierElements pac1
 
 pac1 :: SubtypeConstraint VisibleString
 pac1 = RootOnly (UnionSet (UnionMark ( NoUnion (NoIntersection (ElementConstraint (SZ (SC (RootOnly (UnionSet ( NoUnion (NoIntersection (ElementConstraint (V (R (1,5)))))))))))))
@@ -2443,11 +2442,21 @@ encodeKMSWithConstraint cs vs
 
 effectiveCon :: (RS a, Lattice a, Eq a) => SerialSubtypeConstraints a ->
                 Either String (ExtensibleConstraint (ResStringConstraint a IntegerConstraint))
-effectiveCon cs = generateConstraint lResConE top cs
+effectiveCon cs
+        =   let t = ResStringConstraint top top
+                tp = ExtensibleConstraint t t False
+                tpp = Right tp
+            in
+                evaluateConstraint  pvKnownMultiplierElements tpp cs
 
 actualCon :: (RS a, Lattice a, Eq a) => SerialSubtypeConstraints a ->
                 Either String (ExtensibleConstraint (ResStringConstraint a ValidIntegerConstraint))
-actualCon cs = generateConstraint lResConE top cs
+actualCon cs
+        =   let t = ResStringConstraint top top
+                tp = ExtensibleConstraint t t False
+                tpp = Right tp
+            in
+                evaluateConstraint  pvKnownMultiplierElements tpp cs
 
 \end{code}
 
@@ -2656,8 +2665,6 @@ encodeNonExtRootConKMS rc ec okrc okec vs
                           e = (getString . getPAConstraint) ec
                       in makeString (r++e)
                   expac = concStrs rc ec
-                  noRootConstraint  = rc == top
-                  noExtConstraint  = ec == top
                   noRootSizeConstraint  = rsc == top
                   noRootPAConstraint = rpac == top
                   noExtSizeConstraint  = esc == top
@@ -2742,19 +2749,19 @@ encodeBitString nbs cl x =
 
    where effectiveConstraint :: AMonad IntegerConstraint -- FIXME: These probably shouldn't be monadic; they can and should be pure.
                                                          -- Or maybe not since "constraints" is monadic!!!
-         effectiveConstraint = constraints cl >>= return . constructConstraint . getBSRC
+         effectiveConstraint = constraints cl >>= return . getBSRC
          actualConstraint :: AMonad ValidIntegerConstraint
-         actualConstraint = constraints cl >>= return . constructConstraint . getBSRC
+         actualConstraint = constraints cl >>= return . getBSRC
          isExtensibleConstraint ::  AMonad Bool
          isExtensibleConstraint = integerConstraints cl >>= return . extensibleBS
          -- FIXME: This is slightly odd having to pick a type by hand.
          -- We really shouldn't need to do this.
-         integerConstraints :: [SubtypeConstraint BitString] -> AMonad (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
+         integerConstraints :: [SubtypeConstraint BitString] -> AMonad (ExtensibleConstraint IntegerConstraint)
          integerConstraints = constraints
          effectiveExtensionConstraint :: AMonad IntegerConstraint
-         effectiveExtensionConstraint = constraints cl >>= return . constructConstraint . getBSEC
+         effectiveExtensionConstraint = constraints cl >>= return . getBSEC
          validExtensionConstraint :: AMonad ValidIntegerConstraint
-         validExtensionConstraint = constraints cl >>= return . constructConstraint . getBSEC
+         validExtensionConstraint = constraints cl >>= return . getBSEC
 
 
 chunkBy1 _ x = mapM_ (tell . return) x -- FIXME: We shouldn't ultimately need "return".
@@ -2811,7 +2818,7 @@ decodeLengthDeterminant c f t
       (Val v) = ub
 
       rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
-      rangeConstraint =  RootOnly . UnionSet . IC . ATOM . E . V . R
+      rangeConstraint =  RootOnly . UnionSet .  NoUnion . NoIntersection . ElementConstraint . V . R
 
 \end{code}
 
@@ -2895,13 +2902,13 @@ decodeInt3 [] =
 decodeInt3 cs =
    lDecConsInt3 effRoot extensible effExt
    where
-      effectiveCon :: Either String (ExtensibleConstraint (ConstructConstraint IntegerConstraint))
-      effectiveCon = generateConstraint pvIntegerElements top cs
+      effectiveCon :: Either String (ExtensibleConstraint IntegerConstraint)
+      effectiveCon = evaluateConstraint  pvIntegerElements top cs
       extensible = eitherExtensible effectiveCon
       effRoot = either (\x -> throwError (ConstraintError "Invalid root"))
-                    (return . constructConstraint . getRootConstraint) effectiveCon
+                    (return . getRootConstraint) effectiveCon
       effExt = either (\x -> throwError (ConstraintError "Invalid extension"))
-                    (return . constructConstraint . getExtConstraint) effectiveCon
+                    (return . getExtConstraint) effectiveCon
 
 
 lDecConsInt3 :: ASNMonadTrans t =>
@@ -2909,7 +2916,7 @@ lDecConsInt3 :: ASNMonadTrans t =>
 lDecConsInt3 mrc isExtensible mec =
    do rc <- mrc
       ec <- mec
-      let extensionConstraint    = ec /= top
+      let extensionConstraint    = ec /= bottom
           tc                     = rc `ljoin` ec
           extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
           rootConstraint         = rc /= bottom
@@ -3019,18 +3026,18 @@ nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
 decodeSequenceOf :: ASNMonadTrans t =>
                     ASNType a -> [ElementSetSpecs [a]] -> t BG.BitGet [a]
 decodeSequenceOf t [] = decodeLargeLengthDeterminant3' (flip nSequenceOfElements []) t
-decodeSequenceOf t cs = decodeSequenceOfAux t (errorize (generateConstraint lSeqOfConE top cs))
-                                (errorize (generateConstraint lSeqOfConE top cs))
+decodeSequenceOf t cs = decodeSequenceOfAux t (errorize (evaluateConstraint  pvSequenceOfElements top cs))
+                                (errorize (evaluateConstraint  pvSequenceOfElements top cs))
 
 decodeSequenceOfAux :: ASNMonadTrans t =>
                        ASNType a ->
-                       t BG.BitGet (ExtensibleConstraint (ConstructConstraint IntegerConstraint)) ->
-                       t BG.BitGet (ExtensibleConstraint (ConstructConstraint ValidIntegerConstraint)) ->
+                       t BG.BitGet (ExtensibleConstraint IntegerConstraint) ->
+                       t BG.BitGet (ExtensibleConstraint ValidIntegerConstraint) ->
                        t BG.BitGet [a]
 decodeSequenceOfAux t me mv =
    do e <- me
       v <- mv
-      let rc = constructConstraint . getBSRC $ e
+      let rc = getBSRC e
       decodeLengthDeterminant rc (flip nSequenceOfElements []) t
 
 \end{code}
@@ -3053,13 +3060,13 @@ instance ASNMonadTrans (ErrorT ASNError)
 
 decodeBitString :: ASNMonadTrans t => [ElementSetSpecs BitString] -> t BG.BitGet BitString
 decodeBitString constraints =
-   do xs <- decodeBitStringAux (errorize (generateConstraint lBSConE top constraints))
+   do xs <- decodeBitStringAux (errorize (evaluateConstraint  pvBitStringElements top constraints))
       return (BitString . concat . (map bitString) $ xs)
 
-decodeBitStringAux :: ASNMonadTrans t => t BG.BitGet (ExtensibleConstraint (ConstructConstraint IntegerConstraint)) -> t BG.BitGet [BitString]
+decodeBitStringAux :: ASNMonadTrans t => t BG.BitGet (ExtensibleConstraint IntegerConstraint) -> t BG.BitGet [BitString]
 decodeBitStringAux mx =
    do x <- mx
-      let rc = constructConstraint . getBSRC $ x
+      let rc = getBSRC x
       decodeLengthDeterminant rc chunkBy1 undefined
       where
          chunkBy1 = let compose = (.).(.) in lift `compose` (flip (const (sequence . return . (liftM BitString) . getBits . fromIntegral)))
@@ -3106,8 +3113,13 @@ temporaryConvert (Right x) = tell x
 
 type AMonad a = ErrorT ASNError (WriterT BitStream Identity) a
 
-constraints :: (Eq a, Show a, Lattice a, IntegerCon a) => [SubtypeConstraint BitString] -> AMonad (ExtensibleConstraint (ConstructConstraint a))
-constraints cs = errorize (generateConstraint lBSConE top cs)
+constraints :: (Eq a, Show a, Lattice a, IntegerCon a, Constraint a) => [SubtypeConstraint BitString] -> AMonad (ExtensibleConstraint a)
+constraints cs
+    =   let t = makeIntegerConstraint NegInf PosInf
+            tp = ExtensibleConstraint t t False
+            tpp = Right tp
+        in
+            errorize (evaluateConstraint  pvBitStringElements tpp cs)
 
 errorize :: (MonadError ASNError m) => Either String a -> m a
 errorize (Left e)  = throwError (ConstraintError e)
