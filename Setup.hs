@@ -61,7 +61,7 @@ perPostConf a cfs pd lbi =
             return ()
 
 myTests _ _ _ _ = do
-   (code, out, err) <- readProcessWithExitCode "runghc" ["PERTest.hs"] ""
+   (code, out, err) <- readProcessWithExitCode "runghc" ["-idist/build/autogen/", "PERTest.hs"] ""
    putStrLn (show code)
    putStrLn ("Stdout: " ++ out)
    putStrLn ("Stderr: " ++ err)
