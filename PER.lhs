@@ -80,9 +80,9 @@ octet alignment. We have implemented the UNALIGNED variant of CANONICAL-PER.
 
 {-# OPTIONS_GHC -XMultiParamTypeClasses -XGADTs -XTypeOperators
                 -XEmptyDataDecls -XFlexibleInstances -XFlexibleContexts
-                -fwarn-unused-binds
 #-}
 {-
+                -fwarn-unused-binds
                 -fwarn-unused-imports -fwarn-incomplete-patterns
 -}
 
@@ -2898,7 +2898,7 @@ determinant itself in this particular case).
 
 decodeInt3 :: ASNMonadTrans t => [ElementSetSpecs InfInteger] -> t BG.BitGet InfInteger
 decodeInt3 [] =
-   lDecConsInt3 (return bottom) undefined (return bottom)
+   lDecConsInt3 (return top) undefined (return top)
 decodeInt3 cs =
    lDecConsInt3 effRoot extensible effExt
    where
@@ -2916,10 +2916,10 @@ lDecConsInt3 :: ASNMonadTrans t =>
 lDecConsInt3 mrc isExtensible mec =
    do rc <- mrc
       ec <- mec
-      let extensionConstraint    = ec /= bottom
+      let extensionConstraint    = ec /= top
           tc                     = rc `ljoin` ec
           extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
-          rootConstraint         = rc /= bottom
+          rootConstraint         = rc /= top
           rootLower              = let Val x = lower rc in x
           rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
           numOfRootBits          = (genericLength . snd . extractValue) $ (encodeConstrainedInt (rootRange - 1, rootRange - 1))
