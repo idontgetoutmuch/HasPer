@@ -134,12 +134,16 @@ import Control.Monad.Error
 import Control.Monad.Identity
 import Control.Monad.Writer
 
+{- FIXME: added IntegerAux and Word for encodeNonNegBinaryIntInOctets and h' -}
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.BitPut as BP
+import qualified Language.ASN1.PER.Integer as I
+import qualified Language.ASN1.PER.IntegerAux as IA
 import Data.Int
 import Data.Maybe
+import Data.Word
 
 \end{code}
 
@@ -218,7 +222,7 @@ instance Error ASNError where
 
 
 encode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad ()
-encode (BuiltinType t) cl v       = error "You are here 1" -- toPER t v cl
+encode (BuiltinType t) cl v       = toPER t v cl
 encode (ReferencedType r t) cl v  = encode t cl v
 encode (ConstrainedType t c) cl v = encode t (c:cl) v
 
@@ -242,7 +246,7 @@ toPER IA5STRING x cl       = encodeKMS cl x
 toPER BMPSTRING x cl       = encodeKMS cl x
 toPER UNIVERSALSTRING x cl = encodeKMS cl x
 toPER BOOLEAN x cl         = encodeBool cl x
-toPER (ENUMERATED e) x cl  = encodeEnum e x -- no PER-Visible constraints
+toPER (ENUMERATED e) x cl  = encodeEnum e cl x -- no PER-Visible constraints
 toPER (BITSTRING nbs) x cl = encodeBitstring nbs cl x
 toPER (OCTETSTRING) x cl   = encodeOctetstring cl x
 toPER (SEQUENCE s) x cl    = encodeSequence s x -- no PER-Visible constraints
@@ -255,39 +259,20 @@ toPER (TAGGED tag t) x cl  = encode t cl x
 \end{code}
 
 \section{COMPLETE ENCODING}
-{- FIXME: Need a more efficient way to do this. Could carry the remainder with each encoding?
--}
 
-{\em completeEncode} produces a complete encoding by converting an encoding into one that is
-an integral multiple of 8 bits. It uses the Haskell library {\em MonadWriter} function {\em censor} which
-applies a function to output of the monad in advance of it being output. In this case we apply
-the function {\em padding} which produces a bitstream of the appropriate size.
+{\em completeEncode} implements X.691 10.1. That is, it adds a single octet with all
+bits set to 0 to an empty encoding and leaves a non-empty encoding unchanged.
 
 \begin{code}
-
 completeEncode :: PERMonad () -> PERMonad ()
 completeEncode m
     =  {- X691REF: 10.1 -}
-       -- FIXME: Data.Binary.BitPut by definition always returns a mutliple of 8 bits as
-       -- it uses ByteString which are a priori 8 bits. However, an encoding of 0 bits
-       -- will get encoded as exactly that which is not what X691 says. It should be
-       -- easy enough to fix when you run the monad.
-       m -- censor padding m 
-
-padding :: BitStream -> BitStream
-padding enc
-    = let le  = length enc
-          bts = le `mod` 8
-          pad = if le == 0
-                   then {- X691REF: 10.1.3 with empty bit string -}
-                         [0,0,0,0,0,0,0,0]
-                   else if bts == 0
-                           then {- X691REF: 10.1.3 with non-empty bit string and multiple of 8 bits -}
-                                enc
-                           else {- X691REF: 10.1.3 with non-empty bit string and not multiple of 8 bits -}
-                                enc ++ take (8-bts) [0,0..]
-          in pad
-
+       let bs = extractValue' m
+       in case bs of
+            {- X691REF: 10.1.3 with empty bit string -}
+            (Right (_,empty)) -> BP.putNBitsT 8 (0x00::Int)
+            {- X691REF: 10.1.3 with non-empty bit string -}
+            x -> m
 \end{code}
 
 \section{ENCODING AN OPEN TYPE FIELD}
@@ -309,10 +294,9 @@ error is simply passed on. Othwerwise, the function is applied to the bitstream.
 
 
 \begin{code}
-
 encodeOpen :: ASNType a -> a -> PERMonad ()
 encodeOpen t v
-{- X691REF: 10.2.1 -}   = let x = extractValue (completeEncode (encode t [] v))
+{- X691REF: 10.2.1 -}   = let x = extractValue' (completeEncode $ encode t [] v)
 {- X691REF: 10.2.2 -}     in  encodeCase x encodeOctetsWithLength
 
 
@@ -324,9 +308,10 @@ extractValue'  = runIdentity . runErrorT . BP.runBitPutT
 
 -- extractValue :: PERMonad () -> Either ASNError BL.ByteString
 
-encodeCase :: (Either ASNError (), BitStream) -> (BitStream -> PERMonad ()) -> PERMonad ()
-encodeCase (Left s, _) f = undefined --  s
-encodeCase (Right (), bs) f = f bs
+-- encodeCase :: (Either ASNError (), BitStream) -> (BitStream -> PERMonad ()) -> PERMonad ()
+encodeCase :: Either ASNError ((), BL.ByteString) -> (BL.ByteString -> PERMonad ()) -> PERMonad ()
+encodeCase (Left s) _ = throwError s
+encodeCase (Right ((), bs)) f = f bs
 \end{code}
 
 \section{ENCODING A LENGTH DETERMINANT}
@@ -336,14 +321,14 @@ is very large or, in the case of integer encoding, the number of bits produced b
 is very large, then some fragmenting may be required in which length and value encodings are
 interleaved.
 
-{\em encodeWithLength} is a higher order function which takes a constraint, an encoding function and a list of
-values (could be bits, octets or any ASN.1 type). The approach to encoding depends on whether
+{\em encodeWithLength} is a higher order function which takes a constraint, an encoding function
+and a list of values (could be bits, octets or any ASN.1 type). The approach to encoding depends on whether
 the constraint imposes an upper bound which is less than 64K. If it does then no interleaving is required and
 the value is encoded with a length prefix if the upper bound differs from the lower bound, and
 with no length encoding otherwise.
 
-If the upper bound is at least 64K then {\em encodeUnconstrainedLength} is called. The items are grouped first in 16k batches, and then
-in batches of 4. The input encoding function is then supplied as
+If the upper bound is at least 64K then {\em encodeUnconstrainedLength} is called. The items are grouped
+first in 16k batches, and then in batches of 4. The input encoding function is then supplied as
 an input to the function {\em encodeUnconstrainedLength} which manages the interleaving of
 length and value encodings -- it encodes the length and values of
 each batch and concatenates their resulting bitstreams together.
@@ -392,7 +377,9 @@ encodes the length of a block (1 to 4).
 \begin{code}
 
 encodeUnconstrainedLength :: (b -> PERMonad ()) -> [b] -> PERMonad ()
-encodeUnconstrainedLength encFun [] = lengthLessThan16K 0 {- FIXME: Is this only the case when there is at least 16k values? 10.9.3.8.3 -}
+encodeUnconstrainedLength encFun []
+    = lengthLessThan16K 0 {- FIXME: Is this only the case when there is at least 16k values? 10.9.3.8.3
+                                    See definition of encodeUnconstrainedLengthAux -}
 encodeUnconstrainedLength encFun xs
     | l < k16
     {- X691REF: 10.9.3.6 AND 10.9.3.7 -}
@@ -414,6 +401,7 @@ encodeUnconstrainedLengthAux encFun xs
         = if last16 == k16
              then do blockLen l 63
                      mapM_ (mapM_ encFun) x
+                     {- X691REF: Note associated with 10.9.3.8.3 -}
                      lengthLessThan16K 0
              else do blockLen (l-1) 63
                      mapM_ (mapM_ encFun) (init x)
@@ -479,8 +467,7 @@ encoded as an unconstrained integer using the function {\em encodeUnconsInt}. If
 a constraint then the function {\em encodeIntWithConstraint} is called. The encoding depends on
 whether the constraint is extensible and whether the value lies within the extenstion root.
 
-Note that the third input to {\em encodeIntWithConstraint} is the last of the serially applied
-constraints. This is because if a constraint is serially applied to an extensible constraint
+Note that if a constraint is serially applied to an extensible constraint
 then any extension additions of the extensible constraint are discarded (see X.680 Annex
 G.4.2.3). That is, the extensibility and extension additions of the effective constraint are
 determined only by the last constraint.
@@ -488,20 +475,20 @@ determined only by the last constraint.
 \begin{code}
 
 encodeInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
-encodeInt [] v = {- X691REF: 12.2.4 -} error "You are here 2" -- encodeUnconsInt v
+encodeInt [] v = {- X691REF: 12.2.4 -} encodeUnconsInt v
 encodeInt cs v = encodeIntWithConstraint cs v
 
 \end{code}
 
 
 {\em encodeUnconsInt} encodes an integer value as a 2's-complement-binary-integer
-into a minimum number of octets using {\em to2sComplement}. This is prefixed by an explicit
+into a minimum number of octets using {\em to2sComplementM}. This is prefixed by an explicit
 length encoding using {\em encodeOctetsWithLength}.
 
 \begin{code}
 
 encodeUnconsInt :: InfInteger -> PERMonad ()
-encodeUnconsInt (Val x) = encodeOctetsWithLength . to2sComplement $ x
+encodeUnconsInt (Val x) = encodeOctetsWithLength $ (BP.runBitPut . I.to2sComplementM) $ x
 encodeUnconsInt v  = throwError (BoundsError ("Cannot encode " ++ show v))
 
 \end{code}
@@ -550,12 +537,10 @@ The constraint does not restrict the integer to be either constrained or semi-co
 value is encoded as an unconstrained integer using {\em encodeUnconsInt}.
 \item
 The constraint restricts the integer to be a semi-constrained integer and the value satisfies
-the constraint. The value is encoded
-using {\em encodeSemiConsInt}.
+the constraint. The value is encoded using {\em encodeSemiConsInt}.
 \item
 The constraint restricts the integer to be a constrained integer and the value satisfies the
-constraint. The value is encoded using
-{\em encodeConstrainedInt}.
+constraint. The value is encoded using {\em encodeConstrainedInt}.
 \item
 The value does not satisfy the constraint. An appropriate error is thrown.
 \end{itemize}
@@ -592,10 +577,9 @@ encodeNonExtConsInt _ _ _ = throwError (ConstraintError "Invalid constraint")
 
 
 The functions {\em isNonEmptyConstraint} and {\em isEmptyConstraint} test whether the
-combination of PER-visible constraints results in an actual
-constraint or no constraint. For example, the intersection of two mutually exclusive
-constraints results in no constraint. This will then mean that their can be no valid values
-and an error must be reported.
+combination of PER-visible constraints results in an actual constraint or no constraint.
+For example, the intersection of two mutually exclusive constraints results in no constraint.
+This will then mean that their can be no valid values and an error must be reported.
 
 The function {\em inRange} tests with a value satisfies a constraint. It is tested
 against the actual constraint and not against the effective constraint which is used for
@@ -669,15 +653,21 @@ encodeSemiConsInt n (Val lb)
 encodeSemiConsInt _ _
     = throwError (ConstraintError "No lower bound.")
 
+encodeNonNegBinaryIntInOctets :: InfInteger -> BL.ByteString
+encodeNonNegBinaryIntInOctets (Val x)
+        = BL.reverse $ BL.map IA.reverseBits $ BP.runBitPut $ h' 8 x
 
-encodeNonNegBinaryIntInOctets :: InfInteger -> BitStream
-encodeNonNegBinaryIntInOctets (Val x) =
-   (reverse . (map fromInteger) . flip (curry (unfoldr (uncurry g))) 8) x where
-      g 0 0 = Nothing
-      g 0 p = Just (0,(0,p-1))
-      g n 0 = Just (n `mod` 2,(n `div` 2,7))
-      g n p = Just (n `mod` 2,(n `div` 2,p-1))
+{- FIXME: h' rewritten from Language\ASN1\PER\IntegerAux -}
 
+h' :: Integer -> Integer -> BP.BitPut
+h' p 0 =
+   do BP.putNBits (fromIntegral p) (0::Word8)
+h' 0 n =
+   do BP.putNBits 1 (n `mod` 2)
+      h' 7 (n `div` 2)
+h' p n =
+   do BP.putNBits 1 (n `mod` 2)
+      h' (p-1) (n `div` 2)
 \end{code}
 
 {\em encodeOctetsWithLength} encodes a collection of octets with
@@ -686,12 +676,12 @@ for a collection of bits.
 
 \begin{code}
 
-encodeOctetsWithLength :: BitStream -> PERMonad ()
-encodeOctetsWithLength = undefined -- encodeUnconstrainedLength tell . groupBy 8
+encodeOctetsWithLength :: BL.ByteString -> PERMonad ()
+encodeOctetsWithLength bs = encodeUnconstrainedLength (BP.putNBitsT 8) $ BL.unpack bs
 
 
 encodeBitsWithLength :: BitStream -> PERMonad ()
-encodeBitsWithLength = undefined -- encodeUnconstrainedLength (tell . return)
+encodeBitsWithLength = encodeUnconstrainedLength (BP.putNBitsT 1)
 
 \end{code}
 
@@ -701,29 +691,39 @@ number of bits required for the range specified by the constraint
 (assuming the range is at least 2). The value encoded is the offset from the lower bound of
 the constraint.
 
+{- FIXME Check this and rename functions -}
 
 \begin{code}
 
 encodeConstrainedInt :: (InfInteger, InfInteger) -> PERMonad ()
 encodeConstrainedInt (Val val, Val range)
-    = undefined -- tell $ (reverse . (map fromInteger) . unfoldr encodeConstrainedIntAux) (val,range)
+    = toNonNegativeBinaryIntegerT val range
 
-encodeConstrainedIntAux (_,0) = Nothing
-encodeConstrainedIntAux (0,w) = Just (0, (0, w `div` 2))
-encodeConstrainedIntAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
+toNonNegativeBinaryIntegerT :: Integer -> Integer -> PERMonad ()
+toNonNegativeBinaryIntegerT _ 0 = return ()
+toNonNegativeBinaryIntegerT 0 w
+    = toNonNegativeBinaryIntegerT 0 (w `div` 2) >> zeroBit
+toNonNegativeBinaryIntegerT n w
+    = toNonNegativeBinaryIntegerT (n `div` 2) (w `div` 2) >> BP.putNBitsT 1 (n `mod` 2)
 
 \end{code}
 
 
 \section{ENCODING THE ENUMERATED TYPE}
 
-{\em encodeEnum} takes the defined enumeration type and the enumeration value and
-first applies the function {\em assignIndex} to the enumeration type. This returns a pair
+{\em encodeEnum} takes the defined enumeration type, the (possibly empty) list of serially applied constraints
+and the enumeration value. Since there are no
+PER-visible constraints, the constraints are used only to test the validity of the input enumeration.
+If the value is valid then the function {\em assignIndex} is applied to the enumeration type.
+This returns a pair
 whose first element indicates if an extension marker is present in the type, and whose second
 element is a list of indices assigned to the enumeration values. The index assigned to each
 enumeration value is determined by the enumeration number associated with each enumeration.
 These are either assigned explicitly when the enumeration is defined, or implicitly by the
-function {\em assignNumber}.
+function {\em assignNumber}. {\tt assignIndex}, {\tt assignNumber} and their auxilliary functions
+are defined in the module {\tt ASNType} with the {\tt Enumerate} type. This is because they are
+used both in the encoding of an enumerate value, and in the generation of a constraint used to test
+the validity of an enumeration value.
 
 {\em encodeEnum} calls the auxiliary function {\em encodeEnumAux} which manages the various
 encoding cases. Its second input is the number of enumeration root values which is required
@@ -734,55 +734,33 @@ enumerated type constraints.
 
 \begin{code}
 
-encodeEnum :: Enumerate a -> ExactlyOne a SelectionMade -> PERMonad ()
-encodeEnum e x
-    = let (extensible,inds) = assignIndex e {- X691REF: 13.1 -}
-          no = genericLength inds
-      in
-        encodeEnumAux extensible no inds e x
+encodeEnum :: Enumerate -> SerialSubtypeConstraints Enumerate -> Enumerate -> PERMonad ()
+encodeEnum e cs x @ (AddEnumeration ei EmptyEnumeration)
+    =  let (extensible,inds) = assignIndex e {- X691REF: 13.1 -}
+           no = genericLength inds
+           (b,p) = validEnum e ei 0
+           n = getName ei
+       in
+                if b && (not . null) cs
+           then
+               let Just pos = p
+                   i = inds !! pos
+                   vc = evaluateConstraint (enumeratedElements e) (Right (ExtensibleConstraint top top False)) cs
+                                in if withinConstraint i vc
+                                then
+                                  encodeEnumAux extensible no inds e n
+                                          else
+                                                throwError (BoundsError "Invalid enumeration")
+                     else
+                                if b
+                                     then
+                                        encodeEnumAux extensible no inds e n
+                                     else throwError (OtherError "Invalid enumeration")
 
-
-assignIndex :: Enumerate a -> (Bool, [Integer])
-assignIndex en
-    = let (b,ns) = assignNumber en False []
-          sls = sort ns
-      in
-        (b, positions ns sls)
-
-assignNumber :: Enumerate a -> Bool -> [Integer] -> (Bool, [Integer])
-assignNumber en b ls
-    = let nn = getNamedNumbers en
-      in
-        assignN ([0..] \\ nn) en b ls
-
-assignN :: [Integer] -> Enumerate a -> Bool -> [Integer] -> (Bool, [Integer])
-assignN (f:xs) EmptyEnumeration b ls = (b,reverse ls)
-assignN (f:xs) (AddEnumeration  (NamedNumber _ i) r)b ls = assignN (f:xs) r b (i:ls)
-assignN (f:xs) (AddEnumeration  _ r) b ls = assignN xs r b (f:ls)
-assignN (f:xs) (EnumerationExtensionMarker   r) b ls = (True, reverse ls)
-assignN [] _ _ _ = error "No numbers to assign"
-
-getNamedNumbers :: Enumerate a -> [Integer]
-getNamedNumbers EmptyEnumeration = []
-getNamedNumbers (AddEnumeration  (NamedNumber _ i) r) = i:getNamedNumbers r
-getNamedNumbers (AddEnumeration  _ r) = getNamedNumbers r
-getNamedNumbers (EnumerationExtensionMarker   r)  = []
-
-noEnums :: Enumerate a -> Integer
-noEnums EmptyEnumeration = 0
-noEnums (AddEnumeration  _ r) = 1 + noEnums r
-noEnums (EnumerationExtensionMarker   r)  = 0
-
-positions [] sls = []
-positions (f:r) sls
-    = findN f sls : positions r sls
-
-findN i (f:r)
-    = if i == f then 0
-        else 1 + findN i r
-findN i []
-    = error "Impossible case!"
-
+withinConstraint i (Right (ExtensibleConstraint (EnumeratedConstraint ls) _ _))
+                                 = elem i ls
+withinConstraint i _
+                                 = False
 \end{code}
 
 {\em encodeEnumAux} is a recursive function which recurses through the enumeration value until
@@ -797,31 +775,38 @@ enumeration as a normally small non-negative integer using {\em encodeNSNNInt} p
 
 \begin{code}
 
-encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate a -> ExactlyOne a n
+encodeEnumAux :: Bool -> Integer -> [Integer] -> Enumerate -> Name
                  -> PERMonad ()
-encodeEnumAux extensible no (f:r) (AddEnumeration  _ es) (AddAValue a rest)
-    = if not extensible
-        then    {- X691REF: 13.2 -}
-                encodeConstrainedInt (fromInteger f, fromInteger (no-1))
-        else do {- X691REF: 13.2 -}
-                zeroBit -- tell [0]
-                encodeConstrainedInt (fromInteger f, fromInteger (no-1))
-encodeEnumAux b no (f:r) (AddEnumeration  _ es) (AddNoValue a rest)
-    = encodeEnumAux b no r es rest
+encodeEnumAux extensible no (f:r) (AddEnumeration ei es) n
+    | getName ei == n
+        = if not extensible
+            then    {- X691REF: 13.2 -}
+                    encodeConstrainedInt (fromInteger f, fromInteger (no-1))
+            else do {- X691REF: 13.2 -}
+                    zeroBit -- tell [0]
+                    encodeConstrainedInt (fromInteger f, fromInteger (no-1))
+    | otherwise
+        = encodeEnumAux extensible no r es n
 encodeEnumAux b no inds (EnumerationExtensionMarker   ex) x
     = let el = noEnums ex
       in encodeEnumExtAux 0 el ex x
 encodeEnumAux _ _ _ _ _ = throwError (OtherError "No enumerated value!")
 
-encodeEnumExtAux :: Integer -> Integer -> Enumerate a -> ExactlyOne a n
+encodeEnumExtAux :: Integer -> Integer -> Enumerate -> Name
                     -> PERMonad ()
-encodeEnumExtAux i l (AddEnumeration  _ es) (AddAValue a rest)
-    = do    {- X691REF: 13.3 -}
-            oneBit -- tell [1]
-            encodeNSNNInt i 0
-encodeEnumExtAux i l (AddEnumeration  _ es) (AddNoValue a rest)
-    = encodeEnumExtAux (i+1) l es rest
+encodeEnumExtAux i l (AddEnumeration  ei es) n
+    | getName ei == n
+        = do    {- X691REF: 13.3 -}
+                oneBit -- tell [1]
+                encodeNSNNInt i 0
+    | otherwise
+        = encodeEnumExtAux (i+1) l es n
 encodeEnumExtAux i l _ _ = throwError (OtherError "No enumerated extension value!")
+
+
+getName :: EnumerationItem -> Name
+getName (Identifier n) = n
+getName (NamedNumber n _) = n
 
 \end{code}
 
@@ -830,11 +815,14 @@ encodeEnumExtAux i l _ _ = throwError (OtherError "No enumerated extension value
 
 encodeNSNNInt :: Integer -> Integer -> PERMonad ()
 encodeNSNNInt n lb
-    = do let isSmall = n <= 63
-         BP.putBitT isSmall
-         if isSmall 
-            then {- X691REF: 10.6.1 -} encodeConstrainedInt (fromInteger n, fromInteger 63)
-            else {- X691REF: 10.6.2 -} encodeSemiConsInt (fromInteger n) (fromInteger lb)
+    = if n <= 63
+        then do {- X691REF: 10.6.1 -}
+                zeroBit -- tell [0]
+                encodeConstrainedInt (fromInteger n, fromInteger 63)
+        else do {- X691REF: 10.6.2 -}
+                oneBit -- tell [1]
+                encodeSemiConsInt (fromInteger n) (fromInteger lb)
+
 
 \end{code}
 
@@ -982,13 +970,10 @@ encodeExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
            = throwError (ConstraintError "Empty constraint")
     | otherwise
            = do
-                undefined
-{-
                 catchError ({- X691REF: 15.6 within root -}
                             encodeConstrainedBitstring [0] nbs l u vrc vs)
                            (\err -> do {- X691REF: 15.6 not in root -}
                                        encodeNonExtRootBitstring nbs rc ec vec vs)
--}
              where
                 rc = getRootConstraint vsc
                 l = lower rc
@@ -1016,19 +1001,23 @@ type PrefixBit = BitStream
 
 encodeConstrainedBitstring :: PrefixBit -> NamedBits -> InfInteger -> InfInteger
                                 -> ValidIntegerConstraint -> BitStream -> PERMonad ()
-encodeConstrainedBitstring pb [] l u (Valid vrc) xs
-   | inSizeRange xs vrc
+encodeConstrainedBitstring pb bs l u (Valid vrc) xs
+     | null bs && not (inSizeRange xs vrc)
+                    = throwError (BoundsError "Size out of range")
+     | (not . null) bs && lxs > u && (take (fromInteger n) . reverse) xs /= take (fromInteger n) zeros
+                    = throwError (OtherError "Last value is not 0")
+     | null bs && inSizeRange xs vrc
             = encodeConBS pb l u xs
-   | otherwise
-            = throwError (BoundsError "Size out of range")
-encodeConstrainedBitstring pb (b:rs) l u _ xs
-    = {- X691REF: 15.3 -}
-       do
-         (v,bs) <- return $ extractValue $ namedBitsEdit l u xs
-         encodeC (encodeConBS pb l u) (v,bs)
+     | otherwise
+     {- X691REF: 15.3 -}
+                = let nxs = namedBitsEdit l u xs
+                            in
+                                encodeConBS pb l u nxs
+        where
+                 lxs = genericLength xs
+                 Val n = (lxs - u)
 
-encodeC fun (Left x,bs)  = throwError (BoundsError "Invalid length")
-encodeC fun (_,bs)   = fun bs
+
 \end{code}
 
 {\em inSizeRange} is a predicate that tests whether a value satisfies a size constraint. The
@@ -1051,7 +1040,7 @@ inSizeRange p qs = inSizeRangeAux qs
       inSizeRangeAux [] = False
 
 
-namedBitsEdit :: InfInteger -> InfInteger -> BitStream -> PERMonad ()
+namedBitsEdit :: InfInteger -> InfInteger -> BitStream -> BitStream
 namedBitsEdit l u xs
     = let lxs = genericLength xs
       in if lxs < l
@@ -1061,26 +1050,28 @@ namedBitsEdit l u xs
              then rem0s (lxs-u) l xs
              else rem0s' l xs
 
-add0s :: InfInteger -> BitStream -> PERMonad ()
-add0s (Val n) xs = do
-                     undefined -- tell xs
-                     undefined -- tell $ take (fromInteger n) [0,0..]
-add0s _ _        = throwError (OtherError "Invalid number input -- MIN or MAX.")
+add0s :: InfInteger -> BitStream -> BitStream
+add0s (Val n) xs =  xs ++ take (fromInteger n) zeros
 
-rem0s :: InfInteger -> InfInteger -> BitStream -> PERMonad ()
+zeros :: BitStream
+zeros = [0,0..]
+
+putBitstream (a:xs)
+    = BP.putNBitsT 1 a >> putBitstream xs
+putBitstream []
+    = noBit
+
+rem0s :: InfInteger -> InfInteger -> BitStream -> BitStream
 rem0s (Val (n+1)) l xs
-    = if last xs == 0
-           then rem0s (Val n) l (init xs)
-           else throwError (OtherError "Last value is not 0")
+    = rem0s (Val n) l (init xs)
 rem0s (Val 0) l xs
     = rem0s' l xs
-rem0s _ _ _ = throwError (OtherError "Cannot remove a negative, MIN or MAX number of 0s.")
 
-rem0s' :: InfInteger -> BitStream -> PERMonad ()
+rem0s' :: InfInteger -> BitStream -> BitStream
 rem0s' l xs
     = if genericLength xs > l && last xs == 0
         then rem0s' l (init xs)
-        else undefined -- tell xs
+        else xs
 \end{code}
 
 {\em encodeConBS}  applies one of X.691 15.8-15.11.
@@ -1094,22 +1085,23 @@ encodeConBS :: PrefixBit -> InfInteger -> InfInteger -> BitStream -> PERMonad ()
 encodeConBS pb l u xs
     = if u == 0
              then   {- X691REF: 15.8 -}
-                    do  undefined -- tell pb
-                        return () -- tell []
+                    do  putBitstream pb
+                        noBit
              else if u == l && u <= 65536
                        then {- X691REF: 15.9 and 15.10 -}
                             do
-                              undefined -- tell pb
-                              return () -- tell xs
+                              putBitstream pb
+                              putBitstream xs
                        else if u <= 65536
                             then {- X691REF: 15.11 (ub set) -}
-                                do undefined -- tell pb
+                                do putBitstream pb
                                    encodeConstrainedInt ((fromInteger.genericLength) xs - l, u-l)
-                                   undefined -- tell xs
+                                   putBitstream xs
                             else {- X691REF: 15.11 (ub unset) -}
                                 do
-                                    undefined -- tell pb
+                                    putBitstream pb
                                     encodeBitsWithLength xs
+
 
 \end{code}
 
@@ -1138,9 +1130,8 @@ encodeNonExtRootBitstring nbs rc ec (Valid erc) xs
           l  = lower nc
           u  = upper nc
       in do
-          (v,bs) <- return $ extractValue $ namedBitsEdit l u xs
-          oneBit -- tell [1]
-          encodeC encodeBitsWithLength (v,bs)
+          oneBit
+          encodeBitsWithLength (namedBitsEdit l u xs)
 
 \end{code}
 
@@ -1188,7 +1179,7 @@ encodeOctet x = encodeConstrainedInt ((fromIntegral x),255)
 \end{code}
 
 If the constraint is not extensible then {\em encodeNonExtConsOctetstring} is called. If it is
-extensible then {\em encodeExtConsOctettring} is called. They both take the effective
+extensible then {\em encodeExtConsOctetstring} is called. They both take the effective
 constraint and actual constraint associated with the type as input.
 
 \begin{code}
@@ -1278,13 +1269,10 @@ encodeExtConsOctetstring (Right ok) (Right vsc) (OctetString vs)
            = throwError (ConstraintError "Empty constraint")
     | otherwise
            = do
-                undefined
-{-
                 catchError (do {- X691REF: 16.3 within root -}
                                encodeConstrainedOctetstring [0] l u vrc vs)
                            (\err -> do {- X691REF: 16.3 not in root -}
                                        encodeNonExtRootConOctetstring rc ec vec vs)
--}
              where
                 rc = getRootConstraint vsc
                 l = lower rc
@@ -1324,14 +1312,18 @@ encodeConstrainedOctetstring pb l u (Valid vrc) xs
                             exs
                        else if u <= 65536
                             then {- X691REF: 16.8 (ub set) -}
-                                 let (e,v) = extractValue $ exs
-                                 in do encodeCase (e,v) (\v -> encodeConstrainedInt ((fromInteger.genericLength) v - l,u-l))
+                                 let ev = extractValue' $ exs
+                                 in do encodeEitherOctet ev l u
                                        exs
                             else {- X691REF: 16.8 (ub unset) -}
-                                 let ev = extractValue $ exs
+                                 let ev = extractValue' $ exs
                                  in
                                     encodeCase ev encodeOctetsWithLength
        | otherwise = throwError (BoundsError "Size out of range")
+
+encodeEitherOctet (Left s) l u = throwError s
+encodeEitherOctet (Right ((),bs)) l u
+    = encodeConstrainedInt ((fromInteger . toInteger . BL.length) bs - l,u-l)
 
 encodeOctets :: OctetStream -> PERMonad ()
 encodeOctets (x:xs)
@@ -1342,9 +1334,9 @@ encodeNonExtRootConOctetstring :: IntegerConstraint -> IntegerConstraint
                                    -> ValidIntegerConstraint -> OctetStream -> PERMonad ()
 encodeNonExtRootConOctetstring rc ec (Valid erc) xs
     | inSizeRange xs erc
-        = let (_,ls) = extractValue $ encodeOctets xs
+        = let ev = extractValue' $ encodeOctets xs
           in do oneBit -- tell [1]
-                encodeOctetsWithLength ls
+                encodeCase ev encodeOctetsWithLength
     | otherwise = throwError (BoundsError "Size out of range")
 
 \end{code}
@@ -1352,16 +1344,18 @@ encodeNonExtRootConOctetstring rc ec (Valid erc) xs
 \section{ENCODING THE SEQUENCE TYPE}
 
 {\em encodeSequence} has only two inputs - the type and value - since a sequence has no PER-visible
-constraints. It calls an auxilliary function {\em encodeSequenceAux} which requires two
+constraints. It calls an auxiliary function {\em encodeSequenceAux} which requires two
 further inputs which indicate the extensibility of the type and existence of extension
-additions (represented as a pair of boolean values), and hosts the bits which indicate the presence or otherwise of optional or default
-values. {\em encodeSequenceAux} is a recursive function that recurses over the structure of a sequence and returns a value of type
-{\em PERMonad (OptDefBits, BitStream -> BitStream)}. This is a monadic value that outputs (the encoding) bits and returns a
-pair of values -- the optional or default value indicator bits and a function which adds the appropriate prefix to the output that indicates
-whether the encoded value is extensible and has any extension additions, and the optional/default indicator bits.
+additions (represented as a pair of boolean values), and hosts the bits which indicate the presence or
+otherwise of optional or default values. {\em encodeSequenceAux} is a recursive function that recurses over
+the structure of a sequence and returns a value of type {\em PERMonad (OptDefBits, BitStream -> BitStream)}.
+This is a monadic value that outputs (the encoding) bits and returns a
+pair of values -- the optional or default value indicator bits and a function which adds the appropriate
+prefix to the output that indicates whether the encoded value is extensible and has any extension additions,
+and the optional/default indicator bits.
 
-{\em encodeSequenceAux} has several cases to deal with that match the various components of a sequence -- mandatory, optional,
-default, extension marker and so on -- and
+{\em encodeSequenceAux} has several cases to deal with that match the various components of a sequence
+-- mandatory, optional, default, extension marker and so on -- and
 returns a pair whose second component is the function
 {\em completeSequenceBits} which adds a prefix to the output bits including the extension bit if
 required and the bits which describe the presence or otherwise of optional or default values.
@@ -1369,8 +1363,10 @@ Each root component is encoded as required using {\em encode}.
 
 Note that the extension indicator is initally set to {\em (False, False)}. The first element is converted
 to {\em True} when an extension marker is reached and {\em encodeSequenceAuxExt} is called.
-It returns a value of type {\em PERMonad ((ExtAndUsed, ExtBits, OptDefBits, PERMonad (OptDefBits, BitStream -> BitStream)))}.
-That is, it is a monadic value that writes (the encoding) bitstream and returns 4 values in a 4-tuple. These are:
+It returns a value of type
+{\em PERMonad ((ExtAndUsed, ExtBits, OptDefBits, PERMonad (OptDefBits, BitStream -> BitStream)))}.
+That is, it is a monadic value that writes (the encoding) bitstream and returns 4 values in a 4-tuple.
+These are:
 \begin{itemize}
 \item
 an updated extension indicator reflecting whether any extension additions exist in the value;
@@ -1379,8 +1375,9 @@ a bitstream representing the existence or otherwise of extension additions;
 \item
 a bitstream representing the existence or otherwise of optional or default components; and
 \item
-a monadic value which is the result of applying {\em encodeSequenceAux} to the remainder of the sequence once the extension additions
-have been terminated. This is indicated by another extension marker or simply by the end of the sequence.
+a monadic value which is the result of applying {\em encodeSequenceAux} to the remainder of the sequence once
+the extension additions have been terminated. This is indicated by another extension marker or simply by the
+end of the sequence.
 \end{itemize}
 
 Since we need to output root value encodings before extension addition encodings, we need
@@ -1388,8 +1385,9 @@ to run the returned {\em encodeSequenceAux} monad in advance of outputing the ex
 encoding bits. This is achieved by using the {\em MonadWriter} function {\em censor} which applies
 a function to the output of a monad in advance of outputting. Here we apply the Haskell built-in
 function {\tt const} which simply returns its first argument -- in this case the empty list {\em []}.
-Now since this function is applied lazily the monad can run without producing output but returning the monad that we
-require. We then run the returned monad and then run the extension additon monad again but this time
+Now since this function is applied lazily the monad can run without producing output but returning the
+monad that we
+require. We then run the returned monad and then run the extension addition monad again but this time
 apply a function to add the required preamble to the extension addition encoding bits using the
 function {\em addExtensionAdditionPreamble}.
 
@@ -1406,46 +1404,6 @@ encodeSequence :: Sequence a -> a -> PERMonad ()
 encodeSequence s v
            = do odb <- undefined -- pass $ encodeSequenceAux (False, False) [] s v
                 return ()
-
-axSeq = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (BuiltinType INTEGER) con1)))
-                (AddComponent (MandatoryComponent (NamedType "b" (BuiltinType BOOLEAN)))
-                    (AddComponent (MandatoryComponent (NamedType "c" (BuiltinType (CHOICE choice1))))
-                        (ExtensionMarker
-                          (ExtensionAdditionGroup NoVersionNumber eag1
-                           (ExtensionMarker (AddComponent (OptionalComponent (NamedType "i" (BuiltinType BMPSTRING)))
-                                (AddComponent (OptionalComponent (NamedType "j" (BuiltinType PRINTABLESTRING)))
-                                    EmptySequence)))))))
-
-
-
-choice1 = ChoiceOption (NamedType "d" (BuiltinType INTEGER))
-            (ChoiceExtensionMarker (ChoiceExtensionAdditionGroup NoVersionNumber
-                            (ChoiceOption' (NamedType "e" (BuiltinType BOOLEAN))
-                                   (ChoiceOption' (NamedType "f"  (BuiltinType IA5STRING))
-                                          ChoiceExtensionMarker'))))
-
-
-
-
-
-eag1 = AddComponent' (MandatoryComponent (NamedType "g" (ConstrainedType  (BuiltinType NUMERICSTRING) (RootOnly pac5))))
-        (AddComponent' (OptionalComponent (NamedType "h" (BuiltinType BOOLEAN))) EmptySequence')
-
-con1 = RootOnly (UnionSet ( NoUnion (NoIntersection (ElementConstraint (V (R (250,253)))))))
-
-pac5 = UnionSet ( NoUnion (NoIntersection
-        ((ElementConstraint (SZ (SC (RootOnly (UnionSet ( NoUnion (NoIntersection
-            (ElementConstraint (V (R (3,3))))))))))))))
-
-axVal = Val 253 :*:
-        (True :*:
-            ((AddNoValue NoValue (AddAValue True (AddNoValue NoValue EmptyList))) :*:
-                    ((Just ((NumericString "123") :*: (Just True :*: Empty))) :*:
-                        (Nothing :*: (Nothing :*: Empty)))))
-
-
-
-
 
 encodeSequenceAux :: ExtAndUsed -> OptDefBits -> Sequence a -> a
                 -> PERMonad (OptDefBits, BitStream -> BitStream)
@@ -1565,7 +1523,7 @@ addExtensionAdditionPreamble ap = do
    let la = genericLength ap
        isSmall = la <= 63
    BP.putBitT isSmall
-   if isSmall 
+   if isSmall
       then encodeConstrainedInt (la-1, 63)
       else encodeOctetsWithLength (encodeNonNegBinaryIntInOctets la)
    undefined -- lift $ ap
@@ -3217,10 +3175,15 @@ Note: We can use length safely (rather than genericLength) in the cases where we
 the arguments are sufficiently small (in particular we know we have blocks of 4 or less of
 blocks of $16(2^{10})$ or less).
 
+{- FIXME: the local function h now returns a PERMonad BL.ByteString due to change in
+definition of encodeNonNegBinaryIntInOctets
+-}
 \begin{code}
 encodeLargeLengthDeterminant ::
   (ASNType a -> [a] -> PERMonad ()) -> ASNType a -> [a] -> PERMonad ()
-encodeLargeLengthDeterminant f t xs = doit
+encodeLargeLengthDeterminant f t xs = undefined
+{-
+  doit
    where
       doit
          | {- X691REF: 10.9.3.6 -} l < 128       = h l >> f t xs
@@ -3245,7 +3208,7 @@ encodeLargeLengthDeterminant f t xs = doit
       doFirstTrue :: Monad m => [(Bool, m ())] -> m ()
       doFirstTrue []          = return ()
       doFirstTrue ((p,a):pas) = if p then a else doFirstTrue pas
-
+-}
 \end{code}
 
 

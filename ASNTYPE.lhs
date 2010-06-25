@@ -25,6 +25,7 @@ type {\em Word8} which is defined in the imported library module {\em Data.Word}
 module ASNTYPE where
 
 import Data.Word
+import List
 
 \end{code}
 
@@ -140,8 +141,7 @@ data ASNBuiltin a where
    BITSTRING       :: NamedBits -> ASNBuiltin BitString
    BOOLEAN         :: ASNBuiltin Bool
    INTEGER         :: ASNBuiltin InfInteger
-   ENUMERATED      :: Enumerate a
-                        -> ASNBuiltin (ExactlyOne a SelectionMade)
+   ENUMERATED      :: Enumerate -> ASNBuiltin Enumerate
    OCTETSTRING     :: ASNBuiltin OctetString
    PRINTABLESTRING :: ASNBuiltin PrintableString
    IA5STRING       :: ASNBuiltin IA5String
@@ -533,7 +533,7 @@ processing of constraints.
 \subsection{Constraint Processing Types}
 
 ASN.1 type constraints can be applied in series. We represent the collection of these constraints
-using a list type which we call {\em SerialSubtypeConstraints}. It is a parameterised type because we want to match 
+using a list type which we call {\em SerialSubtypeConstraints}. It is a parameterised type because we want to match
 the type of the constraint with the ASN.1 type to which it is being applied.
 
 \begin{code}
@@ -544,24 +544,24 @@ Now there are two types of constraints that may be generated:
 \begin{itemize}
 \item
 the effective constraint which is used when PER-encoding an ASN.1 value. This uses only the applicable subtype constraints
-that are PER-visible. The applicable subtype constraints are presented in section 47.7 of X.680. The PER-visible constraints are presented in 
+that are PER-visible. The applicable subtype constraints are presented in section 47.7 of X.680. The PER-visible constraints are presented in
 in section 9.3 of X.691.
 \item
 the validity-testing constraint. This uses all applicable subtype constraints.
 \end{itemize}
 
-Thus any type which has at least one applicable subtype constraint needs a Haskell type to represent a constraint. We present these types in the following 
+Thus any type which has at least one applicable subtype constraint needs a Haskell type to represent a constraint. We present these types in the following
 sections.
 
 \subsubsection{BooleanType Constraint}
 
-{\em BooleanConstraint} is the type for a validity-testing {\tt BooleanType} constraint -- there is no effective {\tt BooleanType} constraint
-since this type has no PER-visible constraints.
+{\em BooleanConstraint} is the type for a validity-testing {\tt BooleanType} constraint --
+there is no effective {\tt BooleanType} constraint since this type has no PER-visible constraints.
 
 \begin{code}
 
 data BooleanConstraint = BooleanConstraint [Bool]
-		 									 	 deriving (Show, Eq)
+                                                 deriving (Show, Eq)
 
 \end{code}
 
@@ -607,6 +607,21 @@ unconstrained,semiconstrained,constrained :: IntegerConstraint -> Bool
 unconstrained x     = (lower x) == minBound
 semiconstrained x   = (upper x) == maxBound
 constrained x       = not (unconstrained x) && not (semiconstrained x)
+
+\end{code}
+
+\subsubsection{EnumeratedType Constraints}
+
+{\em EnumeratedConstraint} is the type for a validity-testing {\tt EnumeratedType} constraint --
+there is no effective {\tt EnumeratedType} constraint since this type has no PER-visible
+constraints.
+
+An enumerated constraint is represented as a list of enumeration items.
+
+\begin{code}
+
+data EnumeratedConstraint = EnumeratedConstraint [Integer]
+                             deriving (Show, Eq)
 
 \end{code}
 
@@ -927,11 +942,12 @@ made with {\em NoSelectionMade}, then so will the output list.
 
 A phantom type is one in which a type variable appears only on the left hand side of the
 type's definition. Thus a value of the type -- such as {\em NoValue} -- can match many
-different types. We use this as a placeholder for the non-selected components of a choice (and
-enumerated) type which will need to satisfy the various component types.
+different types. We use this as a placeholder for the non-selected components of a choice
+type which will need to satisfy the various component types.
 
 It is important to have the constructors {\em AddAValue} and {\em AddNoValue} so that there is
-a match between the choice value and the choice type. That is, the overall choice value has the
+a match between the choice value and the choice type.
+That is, the overall choice value has the
 appropriate type, and the particular choice of value has the required type.
 
 In common with the heterogeneous list type, we have added {\em ExactlyOne} to the type classes
@@ -981,7 +997,7 @@ which must be distinct from any number already assigned to an {\em Identifier} o
 existence in a {\em NamedNumber}.
 \end{itemize}
 
-The GADT {\em Enumerate} represents an enumeration built from {\em EnumerationItem}s. This
+The type {\em Enumerate} represents an enumeration built from {\em EnumerationItem}s. This
 has three constructors:
 \begin{itemize}
 \item
@@ -992,18 +1008,68 @@ has three constructors:
 {\em EnumerationExtensionMarker} which indicates the existence of an extension marker.
 \end{itemize}
 
-Note that an enumeration value is represented using a heterogeneous list of possible values.
+\begin{code}
+
+data EnumerationItem = Identifier Name
+                       | NamedNumber Name Integer
+											 deriving (Show, Eq) 
+
+data Enumerate = EmptyEnumeration
+                 | AddEnumeration EnumerationItem Enumerate
+                 | EnumerationExtensionMarker Enumerate
+								 deriving (Show, Eq)
+
+\end{code}
+
+The function {\em assignIndex} which assigns an index to each enumeration item is defined here
+since it is used in the {\tt PER} and {\tt ConstraintGeneration} modules when encoding an 
+enumeration value and generating an enumeration constraint respectively. It returns a pair
+whose first element indicates if an extension marker is present in the type, and whose second
+element is a list of indices assigned to the enumeration values. The index assigned to each
+enumeration value is determined by the enumeration number associated with each enumeration.
+These are either assigned explicitly when the enumeration is defined, or implicitly by the
+function {\em assignNumber}.
 
 \begin{code}
 
-data EnumerationItem a where
-    Identifier :: Name -> EnumerationItem Name
-    NamedNumber :: Name -> Integer -> EnumerationItem Name
+assignIndex :: Enumerate -> (Bool, [Integer])
+assignIndex en
+    = let (b,ns) = assignNumber en False []
+          sls = sort ns
+      in
+        (b, positions ns sls)
 
-data Enumerate a where
-    EmptyEnumeration            :: Enumerate Nil
-    AddEnumeration              :: EnumerationItem a -> Enumerate l
-                                                     -> Enumerate (a:*:l)
-    EnumerationExtensionMarker  :: Enumerate l -> Enumerate l
+assignNumber :: Enumerate -> Bool -> [Integer] -> (Bool, [Integer])
+assignNumber en b ls
+    = let nn = getNamedNumbers en
+      in
+        assignN ([0..] \\ nn) en b ls
 
+assignN :: [Integer] -> Enumerate -> Bool -> [Integer] -> (Bool, [Integer])
+assignN (f:xs) EmptyEnumeration b ls = (b,reverse ls)
+assignN (f:xs) (AddEnumeration  (NamedNumber _ i) r)b ls = assignN (f:xs) r b (i:ls)
+assignN (f:xs) (AddEnumeration  _ r) b ls = assignN xs r b (f:ls)
+assignN (f:xs) (EnumerationExtensionMarker   r) b ls = (True, reverse ls)
+assignN [] _ _ _ = error "No numbers to assign"
+
+getNamedNumbers :: Enumerate -> [Integer]
+getNamedNumbers EmptyEnumeration = []
+getNamedNumbers (AddEnumeration  (NamedNumber _ i) r) = i:getNamedNumbers r
+getNamedNumbers (AddEnumeration  _ r) = getNamedNumbers r
+getNamedNumbers (EnumerationExtensionMarker   r)  = []
+
+noEnums :: Enumerate -> Integer
+noEnums EmptyEnumeration = 0
+noEnums (AddEnumeration  _ r) = 1 + noEnums r
+noEnums (EnumerationExtensionMarker   r)  = 0
+
+positions [] sls = []
+positions (f:r) sls
+    = findN f sls : positions r sls
+
+findN i (f:r)
+    = if i == f then 0
+        else 1 + findN i r
+findN i []
+    = error "Impossible case!"
 \end{code}

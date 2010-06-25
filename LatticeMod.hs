@@ -105,8 +105,8 @@ instance Lattice BooleanConstraint where
         = BooleanConstraint (union bs1 bs2)
    (BooleanConstraint bs1) `meet` (BooleanConstraint bs2)
         = BooleanConstraint (intersect bs1 bs2)
-			
-			
+
+
 instance (IntegerCon i, Lattice i) => Lattice (ExtensibleConstraint i) where
    bottom = ExtensibleConstraint bottom bottom False
    top = ExtensibleConstraint top top False
@@ -137,10 +137,18 @@ instance Lattice ValidIntegerConstraint where
    Valid a `meet` Valid b
       = Valid (listInter a b)
 
+instance Lattice EnumeratedConstraint where
+   bottom = EnumeratedConstraint []
+   top = EnumeratedConstraint [0..]
+   EnumeratedConstraint ic1 `ljoin` EnumeratedConstraint ic2
+        = EnumeratedConstraint (union ic1 ic2)
+   EnumeratedConstraint a `meet` EnumeratedConstraint b
+      = EnumeratedConstraint (intersect a b)
+
 unionIC a@(IntegerConstraint l1 u1) b@(IntegerConstraint l2 u2)
     | l2 > u1+1  = a:[b]
     | l1 > u2+1  = b:[a]
-      | otherwise = [IntegerConstraint (min l1 l2) (max u1 u2)]
+    | otherwise = [IntegerConstraint (min l1 l2) (max u1 u2)]
 
 listUnion [a] [b] = unionIC a b
 listUnion (f:r) (s:t)
@@ -334,16 +342,23 @@ instance ExtConstraint ExtensibleConstraint where
     getRootConstraint x      = getBSRC x
     getExtConstraint x      = getBSEC x
 
-		
+
 instance Constraint BooleanConstraint where
-    isValid x y = validBooleanCon x y
+    isValid (BooleanConstraint x) (BooleanConstraint y) = validCon x y
     updateConstraint (BooleanConstraint x) (BooleanConstraint y) = BooleanConstraint (intersect x y)
     except (BooleanConstraint x) (BooleanConstraint y)   = BooleanConstraint (x \\ y)
-		
-validBooleanCon x (BooleanConstraint []) = True
-validBooleanCon (BooleanConstraint x) (BooleanConstraint (f:r)) 
-						= elem f x && isValid (BooleanConstraint x) (BooleanConstraint r)
 
+validCon x [] = True
+validCon x (f:r)
+        = elem f x && validCon x r
+												
+instance Constraint EnumeratedConstraint where
+    isValid (EnumeratedConstraint x) (EnumeratedConstraint y) = validCon x y
+    updateConstraint (EnumeratedConstraint x) (EnumeratedConstraint y) 
+            = EnumeratedConstraint (intersect x y)
+    except (EnumeratedConstraint x) (EnumeratedConstraint y)   
+            = EnumeratedConstraint (x \\ y)
+		
 instance  Constraint IntegerConstraint where
     isValid x y  = within x y
     updateConstraint x y = serialCombine x y
@@ -355,8 +370,8 @@ instance  Constraint ValidIntegerConstraint where
     updateConstraint x y = serialCombine x y
     except x y   = exceptIntegerConstraint x y
 
-		
-		
+
+
 
 
 lValidResCon :: (IntegerCon i, Lattice a, RS a, Eq a) =>

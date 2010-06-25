@@ -514,7 +514,7 @@ exceptConstraints  m n
 
 \end{code}
 
-The the following section we present the element constraint-processing functions for ASN.1 types. 
+The the following section we present the element constraint-processing functions for ASN.1 types.
 
 \subsection{Element Constraint-Processing Functions}
 \label{contype}
@@ -523,7 +523,7 @@ For those types with PER-visible
 constraints we present two functions:
 \begin{itemize}
 \item
-one which processes the PER-visible constraints and returns an error message for the others. This function is prefixed in each case by {\em pv} and 
+one which processes the PER-visible constraints and returns an error message for the others. This function is prefixed in each case by {\em pv} and
 is used in the evaluation of effective constraints.
 \item
 one which processes all applicable constraints. This function is used in the evaluation of validity-testing constraints.
@@ -534,11 +534,11 @@ All other types simply have a function used in the evaluation of validity-testin
 
 \subsubsection{BooleanType}
 
-{\em booleanElements} processes the various {\tt BooleanType} constraints, none of which are PER-visible. 
+{\em booleanElements} processes the various {\tt BooleanType} constraints, none of which are PER-visible.
 Since all constraints are represented as potentially extensible constraints
 with the boolean parameter indicating extensible constraint or not, the processing results in
-a value of type {\em Either String (ExtensibleConstraint Bool)}. If a valid constraint
-is evaluated then an {\em ExtensibleConstraint Bool} value is returned.
+a value of type {\em Either String (ExtensibleConstraint BoolConstraint)}. If a valid constraint
+is evaluated then an {\em ExtensibleConstraint BoolConstraint} value is returned.
 
 \begin{code}
 
@@ -548,9 +548,9 @@ booleanElements (S (SV i)) b
                 (BooleanConstraint [i]) top b)
 booleanElements (C (Inc t)) b
     = containedBooleanType t []
-		
+
 \end{code}
-		
+
 {\em containedBooleanType} processes a contained {\tt BooleanType} constraint (X.680: 47.3).
 Note that only the extension root values of an extensible contained type are used (X.680:
 47.3.3). Thus the function {\em extensionRootOnly} is applied to the constraint returned by
@@ -564,12 +564,12 @@ containedBooleanType (BuiltinType BOOLEAN) cl
     =  let  tp = ExtensibleConstraint top top False
             tpp = Right tp
         in
-            	extensionRootOnly $ evaluateConstraint booleanElements tpp cl
+                extensionRootOnly $ evaluateConstraint booleanElements tpp cl
 containedBooleanType (ConstrainedType t c) cl
     = containedBooleanType t (c:cl)
-			
+
 \end{code}
-			
+
 \subsubsection{IntegerType}
 
 {\em pvIntegerElements} processes the various {\tt IntegerType} constraints which are all
@@ -614,7 +614,7 @@ containedIntegerType (BuiltinType INTEGER) cl
             extensionRootOnly $ evaluateConstraint pvIntegerElements tpp cl
 containedIntegerType (ConstrainedType t c) cl
     = containedIntegerType t (c:cl)
-			
+
 extensionRootOnly :: Lattice a =>
                      Either String (ExtensibleConstraint a) -> Either String (ExtensibleConstraint a)
 extensionRootOnly (Right (ExtensibleConstraint r e b))
@@ -622,6 +622,106 @@ extensionRootOnly (Right (ExtensibleConstraint r e b))
 extensionRootOnly x = x
 
 \end{code}
+
+\subsubsection{EnumeratedType}
+
+{\em enumeratedElements} processes the various {\tt EnumeratedType} constraints, none of which are PER-visible.
+Since all constraints are represented as potentially extensible constraints
+with the boolean parameter indicating extensible constraint or not, the processing results in
+a value of type {\em Either String (ExtensibleConstraint EnumeratedConstraint)}. If a valid constraint
+is evaluated then an {\em ExtensibleConstraint EnumeratedConstraint} value is returned.
+
+\begin{code}
+
+enumeratedElements :: Enumerate -> Element Enumerate -> Bool -> Either String (ExtensibleConstraint EnumeratedConstraint)
+enumeratedElements en (S (SV (AddEnumeration ei EmptyEnumeration))) b
+    = let (b, p) = validEnum en ei 0				 
+          indices = (snd . assignIndex) en
+			in if b
+            then 
+                let Just pos = p
+                    i = indices !! pos
+							  in	return (makeExtensibleConstraint (EnumeratedConstraint [i]) top b)
+	 					else
+							  throwError "Invalid enumeration"
+enumeratedElements en (C (Inc t)) b
+    = containedEnumeratedType en t []
+
+		
+validEnum :: Enumerate -> EnumerationItem -> Int -> (Bool, Maybe Int)
+validEnum EmptyEnumeration ei n = (False, Nothing)
+validEnum (AddEnumeration e r) ei n
+					| e == ei = (True, Just n)
+					| otherwise = validEnum r ei (n+1) 
+validEnum (EnumerationExtensionMarker e) ei n
+					= validEnum e ei n
+						
+\end{code}
+
+{\em containedEnumeratedType} processes a contained {\tt EnumeratedType} constraint (X.680: 47.3).
+Note that only the extension root values of an extensible contained type are used (X.680:
+47.3.3). Thus the function {\em extensionRootOnly} is applied to the constraint returned by
+{\em evaluateConstraint}.
+
+\begin{code}
+
+containedEnumeratedType :: Enumerate -> ASNType Enumerate -> [SubtypeConstraint Enumerate]
+               -> Either String (ExtensibleConstraint EnumeratedConstraint)
+containedEnumeratedType en (BuiltinType (ENUMERATED e)) cl
+    =  let  tp = ExtensibleConstraint top top False
+            tpp = Right tp
+        in
+					if en == e
+						 then
+                extensionRootOnly $ evaluateConstraint (enumeratedElements en) tpp cl
+						 else 
+						 			throwError "Constraint type does not match required type"
+containedEnumeratedType en (ConstrainedType t c) cl
+    = containedEnumeratedType en t (c:cl)
+
+\end{code}
+\subsubsection{BitStringType}
+
+{- FIXME: Note that boolean is thrown away -}
+
+{\em pvBitStringElements} processes the various {\tt BitStringType} constraints. The only PER-visible constraint
+is the size constraint.
+
+\begin{code}
+
+pvBitStringElements :: (Constraint i,
+            Eq i,
+            Show i,
+            Lattice i,
+            IntegerCon i) =>
+            Element BitString -> Bool -> Either String (ExtensibleConstraint i)
+pvBitStringElements (SZ (SC v)) b  = evaluateSingleConstraint b pvIntegerElements v
+pvBitStringElements (C (Inc c)) b  = throwError "Invisible!"
+pvBitStringElements (S (SV v))  b  = throwError "Invisible!"
+
+\end{code}
+
+\subsubsection{OctetStringType}
+
+{- FIXME: Note that boolean input is thrown away -}
+
+{\em pvOctetStringElements} processes the various {\tt OctetStringType} constraints. The only PER-visible constraint
+is the size constraint.
+
+\begin{code}
+
+pvOctetStringElements :: (Constraint i,
+            Eq i,
+            Show i,
+            Lattice i,
+            IntegerCon i) =>
+            Element OctetString -> Bool -> Either String (ExtensibleConstraint i)
+pvOctetStringElements (SZ (SC v)) b  = evaluateSingleConstraint b pvIntegerElements v
+pvOctetStringElements (C (Inc c)) b  = throwError "Invisible!"
+pvOctetStringElements (S (SV v))  b  = throwError "Invisible!"
+
+\end{code}
+
 
 {- FIXME: Note that boolean input is thrown away -}
 
@@ -705,7 +805,7 @@ Note that only the extension root values of an extensible contained type are use
 
 containedKnownMultType :: (RS a,
                 Eq c,
-								Show c,
+                                Show c,
                 Constraint c,
                 Lattice c,
                 Lattice a,
@@ -717,56 +817,21 @@ containedKnownMultType (BuiltinType _) cl
                     tp = ExtensibleConstraint t t False
                     tpp = Right tp
                 in
-									extensionRootOnly $ evaluateConstraint pvKnownMultiplierElements tpp cl
-containedKnownMultType (ConstrainedType t c) cl 
-											 = containedKnownMultType t (c:cl)
+                                    extensionRootOnly $ evaluateConstraint pvKnownMultiplierElements tpp cl
+containedKnownMultType (ConstrainedType t c) cl
+                                             = containedKnownMultType t (c:cl)
 
 \end{code}
 
-{- FIXME: Note that boolean is thrown away -}
-
-{\em pvBitStringElements} processes the various {\tt BitStringType} constraints. The only PER-visible constraint
-is the size constraint.
 
 
-\begin{code}
-
-pvBitStringElements :: (Constraint i,
-            Eq i,
-            Show i,
-            Lattice i,
-            IntegerCon i) =>
-            Element BitString -> Bool -> Either String (ExtensibleConstraint i)
-pvBitStringElements (SZ (SC v)) b  = evaluateSingleConstraint b pvIntegerElements v
-pvBitStringElements (C (Inc c)) b  = throwError "Invisible!"
-pvBitStringElements (S (SV v))  b  = throwError "Invisible!"
-
-\end{code}
-{- FIXME: Note that boolean input is thrown away -}
-
-{\em pvOctetStringElements} processes the various {\tt OctetStringType} constraints. The only PER-visible constraint
-is the size constraint. 
-
-\begin{code}
-
-pvOctetStringElements :: (Constraint i,
-            Eq i,
-            Show i,
-            Lattice i,
-            IntegerCon i) =>
-            Element OctetString -> Bool -> Either String (ExtensibleConstraint i)
-pvOctetStringElements (SZ (SC v)) b  = evaluateSingleConstraint b pvIntegerElements v
-pvOctetStringElements (C (Inc c)) b  = throwError "Invisible!"
-pvOctetStringElements (S (SV v))  b  = throwError "Invisible!"
-
-\end{code}
 
 
 
 {- FIXME: Note that boolean value is thrown away -}
 
 {\em pvSequenceOfElements} processes the various {\tt SequenceOfType} constraints. The only PER-visible constraint
-is the size constraint. 
+is the size constraint.
 
 \begin{code}
 
