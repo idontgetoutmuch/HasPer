@@ -1,7 +1,3 @@
-{-# OPTIONS_GHC -fwarn-unused-imports -fwarn-incomplete-patterns
-                -XScopedTypeVariables
-#-}
-
 -----------------------------------------------------------------------------
 -- |
 -- Module      : Language.ASN1.PER.GenerateC
@@ -13,6 +9,11 @@
 --
 -- TBD
 -----------------------------------------------------------------------------
+
+{-# LANGUAGE GADTs #-}
+{-# OPTIONS_GHC -fwarn-unused-imports -fwarn-incomplete-patterns
+                -XScopedTypeVariables
+#-}
 
 module Language.ASN1.PER.GenerateC
    (
