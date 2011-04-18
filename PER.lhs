@@ -128,17 +128,20 @@ import Language.ASN1.PER.Integer
    , from2sComplement'
    , to2sComplement
    )
-import Data.List hiding (groupBy)
+import Data.List as L hiding (groupBy)
 import Data.Char
+import Data.Sequence as S
+import Data.Foldable hiding (all, concat, elem, maximum, mapM_)
 import Control.Monad.Error
 import Control.Monad.Identity
-import Control.Monad.Writer
+import Control.Monad.Writer hiding (pass, censor)
 
 {- FIXME: added IntegerAux and Word for encodeNonNegBinaryIntInOctets and h' -}
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.BitPut as BP
+import qualified Data.Binary.BitBuilder as BB
 import qualified Language.ASN1.PER.Integer as I
 import qualified Language.ASN1.PER.IntegerAux as IA
 import Data.Int
@@ -159,7 +162,7 @@ cases which address the various forms of an ASNType.
 \item
 The input is a builtin type value. The function {\em toPer} is called on this value.
 \item
-The input is a referenced type value. The reference is dropped
+The input is a referenced type value. The reference is L.dropped
 and {\em encode} is recursively called on the value.
 \item
 The input is a constrained type value. The constraint is added to the list of constraints and
@@ -207,6 +210,7 @@ error.
 
 type PERMonad a = BP.BitPutT (ErrorT ASNError Identity) a
 
+
 -- type PERMonad a = ErrorT ASNError (WriterT BitStream Identity) a
 
 data ASNError =
@@ -228,7 +232,7 @@ encode (ConstrainedType t c) cl v = encode t (c:cl) v
 
 \end{code}
 
-The function {\em toPER} takes an {\em ASNBuiltin} type, a value of the same builtin type and
+The function {\em toPER} L.takes an {\em ASNBuiltin} type, a value of the same builtin type and
 a list of subtype constraints, and encodes the value using PER. The first input is essential
 in determining the encoding algorithm to use. That is, it is a pointer to the appropriate
 encoding function for the value. For example, if the type is {\em INTEGER} then {\em
@@ -279,13 +283,13 @@ completeEncode m
 
 
 
-{\em encodeOpen} encodes an open type value. It uses the function {\em extractValue} which takes a {\em
-PERMonad ()} value and returns a pair of
+{\em encodeOpen} encodes an open type value. It uses the function {\em extractValue} which L.takes a {\em
+PERMonad ()} value and returns either
 \begin{itemize}
 \item
-an indicator of whether or not an error has been thrown; and
+an error value; or
 \item
-if not the bitstream output by the encoding.
+a pair whose second element is the encoding value.
 \end{itemize}
 
 It also uses the function {\em encodeCase} which takes the extracted value and a function
@@ -318,23 +322,23 @@ encodeCase (Right ((), bs)) f = f bs
 
 Several PER encodings require the encoding of a length determinant. If the item to be encoded
 is very large or, in the case of integer encoding, the number of bits produced by the encoding
-is very large, then some fragmenting may be required in which length and value encodings are
+is very large, then some fragmenting may be required in which L.length and value encodings are
 interleaved.
 
 {\em encodeWithLength} is a higher order function which takes a constraint, an encoding function
 and a list of values (could be bits, octets or any ASN.1 type). The approach to encoding depends on whether
 the constraint imposes an upper bound which is less than 64K. If it does then no interleaving is required and
-the value is encoded with a length prefix if the upper bound differs from the lower bound, and
-with no length encoding otherwise.
+the value is encoded with a L.length prefix if the upper bound differs from the lower bound, and
+with no L.length encoding otherwise.
 
-If the upper bound is at least 64K then {\em encodeUnconstrainedLength} is called. The items are grouped
+If the upper bound is at least 64K then {\em encodeUnconstrainedL.length} is called. The items are grouped
 first in 16k batches, and then in batches of 4. The input encoding function is then supplied as
-an input to the function {\em encodeUnconstrainedLength} which manages the interleaving of
-length and value encodings -- it encodes the length and values of
+an input to the function {\em encodeUnconstrainedL.length} which manages the interleaving of
+L.length and value encodings -- it encodes the L.length and values of
 each batch and concatenates their resulting bitstreams together.
 Note the values are encoded using the input function.
 
-Note that {\em encodeWithLength} is not used to encode {\bf normally small length}
+Note that {\em encodeWithL.length} is not used to encode {\bf normally small L.length}
 determinants (see X691: 10.9.3.4} which are only used with the bitmap that prefixes the
 extension addition values of a set or sequence type.
 
@@ -349,7 +353,7 @@ encodeWithLength ic fun ls
                          do -- tell []
                             mapM_ fun ls
                     else
-                        do encodeConstrainedInt (fromInteger (genericLength ls) - lb, ub-lb)
+                        do encodeConstrainedInt (fromInteger (L.genericLength ls) - lb, ub-lb)
                            mapM_ fun ls
           else {- X691REF: 10.9.4.2 -}
                encodeUnconstrainedLength fun ls
@@ -364,15 +368,15 @@ k64 = 64 * 2^10
 {\em encodeUnconstrainedLength} is a higher order function which encodes a value with an
 unconstrained length i.e. it either has no upper bound on the size of the value,
 or the upper bound is at least 64k. The inputs are the value encoding
-function and the list of values to be encoded. If the length of the input value is less than
-16K then the length is encoded followed by the value. Otherwise the auxiliary function {\em
+function and the list of values to be encoded. If the L.length of the input value is less than
+16K then the L.length is encoded followed by the value. Otherwise the auxiliary function {\em
 encodeUnconstrainedLengthAux} is called. This function manages the fragmenting of the input
-value into blocks of at most four 16K blocks. These are each encoded -- their block length
+value into blocks of at most four 16K blocks. These are each encoded -- their block L.length
 followed by the encoding of the block of values -- and if the block contains four 16k
 blocks the process is repeated with the next block of 16K values.
 
 {\em lengthLessThan16K} encodes the length of a list of less than 16K values and {\em blockLen}
-encodes the length of a block (1 to 4).
+encodes the L.length of a block (1 to 4).
 
 \begin{code}
 
@@ -388,7 +392,7 @@ encodeUnconstrainedLength encFun xs
     | otherwise
     {- X691REF: 10.9.3.8 -}
        = encodeUnconstrainedLengthAux encFun xs
-         where l = genericLength xs
+         where l = L.genericLength xs
 
 encodeUnconstrainedLengthAux :: (b -> PERMonad ()) -> [b] -> PERMonad ()
 encodeUnconstrainedLengthAux encFun [] = throwError (OtherError "Nothing to encode")
@@ -396,7 +400,7 @@ encodeUnconstrainedLengthAux encFun xs
     | l == 4 && last16 == k16
         = do blockLen 4 63
              mapM_ (mapM_ encFun) x
-             encodeUnconstrainedLength encFun (drop (64*(2^10)) xs)
+             encodeUnconstrainedLength encFun (L.drop (64*(2^10)) xs)
     | otherwise
         = if last16 == k16
              then do blockLen l 63
@@ -405,12 +409,12 @@ encodeUnconstrainedLengthAux encFun xs
                      lengthLessThan16K 0
              else do blockLen (l-1) 63
                      mapM_ (mapM_ encFun) (init x)
-                     lengthLessThan16K ((genericLength.last) x)
+                     lengthLessThan16K ((L.genericLength.last) x)
                      mapM_ encFun (last x)
     where
         (x:_)      = (groupBy 4 . groupBy (16*(2^10))) $ xs
-        l          = genericLength x
-        last16     = (genericLength . last) x
+        l          = L.genericLength x
+        last16     = (L.genericLength . last) x
 
 k16 :: InfInteger
 k16    = 16*(2^10)
@@ -420,7 +424,7 @@ groupBy n =
    unfoldr k
       where
          k [] = Nothing
-         k p = Just (splitAt n p)
+         k p = Just (L.splitAt n p)
 
 lengthLessThan16K :: InfInteger -> PERMonad ()
 lengthLessThan16K n
@@ -483,7 +487,7 @@ encodeInt cs v = encodeIntWithConstraint cs v
 
 {\em encodeUnconsInt} encodes an integer value as a 2's-complement-binary-integer
 into a minimum number of octets using {\em to2sComplementM}. This is prefixed by an explicit
-length encoding using {\em encodeOctetsWithLength}.
+L.length encoding using {\em encodeOctetsWithL.length}.
 
 \begin{code}
 
@@ -497,12 +501,12 @@ encodeUnconsInt v  = throwError (BoundsError ("Cannot encode " ++ show v))
 {\em encodeIntWithConstraint} calls:
 \begin{itemize}
 \item
-{\em encodeNonExtConsInt} if the constraint is not extensible. This takes three inputs: the
+{\em encodeNonExtConsInt} if the constraint is not extensible. This L.takes three inputs: the
 actual constraint which is used to test whether the value to be encoded is valid, the
 effective constraint which is used to encode the value, and the value to be encoded.
 The constraints are generated by functions defined in the module {\em ConstraintGeneration};
 \item
-{\em encodeExtConsInt} if the constraint is extensible. This function takes five
+{\em encodeExtConsInt} if the constraint is extensible. This function L.takes five
 inputs. The three required for {\em encodeNonExtConsInt} and the two -- actual and effective
 -- extension constraints.
 \end{itemize}
@@ -640,8 +644,8 @@ encodeExtConsInt (Right actualCon) (Right effectiveCon)  n
 
 {\em encodeSemiConsInt} encodes a semi-constrained integer. The difference between the value and the
 lower bound is encoded as a non-negative-binary-integer in the mininum number of octets using
-{\em encodeNonNegBinaryIntInOctets}. This is prefixed by an encoding of the length of the
-octets using {\em encodeOctetsWithLength}.
+{\em encodeNonNegBinaryIntInOctets}. This is prefixed by an encoding of the L.length of the
+octets using {\em encodeOctetsWithL.length}.
 
 \begin{code}
 
@@ -670,8 +674,8 @@ h' p n =
       h' (p-1) (n `div` 2)
 \end{code}
 
-{\em encodeOctetsWithLength} encodes a collection of octets with
-unconstrained length. {\em encodeBitsWithLength} does the same except
+{\em encodeOctetsWithL.length} encodes a collection of octets with
+unconstrained L.length. {\em encodeBitsWithL.length} does the same except
 for a collection of bits.
 
 \begin{code}
@@ -711,7 +715,7 @@ toNonNegativeBinaryIntegerT n w
 
 \section{ENCODING THE ENUMERATED TYPE}
 
-{\em encodeEnum} takes the defined enumeration type, the (possibly empty) list of serially applied constraints
+{\em encodeEnum} L.takes the defined enumeration type, the (possibly empty) list of serially applied constraints
 and the enumeration value. Since there are no
 PER-visible constraints, the constraints are used only to test the validity of the input enumeration.
 If the value is valid then the function {\em assignIndex} is applied to the enumeration type.
@@ -737,11 +741,11 @@ enumerated type constraints.
 encodeEnum :: Enumerate -> SerialSubtypeConstraints Enumerate -> Enumerate -> PERMonad ()
 encodeEnum e cs x @ (AddEnumeration ei EmptyEnumeration)
     =  let (extensible,inds) = assignIndex e {- X691REF: 13.1 -}
-           no = genericLength inds
+           no = L.genericLength inds
            (b,p) = validEnum e ei 0
            n = getName ei
        in
-                if b && (not . null) cs
+                if b && (not . L.null) cs
            then
                let Just pos = p
                    i = inds !! pos
@@ -831,7 +835,7 @@ encodeNSNNInt n lb
 \section{ENCODING THE BIT STRING TYPE}
 
 
-{\em encodeBitstring} takes the usual two inputs -- the list of serially applied constraints
+{\em encodeBitstring} L.takes the usual two inputs -- the list of serially applied constraints
 and the value to be encoded -- and an additional input, the named bits of type {\em
 NamedBits}. If the constraint list is empty the function {\em encodeUnconstrainedBitstring} is
 called. Otherwise, {\em encodeBitstringWithConstraint} is called. Note that there are two ways
@@ -853,8 +857,8 @@ encodeBitstring nbs cs x
 
 \end{code}
 
-{\em encodeUnconstrainedBitstring} encodes the bitstring with a length determinant using {\em
-encodeBitsWithLength}. If there are any named bits then trailing 0 bits are removed in advance
+{\em encodeUnconstrainedBitstring} encodes the bitstring with a L.length determinant using {\em
+encodeBitsWithL.length}. If there are any named bits then trailing 0 bits are removed in advance
 of encoding.
 
 \begin{code}
@@ -862,7 +866,7 @@ encodeUnconstrainedBitstring :: NamedBits -> BitString -> PERMonad ()
 encodeUnconstrainedBitstring namedBits (BitString [])
     = return () -- tell []
 encodeUnconstrainedBitstring namedBits (BitString bs)
-    = let rem0 = if (not.null) namedBits
+    = let rem0 = if (not.L.null) namedBits
                     then {- X691REF: 15.2 -}
                             strip0s bs
                     else bs
@@ -880,7 +884,7 @@ strip0s bs
 \end{code}
 
 {\em encodeBitstringWithConstraint} calls {\em encodeNonExtConsBitstring} if the constraint is not
-extensible. If it is extensible then {\em encodeExtConsBitstring} is called. They both take the
+extensible. If it is extensible then {\em encodeExtConsBitstring} is called. They both L.take the
 effective constraint and actual constraint associated with the type as input.
 
 \begin{code}
@@ -984,14 +988,14 @@ encodeExtConsBitstring nbs (Right ok) (Right vsc) (BitString vs)
 
 \end{code}
 
-{\em encodeConstrainedBitstring} takes a prefix bit as the first
+{\em encodeConstrainedBitstring} L.takes a prefix bit as the first
 input and has two list-pattern based cases. The first case has an empty list
 as its second argument indicating that there are no named bits. The second case uses the
 pattern {\em (b:rs)} to indicate that there is at least one named bit.
 
-Note that X.691 15.8 states that if a bitstring is constrained to be of zero length then
-it shall not be encoded. It is not clear whether this means that a bitstring with no length is
-not encoded, or if any bitstring associated with a bitstring type with a zero-length
+Note that X.691 15.8 states that if a bitstring is constrained to be of zero L.length then
+it shall not be encoded. It is not clear whether this means that a bitstring with no L.length is
+not encoded, or if any bitstring associated with a bitstring type with a zero-L.length
 constraint is not encoded. We have implemented it using the former case. That is, the
 bitstring must satisfy the constraint (up to the removal of trailing 0 bits as described in
 X.691 15.3).
@@ -1002,11 +1006,11 @@ type PrefixBit = BitStream
 encodeConstrainedBitstring :: PrefixBit -> NamedBits -> InfInteger -> InfInteger
                                 -> ValidIntegerConstraint -> BitStream -> PERMonad ()
 encodeConstrainedBitstring pb bs l u (Valid vrc) xs
-     | null bs && not (inSizeRange xs vrc)
+     | L.null bs && not (inSizeRange xs vrc)
                     = throwError (BoundsError "Size out of range")
-     | (not . null) bs && lxs > u && (take (fromInteger n) . reverse) xs /= take (fromInteger n) zeros
+     | (not . L.null) bs && lxs > u && (L.take (fromInteger n) . L.reverse) xs /= L.take (fromInteger n) zeros
                     = throwError (OtherError "Last value is not 0")
-     | null bs && inSizeRange xs vrc
+     | L.null bs && inSizeRange xs vrc
             = encodeConBS pb l u xs
      | otherwise
      {- X691REF: 15.3 -}
@@ -1014,14 +1018,14 @@ encodeConstrainedBitstring pb bs l u (Valid vrc) xs
                             in
                                 encodeConBS pb l u nxs
         where
-                 lxs = genericLength xs
+                 lxs = L.genericLength xs
                  Val n = (lxs - u)
 
 
 \end{code}
 
 {\em inSizeRange} is a predicate that tests whether a value satisfies a size constraint. The
-length of the value is tested against the actual constraint -- possibly a non-contiguous set
+L.length of the value is tested against the actual constraint -- possibly a non-contiguous set
 of values -- and not against the effective constraint.
 
 {\em namedBitsEdit} applies the necessary pruning of or appending of 0s to a bitstring to
@@ -1034,7 +1038,7 @@ inSizeRange :: [b] -> [IntegerConstraint] -> Bool
 inSizeRange _  [] = False
 inSizeRange p qs = inSizeRangeAux qs
    where
-      l = genericLength p
+      l = L.genericLength p
       inSizeRangeAux (x:rs) =
          l >= (lower x) && l <= (upper x) || inSizeRangeAux rs
       inSizeRangeAux [] = False
@@ -1042,7 +1046,7 @@ inSizeRange p qs = inSizeRangeAux qs
 
 namedBitsEdit :: InfInteger -> InfInteger -> BitStream -> BitStream
 namedBitsEdit l u xs
-    = let lxs = genericLength xs
+    = let lxs = L.genericLength xs
       in if lxs < l
         then add0s (l-lxs) xs
         else
@@ -1051,7 +1055,7 @@ namedBitsEdit l u xs
              else rem0s' l xs
 
 add0s :: InfInteger -> BitStream -> BitStream
-add0s (Val n) xs =  xs ++ take (fromInteger n) zeros
+add0s (Val n) xs =  xs ++ L.take (fromInteger n) zeros
 
 zeros :: BitStream
 zeros = [0,0..]
@@ -1069,7 +1073,7 @@ rem0s (Val 0) l xs
 
 rem0s' :: InfInteger -> BitStream -> BitStream
 rem0s' l xs
-    = if genericLength xs > l && last xs == 0
+    = if L.genericLength xs > l && last xs == 0
         then rem0s' l (init xs)
         else xs
 \end{code}
@@ -1077,7 +1081,7 @@ rem0s' l xs
 {\em encodeConBS}  applies one of X.691 15.8-15.11.
 
 Note that in the last case of {\em encodeConBS} the lower bound of the constraint is ignored.
-This is because the lower bound does not affect these length encodings (X.691 10.9.3.5 Note).
+This is because the lower bound does not affect these L.length encodings (X.691 10.9.3.5 Note).
 
 \begin{code}
 
@@ -1095,7 +1099,7 @@ encodeConBS pb l u xs
                        else if u <= 65536
                             then {- X691REF: 15.11 (ub set) -}
                                 do putBitstream pb
-                                   encodeConstrainedInt ((fromInteger.genericLength) xs - l, u-l)
+                                   encodeConstrainedInt ((fromInteger.L.genericLength) xs - l, u-l)
                                    putBitstream xs
                             else {- X691REF: 15.11 (ub unset) -}
                                 do
@@ -1107,7 +1111,7 @@ encodeConBS pb l u xs
 
 
 {\em encodeNonExtRootBitstring} is similar to {\em encodeExtRootBitstring} but needs the
-extension constraint and encodes the length of the bitstring as a semi-constrained whole
+extension constraint and encodes the L.length of the bitstring as a semi-constrained whole
 number with the lower bound set to zero as specified by X.691 15.11 and the note associated with
 X.691 10.9.3.5.
 
@@ -1138,7 +1142,7 @@ encodeNonExtRootBitstring nbs rc ec (Valid erc) xs
 
 \section{ENCODING THE OCTETSTRING TYPE}
 
-{\em encodeOctetstring} takes the usual two inputs -- the list of serially applied constraints
+{\em encodeOctetstring} L.takes the usual two inputs -- the list of serially applied constraints
 and the value to be encoded. If the constraint list is empty the function
 {\em encodeUnconstrainedOctetstring} is
 called. Otherwise, {\em encodeOctetstringWithConstraint} is called. Note that there are two ways
@@ -1163,8 +1167,8 @@ encodeOctetstring cs x
 
 
 {\em encodeUnconstrainedOctetstring} encodes an unconstrained octetstring, It uses {\em
-encodeUnconstrainedLength} -- which manages the interleaving of length encoding with value
-encoding for values with an unconstrained length - whose first input {\em encodeOctet}
+encodeUnconstrainedL.length} -- which manages the interleaving of L.length encoding with value
+encoding for values with an unconstrained L.length - whose first input {\em encodeOctet}
 converts a {\em Word8} representation of an octet to a list of bits representation.
 
 \begin{code}
@@ -1179,7 +1183,7 @@ encodeOctet x = encodeConstrainedInt ((fromIntegral x),255)
 \end{code}
 
 If the constraint is not extensible then {\em encodeNonExtConsOctetstring} is called. If it is
-extensible then {\em encodeExtConsOctetstring} is called. They both take the effective
+extensible then {\em encodeExtConsOctetstring} is called. They both L.take the effective
 constraint and actual constraint associated with the type as input.
 
 \begin{code}
@@ -1285,15 +1289,15 @@ encodeExtConsOctetstring (Right ok) (Right vsc) (OctetString vs)
 
 {\em encodeConstrainedOctetstring} first checks if the value satisfies the constraint.
 
-Note that X.691 16.5 states that if an octetstring is constrained to be of zero length then
-it shall not be encoded. It is not clear whether this means that an octetstring with no length is
-not encoded, or if any octetstring associated with a bitstring type with a zero-length
+Note that X.691 16.5 states that if an octetstring is constrained to be of zero L.length then
+it shall not be encoded. It is not clear whether this means that an octetstring with no L.length is
+not encoded, or if any octetstring associated with a bitstring type with a zero-L.length
 constraint is not encoded. We have implemented it using the former case. That is, the
 octetstring must satisfy the constraint.
 
 Note that with UNALIGNED PER if the upper bound of a constraint is greater or equal to 64K
-then the encoding of the length determinant is the same as it would be for an unconstrained
-length (X691: 10.9.4.2 Note). {\em encodeOctetsWithLength} which encodes octets with an unconstrained length
+then the encoding of the L.length determinant is the same as it would be for an unconstrained
+L.length (X691: 10.9.4.2 Note). {\em encodeOctetsWithL.length} which encodes octets with an unconstrained L.length
 is used for this case.
 
 \begin{code}
@@ -1396,24 +1400,37 @@ Note also that the encoding of a {\em COMPONENTS OF} item is managed by
 optional/default bits to be used in the generation of the encoding preamble.
 
 \begin{code}
-type OptDefBits = BitStream
+type OptDefBits = S.Seq Int
 type ExtBits = BitStream
 type ExtAndUsed = (Bool, Bool)
 
 encodeSequence :: Sequence a -> a -> PERMonad ()
 encodeSequence s v
-           = do odb <- undefined -- pass $ encodeSequenceAux (False, False) [] s v
-                return ()
+           = do pass $ encodeSequenceAux (False, False) S.empty s v
+                
+				 
+pass :: PERMonad (OptDefBits, PERMonad()) -> PERMonad ()
+pass m = do
+           (o,f) <- censor (const noBit) m  
+           f 
+           (a,b) <- m    
+           return ()
+
+censor :: (PERMonad a -> PERMonad a) -> PERMonad a -> PERMonad a
+censor f m
+        = do
+             f m
+
 
 encodeSequenceAux :: ExtAndUsed -> OptDefBits -> Sequence a -> a
-                -> PERMonad (OptDefBits, BitStream -> BitStream)
+                -> PERMonad (OptDefBits, PERMonad())
 encodeSequenceAux eu od EmptySequence Empty
-    = return (od, completeSequenceBits eu od)
+    = return (od, completeSequenceBits' eu od)
 encodeSequenceAux (extensible, b) od (ExtensionMarker as) xs
     | not extensible
         = let m = encodeSequenceAuxExt (True, False) od [] as xs
           in
-           do (b, eb, od, pm) <- undefined -- censor (const []) m
+           do (b, eb, od, pm) <- censor (const noBit) m
               (od2,f) <- pm
               {- X691REF: 18.8 -}
               undefined -- censor ((++) (snd . extractValue $ addExtensionAdditionPreamble eb)) m
@@ -1421,8 +1438,8 @@ encodeSequenceAux (extensible, b) od (ExtensionMarker as) xs
     | otherwise
         = encodeSequenceAux (extensible,b) od as xs
 encodeSequenceAux eu od (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
-    = do od2 <- encodeSequenceAuxCO [] s x
-         encodeSequenceAux eu (od ++ od2) as xs
+    = do od2 <- encodeSequenceAuxCO S.empty s x
+         encodeSequenceAux eu (od S.>< od2) as xs
 encodeSequenceAux eu od (AddComponent (ComponentsOf (ReferencedType n t)) as) (x:*:xs)
     = encodeSequenceAux eu od (AddComponent (ComponentsOf t) as) (x:*:xs)
 encodeSequenceAux eu od (AddComponent (ComponentsOf (ConstrainedType t c)) as) (x:*:xs)
@@ -1437,22 +1454,48 @@ encodeSequenceAux (b1,b2) od (AddComponent (ExtensionComponent (NamedType t a)) 
     = encodeSequenceAux (b1, True) od as xs
 encodeSequenceAux eu od (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs)
     =   {- X691REF: 18.2 with optional component not present -}
-        encodeSequenceAux eu (od ++ [0]) as xs
+        encodeSequenceAux eu (od S.|> 0) as xs
 encodeSequenceAux eu od (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
     = do {- X691REF: 18.2 with optional component present -}
          encode a [] x
-         encodeSequenceAux eu (od ++ [1]) as xs
+         encodeSequenceAux eu (od S.|> 1) as xs
 encodeSequenceAux eu od (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs)
     =   {- X691REF: 18.2 with default value -}
         {- X691REF: 18.5 with default value (CANONICAL-PER) -}
-        encodeSequenceAux eu (od ++ [0]) as xs
+        encodeSequenceAux eu (od S.|> 0) as xs
 encodeSequenceAux eu od (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
     = do {- X691REF: 18.2 with non-default value -}
          encode a [] x
-         encodeSequenceAux eu (od ++ [1]) as xs
+         encodeSequenceAux eu (od S.|> 1) as xs
 encodeSequenceAux (b1,b2) od (ExtensionAdditionGroup _ _ as) (x:*:xs)
     = encodeSequenceAux (b1,True) od as xs
 
+
+completeSequenceBits' :: ExtAndUsed -> S.Seq Int -> PERMonad() -> PERMonad()
+completeSequenceBits' (extensible, extensionAdditionPresent) odb bs
+    | not extensible
+        = do (fragment odb) 
+						 bs
+    | extensionAdditionPresent
+        {- X691REF: 18.1 with extension additions present -}
+        {- X691REF: 18.2  -}
+        =	 do oneBit 
+		          fragment odb
+							bs
+    | otherwise
+        {- X691REF: 18.1 with no extenion additions present -}
+        {- X691REF: 18.2  -}
+        = do zeroBit 
+		         fragment odb
+						 bs
+    where
+        {- X691REF: 18.3  -}			
+        fragment ls
+            | S.length  ls < 64 * 2^10
+                = mapM_ (BP.putNBitsT 1) $ toList ls
+            | otherwise
+                = encodeUnconstrainedLength (BP.putNBitsT 1) (toList ls)
+                                    
 
 completeSequenceBits :: ExtAndUsed -> OptDefBits -> BitStream -> BitStream
 completeSequenceBits (extensible, extensionAdditionPresent) odb bs
@@ -1469,13 +1512,14 @@ completeSequenceBits (extensible, extensionAdditionPresent) odb bs
     where
         {- X691REF: 18.3  -}
         fragment ls
-            | genericLength ls < k64
+            | L.genericLength ls < k64
                 = ls
             | otherwise
                 = undefined -- (snd . extractValue ) $ encodeUnconstrainedLength (tell . return) ls
 
+
 encodeSequenceAuxExt :: ExtAndUsed -> OptDefBits -> ExtBits -> Sequence a -> a
-                        -> PERMonad ((ExtAndUsed, ExtBits, OptDefBits, PERMonad (OptDefBits, BitStream -> BitStream)))
+                        -> PERMonad ((ExtAndUsed, ExtBits, OptDefBits, PERMonad (OptDefBits, PERMonad())))
 encodeSequenceAuxExt b odb eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
     =   {- X691REF: 18.7 with extension addition absent -}
         encodeSequenceAuxExt b odb (eb ++ [0]) as xs
@@ -1495,7 +1539,7 @@ encodeSequenceAuxExt (b1,b2) odb eb (ExtensionAdditionGroup _ a as) (Just x:*:xs
 encodeSequenceAuxExt b odb eb (ExtensionMarker as) xs
     = return (b, eb, odb, encodeSequenceAux b odb as xs)
 encodeSequenceAuxExt b odb eb EmptySequence Empty
-    | null eb
+    | L.null eb
         = return (b, eb, odb, encodeSequenceAux b odb EmptySequence Empty)
     | otherwise
         = return (b, eb, odb, encodeSequenceAux b odb EmptySequence Empty)
@@ -1509,18 +1553,18 @@ encodeSequenceAuxExt b odb eb _ _
 
 {-
 addExtensionAdditionPreamble ap
-    = let la = genericLength ap
+    = let la = L.genericLength ap
        in if la <= 63
         then do tell [0]
                 encodeConstrainedInt (la-1, 63)
                 tell ap
         else do tell [1]
-                encodeOctetsWithLength (encodeNonNegBinaryIntInOctets la)
+                encodeOctetsWithL.length (encodeNonNegBinaryIntInOctets la)
                 tell ap
 -}
 
 addExtensionAdditionPreamble ap = do
-   let la = genericLength ap
+   let la = L.genericLength ap
        isSmall = la <= 63
    BP.putBitT isSmall
    if isSmall
@@ -1569,7 +1613,7 @@ encodeSequenceAuxCO odb (ExtensionAdditionGroup _ _ as) (x:*:xs)
 
 \section{ENCODING THE SEQUENCE-OF TYPE}
 
-{\em encodeSequenceOf} takes three inputs, the usual two inputs -- the list of serially applied constraints
+{\em encodeSequenceOf} L.takes three inputs, the usual two inputs -- the list of serially applied constraints
 and the value to be encoded -- and the type of the components. This is required as input to the {\em encode} function
 which encodes each component of the SEQUENCEOF. If the constraint list is empty the function
 {\em encodeUnconstrainedSequenceOf} is
@@ -1595,7 +1639,7 @@ encodeSequenceOf cl t x
 \end{code}
 
 {\em encodeUnconstrainedSequenceOf} encodes an unconstrained SEQUENCEOF value by adding a
-length determinant to the encoding of the SEQUENCEOF components. This may of course involve
+L.length determinant to the encoding of the SEQUENCEOF components. This may of course involve
 fragmentation.
 
 \begin{code}
@@ -1607,7 +1651,7 @@ encodeUnconstrainedSequenceOf t xs = encodeUnconstrainedLength (encode t []) xs
 
 
 {\em encodeSequenceOfWithConstraint} calls {\em encodeNonExtConsSequenceOf} if the constraint is not
-extensible. If it is extensible then {\em encodeExtConsSequenceOf} is called. They both take the
+extensible. If it is extensible then {\em encodeExtConsSequenceOf} is called. They both L.take the
 effective constraint and actual constraint associated with the type as input.
 
 \begin{code}
@@ -1716,8 +1760,8 @@ encodeExtConsSequenceOf t (Right ok) (Right vsc) vs
 
 {\em encodeConstrainedSequenceOf} first checks if the value satisfies the constraint.
 Note that with UNALIGNED PER if the upper bound of a constraint is greater or equal to 64K
-then the encoding of the length determinant is the same as it would be for an unconstrained
-length (X691: 10.9.4.2 Note).
+then the encoding of the L.length determinant is the same as it would be for an unconstrained
+L.length (X691: 10.9.4.2 Note).
 
 
 \begin{code}
@@ -1733,7 +1777,7 @@ encodeConstrainedSequenceOf t pb l u (Valid vrc) xs
               else if u <= 65536
                    then {- X691REF: 19.6 with ub set -}
                         do undefined -- tell pb
-                           encodeConstrainedInt ((fromInteger.genericLength) xs - l, u-l)
+                           encodeConstrainedInt ((fromInteger.L.genericLength) xs - l, u-l)
                            mapM_ (encode t []) xs
                    else {- X691REF: 19.6 with ub unset -}
                         do undefined -- tell pb
@@ -1858,7 +1902,7 @@ encodeSetAuxExt (b1,b2) ms eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
 encodeSetAuxExt b ms eb (ExtensionMarker as) xs
     = return (b, eb, encodeSetAux b ms as xs)
 encodeSetAuxExt b ms eb EmptySequence Empty
-    | null eb
+    | L.null eb
         = return (b, eb, encodeSetAux b ms EmptySequence Empty)
     | otherwise
         = return (b, eb, encodeSetAux b ms EmptySequence Empty)
@@ -1904,9 +1948,9 @@ encodeSetAuxCO ms (ExtensionAdditionGroup _ _ as) (x:*:xs)
 \section{ENCODING THE SET-OF TYPE}
 
 SET-OF types are encoded as SEQUENCE-OF types except that CANONICAL-PER requires that the component
-values of a SET-OF type are encoded in ascending order of their same-length encodings. That is, each
+values of a SET-OF type are encoded in ascending order of their same-L.length encodings. That is, each
 encoding is converted to a integral multiple of octet encoding by appending with 0 bits, and then
-these are converted to the same length as the longest encoding by appending 0-octets.
+these are converted to the same L.length as the longest encoding by appending 0-octets.
 
 \begin{code}
 
@@ -1921,7 +1965,7 @@ encodeUnconstrainedSetOf :: ASNType a -> [a] -> PERMonad ()
 encodeUnconstrainedSetOf t xs
     = do {- X691REF: 21.1 -}
          ols <- orderedSetOf t xs
-         undefined -- encodeUnconstrainedLength tell ols
+         undefined -- encodeUnconstrainedL.length tell ols
 
 \end{code}
 
@@ -1934,19 +1978,19 @@ orderedSetOf t ls
     = let els = map (snd. extractValue . encode t []) ls
           pls = map padBits els
           nls = zipWith (++) els pls
-          long = maximum (map genericLength  pls) `div` 8
-          xls = map (\x -> appendZeroes (long - (genericLength x `div` 8)) []) nls
+          long = maximum (map L.genericLength  pls) `div` 8
+          xls = map (\x -> appendZeroes (long - (L.genericLength x `div` 8)) []) nls
           ols = zip (zipWith (++) pls xls) els
       in
           return (map snd (sortBy order ols))
 
 padBits :: BitStream -> BitStream
 padBits enc
-    = let le  = length enc
+    = let le  = L.length enc
           bts = le `mod` 8
           pad = if bts == 0
                            then []
-                           else take (8-bts) [0,0..]
+                           else L.take (8-bts) [0,0..]
       in pad
 
 appendZeroes :: Int -> BitStream -> BitStream
@@ -1968,7 +2012,7 @@ order (f,s) (x,y)
 
 
 {\em encodeSetOfWithConstraint} calls {\em encodeNonExtConsSetOf} if the constraint is not
-extensible. If it is extensible then {\em encodeExtConsSetOf} is called. They both take the
+extensible. If it is extensible then {\em encodeExtConsSetOf} is called. They both L.take the
 effective constraint and actual constraint associated with the type as input.
 
 \begin{code}
@@ -2077,8 +2121,8 @@ encodeExtConsSetOf t (Right ok) (Right vsc) vs
 
 {\em encodeConstrainedSetOf} first checks if the value satisfies the constraint.
 Note that with UNALIGNED PER if the upper bound of a constraint is greater or equal to 64K
-then the encoding of the length determinant is the same as it would be for an unconstrained
-length (X691: 10.9.4.2 Note).
+then the encoding of the L.length determinant is the same as it would be for an unconstrained
+L.length (X691: 10.9.4.2 Note).
 
 
 \begin{code}
@@ -2095,7 +2139,7 @@ encodeConstrainedSetOf t pb l u (Valid vrc) xs
               else if u <= 65536
                    then {- X691REF: 19.6 with ub set -}
                         do undefined -- tell pb
-                           encodeConstrainedInt ((fromInteger.genericLength) xs - l, u-l)
+                           encodeConstrainedInt ((fromInteger.L.genericLength) xs - l, u-l)
                            {- X691REF: 21.1 -}
                            ols <- orderedSetOf t xs
                            undefined -- mapM_ tell ols
@@ -2191,7 +2235,7 @@ encodeChoiceAux :: (NoExtension, (ChoiceRootIndices, ChoiceExtIndices))
 encodeChoiceAux ids EmptyChoice _ = undefined --  (OtherError "No choice value!")
 encodeChoiceAux ids (ChoiceExtensionMarker as) xs = encodeChoiceExtAux ids as xs
 encodeChoiceAux (b,(f:r,e)) (ChoiceOption a as) (AddNoValue x xs)
-     =  let l = genericLength r
+     =  let l = L.genericLength r
         in encodeChoiceAux' l (b,(r,e)) as xs
 encodeChoiceAux (b, ([f],e)) (ChoiceOption (NamedType t a) as) (AddAValue x xs)
     = do
@@ -2206,7 +2250,7 @@ encodeChoiceAux (b, ((f:g:r),e)) (ChoiceOption (NamedType t a) as) (AddAValue x 
                     zeroBit -- tell [0]
              else   {- X691REF: 22.6 -}
                     oneBit -- tell []
-        encodeConstrainedInt (fromInteger $ toInteger  f, fromInteger $ genericLength (g:r))
+        encodeConstrainedInt (fromInteger $ toInteger  f, fromInteger $ L.genericLength (g:r))
         encode a [] x
 encodeChoiceAux _ (ChoiceExtensionAdditionGroup _ _ ) _
     = throwError (OtherError "Impossible case: EXTENSION ADDITION GROUP only appears in an extension.")
@@ -2276,7 +2320,7 @@ encodeChoiceExtAux' (b,(r, (f:e))) (ChoiceOption' (NamedType t a) as) (AddAValue
 There are two categories of restricted character string types -- known-multiplier character
 strings and others. We have currently only implemented the known-multiplier category.
 
-{\em encodeKMS} takes the usual two inputs -- the list of serially applied constraints
+{\em encodeKMS} L.takes the usual two inputs -- the list of serially applied constraints
 and the value to be encoded. If the constraint list is empty the function
 {\em encodeUnconstrainedKMS} is
 called. Otherwise, {\em encodeKMSWithConstraint} is called. Note that there are two ways
@@ -2359,7 +2403,7 @@ elems xs ys = all (flip elem ys) xs
 
 \end{code}
 
-{\em encodeKMString} encodes a known-multiplier string with unconstrained length and a
+{\em encodeKMString} encodes a known-multiplier string with unconstrained L.length and a
 permitted-alphabet constraint of the whole type. {\em encodeKMPermAlph} encodes each
 character in a string based on the rules specified in X.691 27.5.2 and 27.5.4. Since the
 permitted-alphabet constraint is the entire alphabet we use the {\em LatticeMod} entity {\em top}
@@ -2381,7 +2425,7 @@ encodeKMPermAlph :: String -> Char -> PERMonad ()
 encodeKMPermAlph p c
     = {- X691REF: 27.5.2 and 27.5.4 -}
       let sp  = sort p
-          lp  = genericLength p
+          lp  = L.genericLength p
           b   = minExp 2 0 lp
           mp  = maximum p
       in
@@ -2389,7 +2433,7 @@ encodeKMPermAlph p c
             then {- X691REF: 27.5.4 (a) -}
                  encodeCharInBits lp c
             else {- X691REF: 27.5.4 (b) -}
-                 let v = (genericLength . findV c) sp
+                 let v = (L.genericLength . findV c) sp
                      l = fromInteger $ lp-1
                  in encodeConstrainedInt (v,l)
 
@@ -2414,7 +2458,7 @@ encodeCharInBits i c = encodeConstrainedInt (fromInteger $ (fromIntegral.ord) c,
 
 {\em encodeKMSWithConstraint} calls {\em encodeNonExtConsKMS} if the constraint is not
 extensible and the input is valid (for the particular known-multiplier string).
-If it is extensible and the input is valid then {\em encodeExtConsKMS} is called. They both take the
+If it is extensible and the input is valid then {\em encodeExtConsKMS} is called. They both L.take the
 effective constraint and actual constraint associated with the type as input.
 
 \begin{code}
@@ -2600,7 +2644,7 @@ encodeSizeConsKMS l u v
     | otherwise
          = let Val r = range
                Val v = l
-           in do encodeConstrainedInt ((fromInteger $ genericLength x - v), fromInteger $ r-1)
+           in do encodeConstrainedInt ((fromInteger $ L.genericLength x - v), fromInteger $ r-1)
                  mapM_ (encodeKMPermAlph (getString t)) x
           where t = getTop v
                 range = u - l + 1
@@ -2615,7 +2659,7 @@ encodeSizeAndPAConsKMS l u rcs v
     | otherwise
          = let Val r = range
                Val v = l
-           in do encodeConstrainedInt ((fromInteger $ genericLength x - v), fromInteger $ r-1)
+           in do encodeConstrainedInt ((fromInteger $ L.genericLength x - v), fromInteger $ r-1)
                  mapM_ (encodeKMPermAlph (getString rcs)) x
           where
                 range = u - l + 1
@@ -2690,7 +2734,7 @@ Clause 38.8 in X680 encoding based on canonical ordering of restricted character
 
 canEnc b sp [] = return () -- tell []
 canEnc b sp (f:r)
-        = let v = (genericLength . findV f) sp
+        = let v = (L.genericLength . findV f) sp
            in do encodeConstrainedInt (v,b)
                  canEnc b sp r
 
@@ -2727,7 +2771,7 @@ oneBit  = BP.putNBitsT 1 (0x01::Int)
 encodeBitString ::  NamedBits -> [SubtypeConstraint BitString] -> BitString -> PERMonad ()
 
 encodeBitString nbs [] x =
-   undefined -- encodeLargeLengthDeterminant chunkBy1 undefined (bitString x) -- FIXME: We are ignoring named bits!
+   undefined -- encodeLargeL.lengthDeterminant chunkBy1 undefined (bitString x) -- FIXME: We are ignoring named bits!
 
 encodeBitString nbs cl x =
    do Valid vc  <- undefined -- actualConstraint -- FIXME: Nasty pattern match. We should use something like data Valid = Valid { valid :: ... }
@@ -2744,16 +2788,16 @@ encodeBitString nbs cl x =
                   throwError (OtherError "encodeBitString: Empty constraint")
              | isE && isInRoot =
                   do undefined -- tell . return $ 0
-                     undefined -- encodeLengthDeterminant (ec `ljoin` eec) chunkBy1 undefined bs
+                     undefined -- encodeL.lengthDeterminant (ec `ljoin` eec) chunkBy1 undefined bs
              | isE && isInExtension =
                   do undefined -- tell . return $ 1
-                     undefined -- encodeLengthDeterminant (ec `ljoin` eec) chunkBy1 undefined bs
+                     undefined -- encodeL.lengthDeterminant (ec `ljoin` eec) chunkBy1 undefined bs
              | isE =
                   throwError (ConstraintError "encodeBitString: Value out of range")
              | ec == bottom =
                   throwError (OtherError "encodeBitString: Empty constraint")
              | isInRoot =
-                  undefined -- encodeLengthDeterminant ec chunkBy1 undefined bs
+                  undefined -- encodeL.lengthDeterminant ec chunkBy1 undefined bs
              | otherwise =
                   throwError (ConstraintError "encodeBitString: Value out of range")
       doit
@@ -2798,10 +2842,10 @@ fromPer3 t@(BITSTRING _) cl = decodeBitString cl
 
 \end{code}
 
-\section{Decoding Length Determinants}
+\section{Decoding L.length Determinants}
 
-This function decodes the length determinant as defined in 10.9.
-It does not currently cover 10.9.3.4: the determinant being a normally small length.
+This function decodes the L.length determinant as defined in 10.9.
+It does not currently cover 10.9.3.4: the determinant being a normally small L.length.
 
 Note that it assumes that the ASN.1 type makes semantic sense.
 For example, if the upper bound of the size constraint ("ub") is 0 and the
@@ -2901,7 +2945,7 @@ unless the range is 1 (in which case the answer is the lower and upper bound) --
 
 Semi-constrained and unconstrained {\em INTEGER}s are encoded in a list of chunks of
 8 bits (octets) as non-negative binary or as two's complement respectively with a
-\lq\lq large\rq\rq\ length determinant (as there are no constraints on the length
+\lq\lq large\rq\rq\ L.length determinant (as there are no constraints on the L.length
 determinant itself in this particular case).
 
 
@@ -2933,8 +2977,8 @@ lDecConsInt3 mrc isExtensible mec =
           rootConstraint         = rc /= top
           rootLower              = let Val x = lower rc in x
           rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
-          numOfRootBits          = (genericLength . snd . extractValue) $ (encodeConstrainedInt (rootRange - 1, rootRange - 1))
-          numOfExtensionBits     = (genericLength . snd . extractValue) $ (encodeConstrainedInt (extensionRange - 1, extensionRange - 1))
+          numOfRootBits          = (L.genericLength . snd . extractValue) $ (encodeConstrainedInt (rootRange - 1, rootRange - 1))
+          numOfExtensionBits     = (L.genericLength . snd . extractValue) $ (encodeConstrainedInt (extensionRange - 1, extensionRange - 1))
           emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
           inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
           unconstrained x        = (lower x) == minBound
@@ -3015,7 +3059,7 @@ l EmptySequence = 0
 l (AddComponent (MandatoryComponent _) ts) = l ts
 l (AddComponent (OptionalComponent  _) ts) = 1 + (l ts)
 
-bitMask n = sequence $ take n $ repeat $ BG.getBit
+bitMask n = sequence $ L.take n $ repeat $ BG.getBit
 
 type BitMap = [Bool]
 
@@ -3032,7 +3076,7 @@ decodeSEQUENCEAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) 
 
 \begin{code}
 
-nSequenceOfElements n e = sequence . genericTake n . repeat . flip decode4 e
+nSequenceOfElements n e = sequence . L.take n . repeat . flip decode4 e
 
 decodeSequenceOf :: ASNMonadTrans t =>
                     ASNType a -> [ElementSetSpecs [a]] -> t BG.BitGet [a]
@@ -3055,10 +3099,10 @@ decodeSequenceOfAux t me mv =
 
 \subsection{BIT STRING --- Clause 15}
 
-{\em BIT STRING}s are encoded with a length determinant but the type
+{\em BIT STRING}s are encoded with a L.length determinant but the type
 is immaterial hence we use $\bottom$ as the type argument to
-{\em decodeLengthDeterminant}; the (function) argument to
-decode the individual components merely takes 1 bit at a time.
+{\em decodeL.lengthDeterminant}; the (function) argument to
+decode the individual components merely L.takes 1 bit at a time.
 
 The above may now be rubbish and the code below could well be
 highly inefficient.
@@ -3138,7 +3182,7 @@ errorize (Right x) = return x
 
 \end{code}
 
-\section{Length Determinants}
+\section{L.length Determinants}
 
 \begin{code}
 
@@ -3154,11 +3198,11 @@ encodeLengthDeterminant c f t xs
    | ub <= 64*(2^10) {- 10.9.1 -}
         = do constrainedWholeNumber c y
              f t xs
-   | otherwise      = error "FIXME: encodeLengthDeterminant"
+   | otherwise      = error "FIXME: encodeL.lengthDeterminant"
    where
       ub = upper c
       lb = lower c
-      y  = genericLength xs
+      y  = L.genericLength xs
 
 constrainedWholeNumber :: IntegerConstraint -> Integer -> PERMonad ()
 constrainedWholeNumber c v =
@@ -3171,7 +3215,7 @@ constrainedWholeNumber c v =
 
 \end{code}
 
-Note: We can use length safely (rather than genericLength) in the cases where we know
+Note: We can use length safely (rather than L.genericLength) in the cases where we know
 the arguments are sufficiently small (in particular we know we have blocks of 4 or less of
 blocks of $16(2^{10})$ or less).
 
@@ -3192,18 +3236,18 @@ encodeLargeLengthDeterminant f t xs = undefined
                                                       then fullBlock
                                                       else doFirstTrue possibleBlocks
       ysss            = groupBy 4 (groupBy (16*(2^10)) xs)
-      (hsss, tsss)    = genericSplitAt 1 ysss
+      (hsss, tsss)    = genericsplitAt 1 ysss
       hss             = concat hsss
-      isFullBlock n   = length hss == n && length (hss!!(n-1)) == 16*(2^10)
-      l               = genericLength xs
+      isFullBlock n   = L.length hss == n && L.length (hss!!(n-1)) == 16*(2^10)
+      l               = L.genericLength xs
       h :: InfInteger -> PERMonad [Int]
       h               = {- temporaryConvert . -} return . encodeNonNegBinaryIntInOctets
       fullBlock       = do h (fromIntegral 4)
                            f t (concat hss)
-                           encodeLargeLengthDeterminant f t (concat . concat $ tsss)
+                           encodeLargeL.lengthDeterminant f t (concat . concat $ tsss)
       partialBlock n  = do h (fromIntegral n)
-                           f t (concat (take n hss))
-                           encodeLargeLengthDeterminant f t (concat (drop n hss))
+                           f t (concat (L.take n hss))
+                           encodeLargeL.lengthDeterminant f t (concat (L.drop n hss))
       possibleBlocks  = map (\n -> (isFullBlock n, partialBlock n)) [3..1]
       doFirstTrue :: Monad m => [(Bool, m ())] -> m ()
       doFirstTrue []          = return ()
