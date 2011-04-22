@@ -2727,7 +2727,7 @@ personnelRecord
 vst = BuiltinType
 			  (TAGGED (Context, 0, Explicit)
             (BuiltinType VISIBLESTRING))
-	
+
 tnt = BuiltinType
 			  (TAGGED (Context, 2, Explicit) name)
 
@@ -2741,7 +2741,7 @@ name
                             (AddComponent (MandatoryComponent (NamedType "familyName" nameString))
                                 EmptySequence))))))
 
-	
+
 t = VisibleString "Director"
 
 
@@ -2757,7 +2757,7 @@ dateC = BuiltinType
 
 dateC2 = BuiltinType
 			    (TAGGED (Context, 0, Explicit) date)
-	
+
 date = ConstrainedType
         (BuiltinType
             (TAGGED (Application, 3, Implicit)
@@ -2776,8 +2776,8 @@ date = ConstrainedType
 																	 		 		 		 		 	 (UnionSet
                 																		 		(NoUnion
 																						              (NoIntersection (ElementConstraint (V (R (8,8)))))))))))))))
-	
-	
+
+
 hiredate = VisibleString "19710917"
 
 
@@ -2826,8 +2826,8 @@ initial = ConstrainedType nameString
 																	 		 		 		 		 	 (UnionSet
                 																		 		(NoUnion
 																						              (NoIntersection (ElementConstraint (V (R (1,1)))))))))))))))
- 
-	
+
+
 
 nameString = ConstrainedType (BuiltinType VISIBLESTRING)
 					 	 	 (RootOnly
@@ -2844,9 +2844,9 @@ nameString = ConstrainedType (BuiltinType VISIBLESTRING)
 																	 		 		 		 		 	 (UnionSet
                 																		 		(NoUnion
 																						              (NoIntersection (ElementConstraint (V (R (1,64)))))))))))))))
-	
-	
-	
+
+
+
 empGN = VisibleString "John"
 
 empFN = VisibleString "Smith"
