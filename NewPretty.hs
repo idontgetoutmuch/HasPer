@@ -5,7 +5,7 @@
 module NewPretty where
 
 import ASNTYPE
-import PER
+import PERWriter
 import Language.ASN1 (
    -- TagPlicity (..),
    TagType (..)
@@ -40,7 +40,7 @@ prettySeq (ExtensionMarker x) =
 prettySeq (ExtensionAdditionGroup v x y) =
    vcat [brackets (brackets (prettySeq2 x)) <> comma, prettySeq y]
 
-	 
+
 prettySeq2 :: Sequence' a -> Doc
 prettySeq2 EmptySequence' =
    empty
@@ -67,8 +67,8 @@ prettySeq2' EmptySequence' =
 prettySeq2' (AddComponent' x xs) =
    (prettyComponentType x):(prettySeq2' xs)
 
-	 
-	 
+
+
 prettySeq'' x = vcat $ punctuate comma $ prettySeq' x
 
 prettyComponentType :: ComponentType a -> Doc
@@ -127,8 +127,8 @@ prettyChoice' (ChoiceOption' nt xs) =
    vcat [prettyNamedType nt <> comma, prettyChoice' xs]
 prettyChoice' ChoiceExtensionMarker'  =
    vcat [text "..."]
- 
-	 
+
+
 prettyNamedType :: NamedType a -> Doc
 prettyNamedType (NamedType n ct) = text n <+> prettyType ct
 
