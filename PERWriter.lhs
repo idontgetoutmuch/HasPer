@@ -78,14 +78,11 @@ octet alignment. We have implemented the UNALIGNED variant of CANONICAL-PER.
 
 \begin{code}
 
-{-# OPTIONS_GHC -XMultiParamTypeClasses -XGADTs -XTypeOperators
-                -XEmptyDataDecls -XFlexibleInstances -XFlexibleContexts
-                -XGeneralizedNewtypeDeriving
-#-}
-{-
-                -fwarn-unused-binds
-                -fwarn-unused-imports -fwarn-incomplete-patterns
--}
+{-# LANGUAGE MultiParamTypeClasses, GADTs, TypeOperators, EmptyDataDecls, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving #-}
+
+{-# OPTIONS_GHC -fwarn-unused-binds #-}
+
+{- -fwarn-unused-imports -fwarn-incomplete-patterns #-}
 
 \end{code}
 
@@ -441,7 +438,7 @@ blockLen x y
 
 noBit :: PERMonad ()
 noBit = tell BB.empty
-zeroBit :: PERMonad ()
+zeroBit :: (MonadWriter BB.BitBuilder m) => m ()
 zeroBit = tell $ BB.singleton False
 oneBit :: PERMonad ()
 oneBit  = tell $ BB.singleton True
@@ -478,8 +475,8 @@ decodeLargeLengthDeterminant3 f t =
                         where
                            fragError = "Unable to decode with fragment size of "
 
-\end{code}
 
+\end{code}
 
 \section{ENCODING THE BOOLEAN TYPE}
 
@@ -733,11 +730,11 @@ the constraint.
 
 \begin{code}
 
-encodeConstrainedInt :: (InfInteger, InfInteger) -> PERMonad ()
+encodeConstrainedInt :: (MonadWriter BB.BitBuilder m) => (InfInteger, InfInteger) -> m ()
 encodeConstrainedInt (Val val, Val range)
     = toNonNegativeBinaryIntegerT val range
 
-toNonNegativeBinaryIntegerT :: Integer -> Integer -> PERMonad ()
+toNonNegativeBinaryIntegerT :: (MonadWriter BB.BitBuilder m) => Integer -> Integer -> m ()
 toNonNegativeBinaryIntegerT _ 0 = tell BB.empty
 toNonNegativeBinaryIntegerT 0 w
     = toNonNegativeBinaryIntegerT 0 (w `div` 2) >> zeroBit
@@ -745,6 +742,124 @@ toNonNegativeBinaryIntegerT n w
     = toNonNegativeBinaryIntegerT (n `div` 2) (w `div` 2) >> (tell . BB.fromBits 1) n
 
 \end{code}
+
+\begin{code}
+
+dUnconstrainedInteger :: UnPERMonad Integer
+dUnconstrainedInteger =
+   do o <- octets
+      return (from2sComplement' o)
+   where
+      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
+      octets   = decodeLargeLengthDeterminant3 chunkBy8 undefined
+
+-- lDecConsInt3 :: ASNMonadTrans t =>
+--                  t BG.BitGet IntegerConstraint -> Bool -> t BG.BitGet IntegerConstraint -> t BG.BitGet InfInteger
+lDecConsInt3 mrc isExtensible mec =
+   do rc <- mrc
+      ec <- mec
+      let extensionConstraint    = ec /= top
+          tc                     = rc `ljoin` ec
+          -- FIXME: What about if upper tc == PosInf or lower tc == NegInf?
+          extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
+          rootConstraint         = rc /= top
+          rootLower              = let Val x = lower rc in x
+          rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
+          -- Not only does the commented out code not type check, it's also now wrong given we are using bits in ByteStrings
+          -- rather than lists.
+          numOfRootBits          = minBits rootRange -- undefined -- (L.genericLength . snd . extractValue) $ (encodeConstrainedInt (rootRange - 1, rootRange - 1))
+          numOfExtensionBits     = undefined -- (L.genericLength . snd . extractValue) $ (encodeConstrainedInt (extensionRange - 1, extensionRange - 1))
+          emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
+          inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
+          unconstrained x        = (lower x) == minBound
+          semiconstrained x      = (upper x) == maxBound
+          constrained x          = not (unconstrained x) && not (semiconstrained x)
+          constraintType x
+             | unconstrained x   = UnConstrained
+             | semiconstrained x = SemiConstrained
+             | otherwise         = Constrained
+
+          foobar
+             | emptyConstraint
+                  = do {- X691REF: 12.2.4 -}
+                       x <- dUnconstrainedInteger
+                       return (Val x)
+             | rootConstraint &&
+               extensionConstraint
+                  = do {- X691REF: 12.1 -}
+                       isExtension <- lift $ BG.getBit
+                       if isExtension
+                          then
+                             decodeExtensionConstrained
+                          else
+                             decodeRootConstrained
+             | rootConstraint &&
+               isExtensible
+                  = do {- X691REF: 12.1 -}
+                       isExtension <- lift $ BG.getBit
+                       if isExtension
+                          then
+                             throwError (ExtensionError "Extension for constraint not supported")
+                          else
+                             decodeRootConstrained
+             | rootConstraint
+                  = decodeRootConstrained
+             | extensionConstraint
+                  = throwError (ConstraintError "Extension constraint without a root constraint")
+             | otherwise
+                  = throwError (OtherError "Unexpected error decoding INTEGER")
+
+          decodeExtensionConstrained =
+             do v <- dUnconstrainedInteger
+                if v `inRange` tc
+                   then
+                      return (Val v)
+                   else
+                      throwError (BoundsError "Value not in extension constraint: could be invalid value or unsupported extension")
+
+          decodeRootConstrained =
+             if rootRange <= 1
+                then
+                   {- X691REF: 12.2.1 -}
+                   return (Val rootLower)
+                else
+                   do {- X691REF: 12.2.2 and 12.2.3 -}
+                      j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
+                      let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
+                      if v `inRange` rc
+                         then
+                            return (Val v)
+                         else
+                            throwError (BoundsError "Value not in root constraint")
+
+      foobar
+
+   where
+
+      minBits :: Integer -> Integer
+      minBits n = f n 0
+         where
+            f 0 a = a
+            f n a = f (n `div` 2) (a+1)
+
+type ElementSetSpecs a = SubtypeConstraint a
+
+decodeInt3 :: [ElementSetSpecs InfInteger] -> UnPERMonad InfInteger
+decodeInt3 [] =
+   lDecConsInt3 (return top) undefined (return top)
+decodeInt3 cs =
+   lDecConsInt3 effRoot extensible effExt
+   where
+      effectiveCon :: Either String (ExtensibleConstraint IntegerConstraint)
+      effectiveCon = evaluateConstraint  pvIntegerElements top cs
+      extensible = eitherExtensible effectiveCon
+      effRoot = either (\x -> undefined) --  (ConstraintError "Invalid root"))
+                    (return . getRootConstraint) effectiveCon
+      effExt = either (\x -> undefined) --  (ConstraintError "Invalid extension"))
+                    (return . getExtConstraint) effectiveCon
+
+\end{code}
+
 
 \section{ENCODING THE ENUMERATED TYPE}
 
