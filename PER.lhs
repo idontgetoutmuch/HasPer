@@ -421,7 +421,7 @@ k16    = 16*(2^10)
 
 groupBy :: Int -> [t] -> [[t]]
 groupBy n =
-   unfoldr k
+   L.unfoldr k
       where
          k [] = Nothing
          k p = Just (L.splitAt n p)
@@ -1407,13 +1407,13 @@ type ExtAndUsed = (Bool, Bool)
 encodeSequence :: Sequence a -> a -> PERMonad ()
 encodeSequence s v
            = do pass $ encodeSequenceAux (False, False) S.empty s v
-                
-				 
+ 
+	
 pass :: PERMonad (OptDefBits, PERMonad()) -> PERMonad ()
 pass m = do
-           (o,f) <- censor (const noBit) m  
-           f 
-           (a,b) <- m    
+           (o,f) <- censor (const noBit) m
+           f
+           (a,b) <- m
            return ()
 
 censor :: (PERMonad a -> PERMonad a) -> PERMonad a -> PERMonad a
@@ -1474,28 +1474,28 @@ encodeSequenceAux (b1,b2) od (ExtensionAdditionGroup _ _ as) (x:*:xs)
 completeSequenceBits' :: ExtAndUsed -> S.Seq Int -> PERMonad() -> PERMonad()
 completeSequenceBits' (extensible, extensionAdditionPresent) odb bs
     | not extensible
-        = do (fragment odb) 
+        = do (fragment odb)
 						 bs
     | extensionAdditionPresent
         {- X691REF: 18.1 with extension additions present -}
         {- X691REF: 18.2  -}
-        =	 do oneBit 
+        =	 do oneBit
 		          fragment odb
 							bs
     | otherwise
         {- X691REF: 18.1 with no extenion additions present -}
         {- X691REF: 18.2  -}
-        = do zeroBit 
+        = do zeroBit
 		         fragment odb
 						 bs
     where
-        {- X691REF: 18.3  -}			
+        {- X691REF: 18.3  -}
         fragment ls
             | S.length  ls < 64 * 2^10
                 = mapM_ (BP.putNBitsT 1) $ toList ls
             | otherwise
                 = encodeUnconstrainedLength (BP.putNBitsT 1) (toList ls)
-                                    
+ 
 
 completeSequenceBits :: ExtAndUsed -> OptDefBits -> BitStream -> BitStream
 completeSequenceBits (extensible, extensionAdditionPresent) odb bs
@@ -1829,12 +1829,12 @@ encodeSet s v
 encodeSetAux :: ExtAndUsed -> [(TagInfo, (Maybe Int, PERMonad ()))] -> Sequence a -> a
                 -> PERMonad (OptDefBits, BitStream -> BitStream)
 encodeSetAux eu ms EmptySequence Empty
-    =   let sms = sortBy firstItem ms
+    =   let sms = L.sortBy firstItem ms
             firstItem m n
                 | fst m < fst n = LT
                 | fst m == fst n = EQ
                 | otherwise = GT
-            odb = map (\(Just x) -> x) $ filter (/= Nothing) $  map (fst . snd) sms
+            odb = map (\(Just x) -> x) $ L.filter (/= Nothing) $  map (fst . snd) sms
             mds = map (snd . snd) sms
         in do {- FIXME run monads in the right order and create optdefbits-}
                  mapM_ id mds
@@ -1977,12 +1977,12 @@ orderedSetOf :: ASNType a -> [a] -> PERMonad [BitStream]
 orderedSetOf t ls
     = let els = map (snd. extractValue . encode t []) ls
           pls = map padBits els
-          nls = zipWith (++) els pls
+          nls = L.zipWith (++) els pls
           long = maximum (map L.genericLength  pls) `div` 8
           xls = map (\x -> appendZeroes (long - (L.genericLength x `div` 8)) []) nls
-          ols = zip (zipWith (++) pls xls) els
+          ols = L.zip (L.zipWith (++) pls xls) els
       in
-          return (map snd (sortBy order ols))
+          return (map snd (L.sortBy order ols))
 
 padBits :: BitStream -> BitStream
 padBits enc
@@ -2191,7 +2191,7 @@ assignIndices (r,e)
 
 indices :: Ord a => [a] -> [Int]
 indices xs
-    = let sxs = sort xs
+    = let sxs = L.sort xs
       in
         map (\(Just x) -> x) (indices' xs sxs)
 
@@ -2424,7 +2424,7 @@ getTop m = top
 encodeKMPermAlph :: String -> Char -> PERMonad ()
 encodeKMPermAlph p c
     = {- X691REF: 27.5.2 and 27.5.4 -}
-      let sp  = sort p
+      let sp  = L.sort p
           lp  = L.genericLength p
           b   = minExp 2 0 lp
           mp  = maximum p
