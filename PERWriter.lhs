@@ -114,7 +114,7 @@ as a prefix when any entity of these modules is used.
 
 \begin{code}
 
-module PER where
+module PERWriter where
 
 import ASNTYPE
 import LatticeMod
@@ -745,39 +745,40 @@ toNonNegativeBinaryIntegerT n w
 
 \begin{code}
 
+type ElementSetSpecs a = SubtypeConstraint a
+
+dInteger :: [ElementSetSpecs InfInteger] -> UnPERMonad InfInteger
+dInteger [] = dConstrainedInteger (return top) undefined (return top)
+dInteger cs = dConstrainedInteger effRoot isExtensible effExt
+  where
+     effectiveCon = evaluateConstraint pvIntegerElements top cs
+     isExtensible = eitherExtensible effectiveCon
+     effRoot      = either (const (throwError (ConstraintError "Invalid root")))
+                           (return . getRootConstraint) effectiveCon
+     effExt       = either (const (throwError (ConstraintError "Invalid extension")))
+                           (return . getExtConstraint) effectiveCon
+
 dUnconstrainedInteger :: UnPERMonad Integer
 dUnconstrainedInteger =
    do o <- octets
       return (from2sComplement' o)
    where
-      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
+      chunkBy8 = let o = (.).(.) in lift `o` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
       octets   = decodeLargeLengthDeterminant3 chunkBy8 undefined
 
--- lDecConsInt3 :: ASNMonadTrans t =>
---                  t BG.BitGet IntegerConstraint -> Bool -> t BG.BitGet IntegerConstraint -> t BG.BitGet InfInteger
-lDecConsInt3 mrc isExtensible mec =
+dConstrainedInteger :: UnPERMonad IntegerConstraint -> Bool -> UnPERMonad IntegerConstraint -> UnPERMonad InfInteger
+dConstrainedInteger mrc isExtensible mec =
    do rc <- mrc
       ec <- mec
-      let extensionConstraint    = ec /= top
+      let isExtensionConstraint    = ec /= top
           tc                     = rc `ljoin` ec
           -- FIXME: What about if upper tc == PosInf or lower tc == NegInf?
-          extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
           rootConstraint         = rc /= top
           rootLower              = let Val x = lower rc in x
-          rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
-          -- Not only does the commented out code not type check, it's also now wrong given we are using bits in ByteStrings
-          -- rather than lists.
-          numOfRootBits          = minBits rootRange -- undefined -- (L.genericLength . snd . extractValue) $ (encodeConstrainedInt (rootRange - 1, rootRange - 1))
-          numOfExtensionBits     = undefined -- (L.genericLength . snd . extractValue) $ (encodeConstrainedInt (extensionRange - 1, extensionRange - 1))
-          emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
+          rootRange              = let (Val x) = (upper rc) - (lower rc) + (Val 1) in x
+          numOfRootBits          = minBits rootRange
+          emptyConstraint        = (not rootConstraint) && (not isExtensionConstraint)
           inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
-          unconstrained x        = (lower x) == minBound
-          semiconstrained x      = (upper x) == maxBound
-          constrained x          = not (unconstrained x) && not (semiconstrained x)
-          constraintType x
-             | unconstrained x   = UnConstrained
-             | semiconstrained x = SemiConstrained
-             | otherwise         = Constrained
 
           foobar
              | emptyConstraint
@@ -785,7 +786,7 @@ lDecConsInt3 mrc isExtensible mec =
                        x <- dUnconstrainedInteger
                        return (Val x)
              | rootConstraint &&
-               extensionConstraint
+               isExtensionConstraint
                   = do {- X691REF: 12.1 -}
                        isExtension <- lift $ BG.getBit
                        if isExtension
@@ -804,7 +805,7 @@ lDecConsInt3 mrc isExtensible mec =
                              decodeRootConstrained
              | rootConstraint
                   = decodeRootConstrained
-             | extensionConstraint
+             | isExtensionConstraint
                   = throwError (ConstraintError "Extension constraint without a root constraint")
              | otherwise
                   = throwError (OtherError "Unexpected error decoding INTEGER")
@@ -836,27 +837,12 @@ lDecConsInt3 mrc isExtensible mec =
 
    where
 
-      minBits :: Integer -> Integer
-      minBits n = f n 0
-         where
-            f 0 a = a
-            f n a = f (n `div` 2) (a+1)
-
-type ElementSetSpecs a = SubtypeConstraint a
-
-decodeInt3 :: [ElementSetSpecs InfInteger] -> UnPERMonad InfInteger
-decodeInt3 [] =
-   lDecConsInt3 (return top) undefined (return top)
-decodeInt3 cs =
-   lDecConsInt3 effRoot extensible effExt
+minBits :: Integer -> Integer
+minBits n = f n 0
    where
-      effectiveCon :: Either String (ExtensibleConstraint IntegerConstraint)
-      effectiveCon = evaluateConstraint  pvIntegerElements top cs
-      extensible = eitherExtensible effectiveCon
-      effRoot = either (\x -> undefined) --  (ConstraintError "Invalid root"))
-                    (return . getRootConstraint) effectiveCon
-      effExt = either (\x -> undefined) --  (ConstraintError "Invalid extension"))
-                    (return . getExtConstraint) effectiveCon
+      f 0 a = a
+      f n a = f (n `div` 2) (a+1)
+
 
 \end{code}
 
