@@ -12,7 +12,7 @@
 -- FIXME: This now needs a tidy up, retesting and recoveraging.
 --
 -----------------------------------------------------------------------------
-{-# 
+{-#
 OPTIONS_GHC -fwarn-unused-imports -fwarn-unused-binds
 #-}
 
@@ -48,7 +48,7 @@ infixr 5 $$
 ($$) = (.).(.)
 
 k :: Num a => Integer -> Integer -> [a]
-k = reverse $$ (map fromInteger) $$ flip (curry (unfoldr nnbIterator)) 
+k = reverse $$ (map fromInteger) $$ flip (curry (unfoldr nnbIterator))
 
 nnbIterator :: (Integer, Integer) -> Maybe (Integer, (Integer, Integer))
 nnbIterator (0,0) = Nothing
@@ -65,7 +65,7 @@ h' 0 n =
 h' p n =
    do putNBits 1 (n `mod` 2)
       h' (p-1) (n `div` 2)
-  
+
 to2sComplementReverse :: Integer -> BitPut
 to2sComplementReverse n
    | n >= 0 = do h' 7 n
@@ -85,11 +85,11 @@ h'' 0 =
 h'' n =
    do p <- get
       case p of
-         0 -> 
+         0 ->
             do put 7
                h'' (n `div` 2)
                lift $ putNBits 1 (n `mod` 2)
-         otherwise -> 
+         otherwise ->
             do put (p-1)
                h'' (n `div` 2)
                lift $ putNBits 1 (n `mod` 2)
