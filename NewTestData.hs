@@ -105,3 +105,12 @@ axSer = AddComponent (MandatoryComponent (NamedType "a" (ConstrainedType  (Built
                                 (AddComponent (OptionalComponent (NamedType "j" (BuiltinType PRINTABLESTRING)))
                                     EmptySequence)))))))
 
+
+tInteger3 = ConstrainedType (BuiltinType INTEGER) (RootOnly (UnionSet (NoUnion (NoIntersection (ElementConstraint (V (R (256,1234567))))))))
+vInteger3 = Val 256
+
+
+tInteger4 = ConstrainedType (BuiltinType INTEGER) (RootOnly (UnionSet (NoUnion (NoIntersection (ElementConstraint (V (R (1,65538))))))))
+vInteger4s = map Val [1, 257, 65538]
+
+tInteger5 = ConstrainedType (BuiltinType INTEGER) (RootOnly (UnionSet (NoUnion (NoIntersection (ElementConstraint (V (R (NegInf,PosInf))))))))

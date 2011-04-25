@@ -204,6 +204,7 @@ error.
 
 type PERMonad a = WriterT BB.BitBuilder (ErrorT ASNError Identity) a
 
+type UnPERMonad a = ErrorT ASNError BG.BitGet a
 
 data ASNError =
      ConstraintError String
@@ -221,6 +222,24 @@ encode :: ASNType a -> SerialSubtypeConstraints a -> a -> PERMonad ()
 encode (BuiltinType t) cl v       = toPER t v cl
 encode (ReferencedType r t) cl v  = encode t cl v
 encode (ConstrainedType t c) cl v = encode t (c:cl) v
+
+decode :: ASNType a -> [ElementSetSpecs a] -> UnPERMonad a
+decode (BuiltinType t) cl       = fromPER t cl
+decode (ConstrainedType t c) cl = decode t (c:cl)
+decode (ReferencedType r t) cl  = decode t cl
+
+runDecode :: ASNType a -> B.ByteString -> a
+runDecode t bs = case BG.runBitGet bs (runErrorT (decode t [])) of
+                   Left s  -> error s
+                   Right x -> case x of
+                                Left e  -> error $ show e
+                                Right y -> y
+
+-- FIXME: B.pack . BL.unpack doesn't look right but I don't want to think about it now
+runEncode :: ASNType a -> a -> B.ByteString
+runEncode t v = case extractValue $ encode t [] v of
+                  Left e         -> error $ show e
+                  Right ((), bb) -> B.pack $ BL.unpack $ BB.toLazyByteString bb
 
 \end{code}
 
@@ -251,6 +270,9 @@ toPER (SET s) x cl         = encodeSet s x -- no PER-Visible constraints
 toPER (CHOICE c) x cl      = encodeChoice c x -- no PER-visible constraints
 toPER (SETOF s) x cl       = encodeSetOf cl s x -- no PER-visible constraints
 toPER (TAGGED tag t) x cl  = encode t cl x
+
+fromPER :: ASNBuiltin a -> [ElementSetSpecs a] -> UnPERMonad a
+fromPER t@INTEGER cl = dInteger cl
 
 \end{code}
 
@@ -447,8 +469,7 @@ oneBit  = tell $ BB.singleton True
 
 \begin{code}
 
-type UnPERMonad a = ErrorT ASNError BG.BitGet a
-
+-- FIXME: We should write this as an unfold rather than use primitive recursion
 decodeLargeLengthDeterminant3 :: (Integer -> t -> UnPERMonad B.ByteString) -> t -> UnPERMonad B.ByteString
 decodeLargeLengthDeterminant3 f t =
    do p <- lift BG.getBit
@@ -772,7 +793,6 @@ dConstrainedInteger mrc isExtensible mec =
       ec <- mec
       let isExtensionConstraint    = ec /= top
           tc                     = rc `ljoin` ec
-          -- FIXME: What about if upper tc == PosInf or lower tc == NegInf?
           rootConstraint         = rc /= top
           rootLower              = let Val x = lower rc in x
           rootRange              = let (Val x) = (upper rc) - (lower rc) + (Val 1) in x
@@ -1542,6 +1562,7 @@ encodeSequence s v
            = do odb <- pass $ encodeSequenceAux (False, False) [] s v
                 return ()
 
+-- FIXME: Eugh pattern match failure here
 selectOutput (Right (a,b)) = b
 
 encodeSequenceAux :: ExtAndUsed -> OptDefBits -> Sequence a -> a
