@@ -2,7 +2,7 @@
 %include polycode.fmt
 
 \usepackage{listings}
-\usepackage{todo}
+\usepackage{todonotes}
 
 \lstdefinelanguage{ASN1} {
   keywords={CHOICE, SEQUENCE, BEGIN, END, IMPLICIT, EXPLICIT, INTEGER, DEFINITIONS},
@@ -23,6 +23,10 @@
 \author{D. J. Russell \and D. J. Steinitz}
 
 \maketitle
+
+\tableofcontents
+
+\listoftodos
 
 \section{Introduction}
 
