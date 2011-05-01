@@ -2,6 +2,7 @@
 %include polycode.fmt
 
 \usepackage{listings}
+\usepackage{todo}
 
 \lstdefinelanguage{ASN1} {
   keywords={CHOICE, SEQUENCE, BEGIN, END, IMPLICIT, EXPLICIT, INTEGER, DEFINITIONS},
@@ -247,13 +248,13 @@ The function {\em toPER} L.takes an {\em ASNBuiltin} type, a value of the same b
 a list of subtype constraints, and encodes the value using PER. The first input is essential
 in determining the encoding algorithm to use. That is, it is a pointer to the appropriate
 encoding function for the value. For example, if the type is {\em INTEGER} then {\em
-encodeInt} is called, and if it is a {\em CHOICE} type then {\em encodeChoice} is used.
+eInteger} is called, and if it is a {\em CHOICE} type then {\em encodeChoice} is used.
 
 \begin{code}
 
 toPER :: ASNBuiltin a -> a -> SerialSubtypeConstraints a -> PERMonad ()
 toPER NULL _ _             = tell BB.empty
-toPER INTEGER x cl         = encodeInt cl x
+toPER INTEGER x cl         = eInteger cl x
 toPER VISIBLESTRING x cl   = encodeKMS cl x
 toPER PRINTABLESTRING x cl = encodeKMS cl x
 toPER NUMERICSTRING x cl   = encodeKMS cl x
@@ -517,9 +518,9 @@ encodeBool t x = tell $ BB.singleton x
 \section{ENCODING THE INTEGER TYPE}
 \label{intEnc}
 
-If the type is unconstrained -- as indicated by an empty constraint list --  then the value is
-encoded as an unconstrained integer using the function {\em encodeUnconsInt}. If the type has
-a constraint then the function {\em encodeIntWithConstraint} is called. The encoding depends on
+\todo{Do we need a reference here?}
+
+The encoding depends on
 whether the constraint is extensible and whether the value lies within the extenstion root.
 
 Note that if a constraint is serially applied to an extensible constraint
@@ -529,27 +530,26 @@ determined only by the last constraint.
 
 \begin{code}
 
-encodeInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
-encodeInt [] v = {- X691REF: 12.2.4 -} encodeUnconsInt v
-encodeInt cs v = encodeIntWithConstraint cs v
+eInteger :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
+eInteger [] v = {- X691REF: 12.2.4 -} eUnconstrainedInteger v
+eInteger cs v = encodeConsInt cs v
 
 \end{code}
 
-
-{\em encodeUnconsInt} encodes an integer value as a 2's-complement-binary-integer
-into a minimum number of octets using {\em to2sComplementM}. This is prefixed by an explicit
-length encoding using {\em encodeOctetsWithLength}.
+We encode an integer value as a 2's-complement-binary-integer
+into a minimum number of octets prefixed by an explicit
+length.
 
 \begin{code}
 
-encodeUnconsInt :: InfInteger -> PERMonad ()
-encodeUnconsInt (Val x) = encodeOctetsWithLength $ (BP.runBitPut . I.to2sComplementM)  x
-encodeUnconsInt v  = throwError (BoundsError ("Cannot encode " ++ show v))
+eUnconstrainedInteger :: InfInteger -> PERMonad ()
+eUnconstrainedInteger (Val x) = encodeOctetsWithLength $ (BP.runBitPut . I.to2sComplementM)  x
+eUnconstrainedInteger v  = throwError (BoundsError ("Cannot encode " ++ show v))
 
 \end{code}
 
 
-{\em encodeIntWithConstraint} calls:
+{\em encodeConsInt} calls:
 \begin{itemize}
 \item
 {\em encodeNonExtConsInt} if the constraint is not extensible. This takes three inputs: the
@@ -564,8 +564,8 @@ inputs. The three required for {\em encodeNonExtConsInt} and the two -- actual a
 
 \begin{code}
 
-encodeIntWithConstraint :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
-encodeIntWithConstraint cs v
+encodeConsInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
+encodeConsInt cs v
     = if (not extensible)
         then {- X691REF: 12.2 -} encodeNonExtConsInt actualCon effectiveCon v
         else {- X691REF: 12.1 -} encodeExtConsInt actualCon effectiveCon v
@@ -589,7 +589,7 @@ eitherExtensible _ = False
 The constraint is empty and thus no values can be encoded. An appropriate error is thrown.
 \item
 The constraint does not restrict the integer to be either constrained or semi-constrained. The
-value is encoded as an unconstrained integer using {\em encodeUnconsInt}.
+value is encoded as an unconstrained integer using {\em eUnconstrainedInteger}.
 \item
 The constraint restricts the integer to be a semi-constrained integer and the value satisfies
 the constraint. The value is encoded using {\em encodeSemiConsInt}.
@@ -612,7 +612,7 @@ encodeNonExtConsInt (Right actualCon) (Right effectiveCon) n
          = case constraintType effRootCon of
                  UnConstrained
                         -> {- X691REF: 12.2.4 -}
-                            encodeUnconsInt n
+                            eUnconstrainedInteger n
                  SemiConstrained
                         -> {- X691REF: 12.2.3 -}
                             encodeSemiConsInt n rootLower
@@ -656,7 +656,7 @@ inRange n (Valid (x:rs))   = n >= (lower x) && n <= (upper x) || inRange n (Vali
 described for {\em encodeNonExtConsInt} -- where any encoding is prefixed by the bit 0 --
 plus the case when the value satisfies the constraint
 but is not within the extension root. In this case the value is encoded as an unconstrained
-integer using {\em encodeUnconsInt} prefixed by the bit 1.
+integer using {\em eUnconstrainedInteger} prefixed by the bit 1.
 
 \begin{code}
 
@@ -671,7 +671,7 @@ encodeExtConsInt (Right actualCon) (Right effectiveCon)  n
                   = do zeroBit
                        case constraintType effRootCon of
                           UnConstrained -> {- X691REF: 12.1 and 12.2.4 -}
-                             encodeUnconsInt n
+                             eUnconstrainedInteger n
                           SemiConstrained -> {- X691REF: 12.1 and 12.2.3 -}
                              encodeSemiConsInt n rootLower
                           Constrained -> {- X691REF: 12.1 and 12.2.4 -}
@@ -679,7 +679,7 @@ encodeExtConsInt (Right actualCon) (Right effectiveCon)  n
              | isNonEmptyConstraint effExtCon && inRange n validExtCon
                   = do  {- X691REF: 12.1 -}
                         oneBit
-                        encodeUnconsInt n
+                        eUnconstrainedInteger n
              | otherwise
                   = throwError (BoundsError "Value out of range")
                     where
