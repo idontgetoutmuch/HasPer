@@ -547,7 +547,8 @@ length.
 \begin{code}
 
 eUnconstrainedInteger :: InfInteger -> PERMonad ()
-eUnconstrainedInteger (Val x) = encodeOctetsWithLength $ (BP.runBitPut . I.to2sComplementM)  x
+eUnconstrainedInteger (Val x) = encodeOctetsWithLength $
+                                BP.runBitPut $ I.to2sComplementM  x
 eUnconstrainedInteger v  = throwError (BoundsError ("Cannot encode " ++ show v))
 
 \end{code}
@@ -1222,12 +1223,15 @@ putBitstream (a:xs)
     = (tell . BB.fromBits 1) a >> putBitstream xs
 putBitstream []
     = noBit
+\end{code}
 
+\todo{Should we use higher order functions here rather
+than recursion?}
+
+\begin{code}
 rem0s :: InfInteger -> InfInteger -> BitStream -> BitStream
-rem0s (Val (n+1)) l xs
-    = rem0s (Val n) l (init xs)
-rem0s (Val 0) l xs
-    = rem0s' l xs
+rem0s (Val 0) l xs = rem0s' l xs
+rem0s (Val n) l xs = rem0s (Val (n - 1)) l (init xs)
 
 rem0s' :: InfInteger -> BitStream -> BitStream
 rem0s' l xs
