@@ -77,6 +77,27 @@ There are two versions of these rules, BASIC-PER and CANONICAL-PER. They both ha
 variants, UNALIGNED and ALIGNED. The later variant may require some bit padding to restore
 octet alignment. We have implemented the UNALIGNED variant of CANONICAL-PER.
 
+\section{Conventions}
+
+In order make the code more intelligible without using overlong identifiers, we adopt
+the following conventions:
+
+\begin{itemize}
+
+\item
+All encoding functions begin with ``e''.
+
+\item
+All decoding functions begin with ``d''.
+
+\item
+A part of an identifier ``Cons'' is short form for ``Constrained''.
+
+\item
+A part of an identifier ``Uncons'' is short form for ``Unconstrained''.
+
+\end{itemize}
+
 \section{UNALIGNED CANONICAL-PER}
 
 %if False
@@ -133,7 +154,7 @@ import Language.ASN1.PER.Integer
 import Data.List as L hiding (groupBy)
 import Data.Char
 import Data.Sequence as S
-import Data.Foldable hiding (all, concat, elem, maximum, mapM_)
+import Data.Foldable hiding (or, all, concat, elem, maximum, mapM_)
 import Control.Monad.Error
 import Control.Monad.Identity
 import Control.Monad.Writer
@@ -535,8 +556,8 @@ determined only by the last constraint.
 \begin{code}
 
 eInteger :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
-eInteger [] v = {- X691REF: 12.2.4 -} eUnconstrainedInteger v
-eInteger cs v = encodeConsInt cs v
+eInteger [] v  = eUnconsInteger v
+eInteger cs v = eConsInteger cs v
 
 \end{code}
 
@@ -546,15 +567,17 @@ length.
 
 \begin{code}
 
-eUnconstrainedInteger :: InfInteger -> PERMonad ()
-eUnconstrainedInteger (Val x) = encodeOctetsWithLength $
-                                BP.runBitPut $ I.to2sComplementM  x
-eUnconstrainedInteger v  = throwError (BoundsError ("Cannot encode " ++ show v))
+eUnconsInteger :: InfInteger -> PERMonad ()
+eUnconsInteger (Val x) = {- X691REF: 12.2.4 -}
+                                        encodeOctetsWithLength $
+                                        BP.runBitPut $
+                                        I.to2sComplementM  x
+eUnconsInteger v         = throwError (BoundsError ("Cannot encode " ++ show v))
 
 \end{code}
 
 
-{\em encodeConsInt} calls:
+{\em eConsInteger} calls:
 \begin{itemize}
 \item
 {\em encodeNonExtConsInt} if the constraint is not extensible. This takes three inputs: the
@@ -569,8 +592,8 @@ inputs. The three required for {\em encodeNonExtConsInt} and the two -- actual a
 
 \begin{code}
 
-encodeConsInt :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
-encodeConsInt cs v
+eConsInteger :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
+eConsInteger cs v
     = if (not extensible)
         then {- X691REF: 12.2 -} encodeNonExtConsInt actualCon effectiveCon v
         else {- X691REF: 12.1 -} encodeExtConsInt actualCon effectiveCon v
@@ -594,7 +617,7 @@ eitherExtensible _ = False
 The constraint is empty and thus no values can be encoded. An appropriate error is thrown.
 \item
 The constraint does not restrict the integer to be either constrained or semi-constrained. The
-value is encoded as an unconstrained integer using {\em eUnconstrainedInteger}.
+value is encoded as an unconstrained integer using {\em eUnconsInteger}.
 \item
 The constraint restricts the integer to be a semi-constrained integer and the value satisfies
 the constraint. The value is encoded using {\em encodeSemiConsInt}.
@@ -617,7 +640,7 @@ encodeNonExtConsInt (Right actualCon) (Right effectiveCon) n
          = case constraintType effRootCon of
                  UnConstrained
                         -> {- X691REF: 12.2.4 -}
-                            eUnconstrainedInteger n
+                            eUnconsInteger n
                  SemiConstrained
                         -> {- X691REF: 12.2.3 -}
                             encodeSemiConsInt n rootLower
@@ -652,8 +675,7 @@ isNonEmptyConstraint x  = x /= bottom
 isEmptyConstraint       = (not . isNonEmptyConstraint)
 
 inRange :: InfInteger -> ValidIntegerConstraint -> Bool
-inRange _ (Valid [])       = False
-inRange n (Valid (x:rs))   = n >= (lower x) && n <= (upper x) || inRange n (Valid rs)
+inRange n vc | Valid cs <- vc = or $ map (\c -> n >= (lower c) && n <= (upper c)) cs
 
 \end{code}
 
@@ -661,7 +683,7 @@ inRange n (Valid (x:rs))   = n >= (lower x) && n <= (upper x) || inRange n (Vali
 described for {\em encodeNonExtConsInt} -- where any encoding is prefixed by the bit 0 --
 plus the case when the value satisfies the constraint
 but is not within the extension root. In this case the value is encoded as an unconstrained
-integer using {\em eUnconstrainedInteger} prefixed by the bit 1.
+integer using {\em eUnconsInteger} prefixed by the bit 1.
 
 \begin{code}
 
@@ -676,7 +698,7 @@ encodeExtConsInt (Right actualCon) (Right effectiveCon)  n
                   = do zeroBit
                        case constraintType effRootCon of
                           UnConstrained -> {- X691REF: 12.1 and 12.2.4 -}
-                             eUnconstrainedInteger n
+                             eUnconsInteger n
                           SemiConstrained -> {- X691REF: 12.1 and 12.2.3 -}
                              encodeSemiConsInt n rootLower
                           Constrained -> {- X691REF: 12.1 and 12.2.4 -}
@@ -684,7 +706,7 @@ encodeExtConsInt (Right actualCon) (Right effectiveCon)  n
              | isNonEmptyConstraint effExtCon && inRange n validExtCon
                   = do  {- X691REF: 12.1 -}
                         oneBit
-                        eUnconstrainedInteger n
+                        eUnconsInteger n
              | otherwise
                   = throwError (BoundsError "Value out of range")
                     where
