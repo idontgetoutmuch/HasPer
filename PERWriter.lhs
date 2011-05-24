@@ -1,4 +1,4 @@
-\documentclass{article}
+\documentclass{report}
 %include polycode.fmt
 
 \usepackage{listings}
@@ -104,7 +104,7 @@ A part of an identifier ``Uncons'' is short form for ``Unconstrained''.
 
 \begin{code}
 
-{-# LANGUAGE MultiParamTypeClasses, GADTs, TypeOperators, EmptyDataDecls, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses, GADTs, TypeOperators, EmptyDataDecls, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving, ScopedTypeVariables #-}
 
 {-# OPTIONS_GHC -fwarn-unused-binds #-}
 
@@ -539,6 +539,24 @@ encodeBool t x = tell $ BB.singleton x
 
 \end{code}
 
+\section{Stuff Used All Over but Which Needs Fixing}
+
+\todo{We normally stay in the monad and propogate any errors --- so make eitherExtensible redundant}
+
+\begin{code}
+eitherExtensible (Right v) = isExtensible v
+eitherExtensible _ = False
+
+eitherExtensible' :: Either String a -> PERMonad a
+eitherExtensible' (Right v) = return v
+eitherExtensible' (Left s)  = throwError $ ConstraintError s
+
+evaluateConstraint' :: (Lattice a, Constraint a, Eq a)  =>
+                       (Element InfInteger -> Bool -> Either String (ExtensibleConstraint a)) ->
+                       Either String (ExtensibleConstraint a) ->
+                       [SubtypeConstraint InfInteger] -> PERMonad (ExtensibleConstraint a)
+evaluateConstraint' x y z = eitherExtensible' $ evaluateConstraint x y z
+\end{code}
 
 \section{ENCODING THE INTEGER TYPE}
 \label{intEnc}
@@ -569,13 +587,12 @@ length.
 
 eUnconsInteger :: InfInteger -> PERMonad ()
 eUnconsInteger (Val x) = {- X691REF: 12.2.4 -}
-                                        encodeOctetsWithLength $
-                                        BP.runBitPut $
-                                        I.to2sComplementM  x
-eUnconsInteger v         = throwError (BoundsError ("Cannot encode " ++ show v))
+                         encodeOctetsWithLength $
+                         BP.runBitPut $
+                         I.to2sComplementM  x
+eUnconsInteger v       = throwError (BoundsError ("Cannot encode " ++ show v))
 
 \end{code}
-
 
 {\em eConsInteger} calls:
 \begin{itemize}
@@ -591,24 +608,14 @@ inputs. The three required for {\em encodeNonExtConsInt} and the two -- actual a
 \end{itemize}
 
 \begin{code}
-
 eConsInteger :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
-eConsInteger cs v
-    = if (not extensible)
-        then {- X691REF: 12.2 -} encodeNonExtConsInt actualCon effectiveCon v
-        else {- X691REF: 12.1 -} encodeExtConsInt actualCon effectiveCon v
-      where
-          effectiveCon :: Either String (ExtensibleConstraint IntegerConstraint)
-          effectiveCon = evaluateConstraint  pvIntegerElements top cs
-          actualCon :: Either String (ExtensibleConstraint ValidIntegerConstraint)
-          actualCon = evaluateConstraint  pvIntegerElements top cs
-          extensible = eitherExtensible effectiveCon
-
-eitherExtensible (Right v) = isExtensible v
-eitherExtensible _ = False
-
+eConsInteger cs v    = do
+      actualCon    <- evaluateConstraint' pvIntegerElements top cs
+      effectiveCon <- evaluateConstraint' pvIntegerElements top cs
+      if isExtensible effectiveCon
+        then {- X691REF: 12.1 -} encodeExtConsInt    actualCon effectiveCon v
+        else {- X691REF: 12.2 -} encodeNonExtConsInt actualCon effectiveCon v
 \end{code}
-
 
 
 {\em encodeNonExtConsInt} has to deal with five cases.
@@ -629,11 +636,11 @@ The value does not satisfy the constraint. An appropriate error is thrown.
 \end{itemize}
 
 \begin{code}
-encodeNonExtConsInt :: Either String (ExtensibleConstraint ValidIntegerConstraint)
-                     -> Either String (ExtensibleConstraint IntegerConstraint)
+encodeNonExtConsInt :: ExtensibleConstraint ValidIntegerConstraint
+                     -> ExtensibleConstraint IntegerConstraint
                      -> InfInteger
                      -> PERMonad ()
-encodeNonExtConsInt (Right actualCon) (Right effectiveCon) n
+encodeNonExtConsInt actualCon effectiveCon n
     | isEmptyConstraint effRootCon
          = throwError (ConstraintError "Empty constraint")
     | isNonEmptyConstraint effRootCon && inRange n validRootCon
@@ -654,8 +661,6 @@ encodeNonExtConsInt (Right actualCon) (Right effectiveCon) n
             validRootCon = getRootConstraint actualCon
             rootLower    = lower effRootCon
             rootUpper    = upper effRootCon
-encodeNonExtConsInt _ _ _ = throwError (ConstraintError "Invalid constraint")
-
 \end{code}
 
 
@@ -687,11 +692,11 @@ integer using {\em eUnconsInteger} prefixed by the bit 1.
 
 \begin{code}
 
-encodeExtConsInt :: Either String (ExtensibleConstraint ValidIntegerConstraint)
-                     -> Either String (ExtensibleConstraint IntegerConstraint)
-                     -> InfInteger
-                     -> PERMonad ()
-encodeExtConsInt (Right actualCon) (Right effectiveCon)  n
+encodeExtConsInt :: ExtensibleConstraint ValidIntegerConstraint ->
+                    ExtensibleConstraint IntegerConstraint ->
+                    InfInteger ->
+                    PERMonad ()
+encodeExtConsInt actualCon effectiveCon n
              | isEmptyConstraint effRootCon && isEmptyConstraint effExtCon
                   = throwError (ConstraintError "Empty constraint")
              | isNonEmptyConstraint effRootCon && inRange n validRootCon
