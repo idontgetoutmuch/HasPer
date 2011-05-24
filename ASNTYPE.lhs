@@ -1,9 +1,12 @@
 \section{Abstract Syntax Tree}
+\todo{Be consistent with tense -- we present, we create ...}
+
 In this section we present our Haskell representation of the Abstract Syntax Notation One (ASN.1) \cite{ASN1}.
 We assume that the reader is familiar with ASN.1 and has also had some experience with
 programming languages. No prior knowledge of Haskell is required. We do not provide a tutorial
 overview of Haskell, but, where necessary, include some commentary to aid the reading of the
-embedded code.
+embedded code. We believe that Haskell, as a strongly-typed language, is a natural language for implementing 
+ASN.1, a type-based notation. 
 
 %if False
 \begin{code}
@@ -34,9 +37,121 @@ upper-case letter prefixed identifiers (formally known as type references) with 
 begin with an upper-case letter to distinguish them from value references which are used to identify
 ASN.1 values. These type references are then used to specify other types enabling a shorthand representation
 of potentially complex ASN.1 types. We describe how ASN.1 types can be created using our Haskell
-representation. We do not describe here the creation of ASN.1 values and thus do not represent
-ASN.1 value assignments. However, our representation of ASN.1 values are made explicit when
-describing and illustrating the PER encoding of such values.
+representation. We do not describe here the creation of ASN.1 values and thus do not describe our representation of 
+ASN.1 value assignments. However, once ASN.1 types are implemented their associated values are represented 
+quite naturally as in the following example. 
+
+\begin{verbatim}
+aBooleanType :: ASNType Bool
+aBooleanType = BuiltinType BOOLEAN
+
+aBooleanValue :: Bool
+aBooleanValue = True 
+\end{verbatim}
+
+Note that type of the value matches the type of the parameter of {\em ASNType}. Note also that although by using Haskell we can check the validity of a value against its type, this is only the case for unconstrained types. For constrained types we can typecheck the value against the (unconstrained type) but then required the PER ecnoding function to check that the value satisfies the stated constraint.
+
+We present below our representation of the ASN.1 record structure of X.691, Annex A, section A.2.1.
+\todo{Pretty-printing example and representation of constraints}
+\todo{Remove names of non-referenced types -- add soc and TypeRef values}
+
+\begin{verbatim}
+personnelRecord
+    = BuiltinType (TAGGED (Application, 0, Implicit) (BuiltinType (SET
+                    (AddComponent (MandatoryComponent (NamedType "name" name))
+                        (AddComponent (MandatoryComponent (NamedType "title" vst))
+                            (AddComponent (MandatoryComponent (NamedType "number" empNumber))
+                                (AddComponent (MandatoryComponent (NamedType "dateOfHire" dateC))
+                                    (AddComponent (MandatoryComponent (NamedType "nameOfSpouse" tnt))
+                                        (AddComponent (DefaultComponent (NamedType "children" soc) [])
+                                            EmptySequence)))))))))
+
+vst = BuiltinType (TAGGED (Context, 0, Explicit) (BuiltinType VISIBLESTRING))
+
+tnt = BuiltinType (TAGGED (Context, 2, Explicit) name)
+
+name
+    = BuiltinType (TAGGED (Application, 1, Implicit) (BuiltinType (SEQUENCE
+                    (AddComponent (MandatoryComponent (NamedType "givenName" nameString))
+                        (AddComponent (MandatoryComponent (NamedType "name" initial))
+                            (AddComponent (MandatoryComponent (NamedType "familyName" nameString))
+                                EmptySequence))))))
+
+empNumber = BuiltinType (TAGGED (Application, 2, Implicit) (BuiltinType INTEGER))
+
+dateC = BuiltinType (TAGGED (Context, 1, Explicit) date)
+
+dateC2 = BuiltinType (TAGGED (Context, 0, Explicit) date)
+
+date = ConstrainedType
+        (BuiltinType (TAGGED (Application, 3, Implicit) (BuiltinType VISIBLESTRING)))
+        (RootOnly (UnionSet (NoUnion 
+           (IntersectionMark (NoIntersection
+                                (ElementConstraint (P (FR (RootOnly (UnionSet (NoUnion 
+                                   (NoIntersection 
+                                      (ElementConstraint (S (SV (VisibleString "0123456789"))))))))))))
+				(ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion 
+				   (NoIntersection 
+				      (ElementConstraint (V (R (8,8)))))))))))))))
+
+nameString = ConstrainedType 
+               (BuiltinType VISIBLESTRING)
+	       (RootOnly (UnionSet (NoUnion 
+                 (IntersectionMark (NoIntersection
+                                      (ElementConstraint (P (FR (RootOnly (UnionSet (NoUnion (NoIntersection 
+                                               (ElementConstraint (S (SV (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])))))))))))))
+				      (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion
+				               (NoIntersection (ElementConstraint (V (R (1,64)))))))))))))))
+
+initial = ConstrainedType nameString
+	    (RootOnly (UnionSet (NoUnion (NoIntersection
+	              (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
+                      (ElementConstraint (V (R (1,1)))))))))))))))
+
+\end{verbatim}
+  
+Here is our representation of the record value presented in X.691, Annex A, section A.2.2.
+
+\begin{verbatim}
+pr = emp :*: t :*: num :*: hiredate :*: sp :*: Just cs :*: Empty
+
+emp = empGN :*: empI :*: empFN :*: Empty
+
+empGN = VisibleString "John"
+
+empFN = VisibleString "Smith"
+
+empI = VisibleString "P"
+
+t = VisibleString "Director"
+
+num = 51
+
+hiredate = VisibleString "19710917"
+
+sp = spGN :*: spI :*: spFN :*: Empty
+
+spGN = VisibleString "Mary"
+
+spI  = VisibleString "T"
+
+spFN = VisibleString "Smith"
+
+cs = [c1,c2]
+
+c1 = ((c1GN :*: (c1I :*: (c1FN :*: Empty))) :*: (c1BD :*: Empty))
+c2 = ((c2GN :*: (c2I :*: (c2FN :*: Empty))) :*: (c2BD :*: Empty))
+
+c1GN = VisibleString "Ralph"
+c1I  = VisibleString "T"
+c1FN = VisibleString "Smith"
+c1BD = VisibleString "19571111"
+
+c2GN = VisibleString "Susan"
+c2I  = VisibleString "B"
+c2FN = VisibleString "Jones"
+c2BD = VisibleString "19590717"
+\end{verbatim}
 
 \subsection{ASN.1 Type}
 \label{asntype}
@@ -93,10 +208,10 @@ the type of the Haskell representation.
 \label{table1}
 \begin{tabular}{lll}
 {\bf ASN.1 Type} & {\bf Haskell Representation} & {\bf Type} \\
-{\tt BOOLEAN} & {\em built-inType BOOLEAN} & {\em ASNType Bool}\\
-{\tt INTEGER} & {\em built-inType INTEGER} & {\em ASNType InfInteger}\\
+{\tt BOOLEAN} & {\em BuiltinType BOOLEAN} & {\em ASNType Bool}\\
+{\tt INTEGER} & {\em BuiltinType INTEGER} & {\em ASNType InfInteger}\\
 {\tt INTEGER (1..4)} & {\em ConstrainedType}  & {\em ASNType InfInteger}\\
-& {\em \hspace{0.2cm} (built-inType INTEGER) intCons} &
+& {\em \hspace{0.2cm} {\em BuiltinType INTEGER) intCons} &
 \end{tabular}
 \end{table}
 
@@ -159,6 +274,7 @@ data ASNBuiltin a where
    TAGGED          :: TagInfo -> ASNType a -> ASNBuiltin a
 
 \end{code}
+\todo{SEQUENCEOF and SETOF should have ASNTYPE or NamedType as input -- see X.680 25.1}
 
 The {\em ASNBuiltin} type includes several constructors which we describe in the following
 subsections. We have categorised the constructors as nullary - they are values of the type - and
@@ -187,16 +303,17 @@ indicates that the type is being implicitly added to the built-in type class {\e
 collection of types typically with an explicit collection of associated functions, operators
 and/or values. For example, any value of a {\em Show} type may be converted to its printable form
 using a function {\em show}. This enables the overloading of the function, operator or value
-names of a type class. For example, each type of the type class {\em Show} has a function
+names of a type class. For example, each type of the type class {\em Show} has the previously mentioned function
 called {\em show}. This is not a single polymorphic function, but a collection of individually
 defined functions which share the same name. This is similar to the type of polymorphism
 common to object-oriented programming languages.
 
-The type {\em InfInteger} is our integer type augmented with maximum and minimum values. This
-is also added to types classes -- {\em Show}, {\em Eq} the equality testing class, and {\em
+The type {\em InfInteger} is our integer type which is Haskell's {\em Integer} type 
+augmented with maximum and minimum values. This
+is also added to the types classes -- {\em Show}, {\em Eq} the equality testing class, and {\em
 Ord} which hosts the comparison operators -- but is also being explicitly added to the type
 classes {\em Bounded} and {\em Num}. This is indicated by the keyword {\em instance} and
-requires the implementation of the type class's entities. {\em Bounded} has two
+requires the explicit implementation of the type class's entities. {\em Bounded} has two
 values {\em minBound} and {\em maxBound} and {\em Num} includes the arithmetic operators.
 \begin{code}
 
@@ -235,14 +352,14 @@ This is used in place of {\em data} when one wants a type which is the same as a
 type but is recognised as distinct from the existing type by the type system. Thus one is simply
 wrapping an existing type in a constructor to
 enable type distinction. Each new type includes a function for accessing the value wrapped in
-the constructor. For example, the function {\em iA5String} converts a {\em IA5String} value
+the constructor. For example, the function {\em iA5String} converts an {\em IA5String} value
 into a string.
 
 Note that the {\em BitString} type mimics the type {\em BitStream} which is simply another
 name for a list of integers. This is indicated by the keyword {\em type} which does not
 introduce a new type, but simply declares an alias for an existing type. Similarly
 the {\em OctetString} type mimics the type {\em OctetStream} which is a list of {\em Octet}s,
-an alias for {\em Word8}.
+an alias for the Haskell type {\em Word8}.
 
 \begin{code}
 
@@ -290,7 +407,9 @@ The constructors {\em SEQUENCE} and {\em SET} require a {\em Sequence} input to 
 particular type of sequence or set being represented. That is, different sequences may have different
 types. For example, a sequence constructed from an integer and a boolean has a
 different type from one constructed from a couple of visible strings.
-We describe the type {\em Sequence} in section \ref{sequence}.
+We describe the type {\em Sequence} in section \ref{sequence}. Note that the return type just uses the parameter
+of the {\em Sequence} type since a sequence value will have the parameter's type.
+\todo{Do we need to explain this?}
 
 The {\em SEQUENCEOF} and {\em SETOF} constructors require the type of the individual
 components to be provided as input. These could be any of the ASN.1 types (or any named type).
@@ -303,7 +422,8 @@ also requires an input that specifies the particular choices that are available.
 return type needs to emphasise that only one value may actually be used. This is achieved by using
 a new type {\em ExactlyOne} which we describe in section \ref{choice}. This is also the approach used
 for an enumerated type. The constructor {\em ENUMERATED} requires an input that represents the particular
-enumeration. Finally the {\em TAGGED} constructor creates a tagged value from an ASN.1 tag and
+enumeration of type {\em Enumerate}. This type is described in section \ref{enumerate}. 
+Finally the {\em TAGGED} constructor creates a tagged value from an ASN.1 tag and
 a built-in type.
 
 \begin{code}
@@ -321,7 +441,7 @@ data TagPlicity = Implicit | Explicit
 \end{code}
 
 We present in table \ref{ASN1built-in} some examples of how we represent ASN.1 built-in types.
-
+\todo{Should we show some values here as well?}
 \begin{table}[h]
 \caption{ASN.1 built-in Types}
 \label{ASN1built-in}
@@ -345,7 +465,7 @@ ChoiceType} and {\tt EnumeratedType}.
 
 \subsection{ASN.1 ReferencedType}
 \label{reference}
-NEED A FULL EXPLANATION HERE -- SEE X.680
+\todo{NEED A FULL EXPLANATION HERE -- SEE X.680}
 An ASN.1 referenced type is typically simply the type
 reference component of a type assignment.
 
@@ -358,9 +478,12 @@ newtype TypeReference = Ref {ref :: String}
 
 However, since we require the compile-time type
 checker to raise any type errors, we need to associate any type reference with its type.
+
+\todo{Is this the only way to do this?}
+\todo{How often are we going to use type references?}
 For example\\
 \\
-{\em ReferencedType (Ref "T") (built-inType INTEGER)}\\
+{\em ReferencedType (Ref "T") (BuiltinType INTEGER)}\\
 \\
 represents a reference to the ASN.1 type {\tt IntegerType}. Although this appears simply to
 add unnecessary complexity to the code, it allows us to faithfully pretty print ASN.1 types.
@@ -379,13 +502,20 @@ the constraint is applied to the component type of a collection
 type, and not to the collection itself.
 \end{itemize}
 
+We implement both of these cases using the same approach. That is, a {\tt SETOF} or {\tt SEQUENCEOF} type associated with a constraint implies that the constraint
+is applied to the collection. To constrain an element type of these collections we simply use a constrained type as the argument of {\tt SETOF} or {\tt SEQUENCEOF}.
+
+\todo{Why is SizeConstraint singled out in X.680 45.5?}
+
 A {\tt Constraint} is either a {\tt SubtypeConstraint} or a {\tt
 GeneralConstraint} with or without an exception. We have only implemented subtype contraints
 and have not implemented exceptions (X.680 clause 49).
 
-Now a {\tt SubtypeConstraint} can be non-extensible, extensible but as yet have no extension
+A {\tt SubtypeConstraint} can be non-extensible, extensible but as yet have no extension
 additions, or be extensible with extension additions. Our type {\em SubtypeConstraint}
-provides for each of these cases.
+provides for each of these cases and this type and other types specified in this section mimic the 
+type assignments presented in X.680 section 46. It is a parameterised type so that constraint types can 
+match the type with which they are associated as mentioned in section \ref{asntype}.
 
 \begin{code}
 
@@ -398,7 +528,7 @@ data SubtypeConstraint a = RootOnly (ElementSetSpec a)
 The root and extension addition components of a subtype constraint are values of type
 {\em ElementSetSpec}. These are constraints that are specified as a set combination of
 various elemental constraints. At the top-most level a constraint is either a union of
-sub-constraints or the complement of a constraint.
+sub-constraints or the complement of a constraint (everything except some stated constraint).
 
 \begin{code}
 
@@ -406,10 +536,8 @@ data ElementSetSpec a = UnionSet (Unions a) | ComplementSet (Exclusions a)
 
 \end{code}
 
-The sub-constraints of a union are intersections of constraints which are either element constraints
-or the set difference of element constraints. Note that only element constraints
-may be complemented and element constraints may themselves be the set combination of
-constraints.
+The component constraints of a union are intersections of constraints which in turn are either element constraints
+or the set difference of element constraints. 
 
 \begin{code}
 
@@ -422,28 +550,49 @@ data IntersectionElements a
 
 \end{code}
 
-There are eight kinds of element constraint each of which may be applied to a known collection
-of the ASN.1 types. Our representation of each of the element constraints are presented below the
+There are various kinds of element constraint. There are eight atomic constraints listed as 
+ASN.1 {\tt SubtypeElements}. Each of these may be 
+applied to a known collection of the ASN.1 types as specified in table 9 in section 49.1 of X.680. 
+In addition, an element constraint may be a parenthesised {\tt ElementSetSpec} or {\tt ObjectSetElememts} as described 
+in X.681. We have not implemented the last of these.
+
+\todo{Some overall explanation why we are not implementing objects.} 
+
+Our representation of each of the atomic element constraints are presented below the
 definition of the type {\em Element}. We manage the association of an element
-constraint with an ASN.1 type by using a collection of new Haskell type classes. For
-example, the {\em ValueRangeConstraint} may only be applied to types which are members of the
+constraint with the appropriate ASN.1 types (as listed in table 9) by using a collection of new Haskell type classes. For
+example, 
+
+\begin{itemize}
+\item
+the {\em ValueRangeConstraint} may only be applied to types which are members of the
 type class {\em ValueRange} as indicated by {\em ValueRange a $=>$} in the definition of the
-{\em ValueRangeConstraint} type. The {\em InfInteger} type and the various restricted character strings
-types are the only members of this type class.
+{\em ValueRangeConstraint} type, and 
+\item
+the instance declarations for the {\em ValueRange} class indicate that 
+{\em InfInteger} type and the various restricted character strings types are the only members of this type class.
+\end{itemize}
 
 Note that each type class is simply used for membership purposes and thus does not have any
-associated methods.
+associated methods. That is, the type classes restrict the set of the types to which a constraint may be applied. For example, a {\tt PermittedAlphabet} 
+constraint may only be applied to a restricted character string type (since we haven't implemented the object descriptor type). 
 
 We do not currently support the constraint {\tt TypeConstraint} which is only applied to an open type and thus
 only of use with information object classes which are not part of this implementation. Neither do
 we support the constraint {\tt PatternConstraint} which imposes a regular expression-based constraint on restricted
 character string types.
 
+\todo{The parent and included type in a contained subtype application should be the same. Our type system allows SETs and SEQUENCEs to be used 
+interchangeably (and SETOF etc.).} 
+\todo{Do we really need the parenthesis case -- for unambiguous parsing?}
+
+
 \begin{code}
 
 data Element a = S (SingleValueConstraint a) | C (ContainedSubtypeConstraint a)
                  | V (ValueRangeConstraint a) | P (PermittedAlphabetConstraint a)
                  | SZ (SizeConstraint a) | IT (InnerTypeConstraints a)
+		 | Paren (ElementSetSpec a)
 
 
 data SingleValueConstraint a = SingleValue a => SV a
@@ -527,14 +676,15 @@ instance InnerType [a]
 
 \end{code}
 
+We have now completed the implementation of the constraints defined in X.680.
 In the following section we provide some types which are required in the generation and
-processing of constraints.
+processing of constraints. 
 
 \subsection{Constraint Processing Types}
 
 ASN.1 type constraints can be applied in series. We represent the collection of these constraints
-using a list type which we call {\em SerialSubtypeConstraints}. It is a parameterised type because we want to match
-the type of the constraint with the ASN.1 type to which it is being applied.
+using a list type which we call {\em SerialSubtypeConstraints}. It is a parameterised type because as mentioned previously the types of the constraint
+and the ASN.1 type to which it is being applied must be the same.
 
 \begin{code}
 type SerialSubtypeConstraints a = [SubtypeConstraint a]
@@ -543,14 +693,15 @@ type SerialSubtypeConstraints a = [SubtypeConstraint a]
 Now there are two types of constraints that may be generated:
 \begin{itemize}
 \item
-the effective constraint which is used when PER-encoding an ASN.1 value. This uses only the applicable subtype constraints
-that are PER-visible. The applicable subtype constraints are presented in section 47.7 of X.680. The PER-visible constraints are presented in
+the effective constraint which is used when PER-encoding an ASN.1 value. Only constraints that are applied to the appropriate type and that are PER-visible 
+are used in the generation of the effective constraint. Table 9 in section 47.1 of X.680 summarizes which subtype elements can be applied to which
+parent types. The PER-visible constraints are presented in
 in section 9.3 of X.691.
 \item
-the validity-testing constraint. This uses all applicable subtype constraints.
+the validity-testing constraint. This uses all applicable subtype elements.
 \end{itemize}
 
-Thus any type which has at least one applicable subtype constraint needs a Haskell type to represent a constraint. We present these types in the following
+Thus any type which has at least one applicable subtype element needs a Haskell type to represent a constraint. We present these types in the following
 sections.
 
 \subsubsection{BooleanType Constraint}
@@ -577,7 +728,7 @@ non-contiguous we represent their values as a list of contiguous sets.
 We also introduce another type {\em IntegerConstraintType} which is an enumerated type with
 three values: {\em Constrained}, {\em SemiConstrained} and {\em Unconstrained}. These values
 are used to classify a constraint when encoding an integer. We have also implemented the
-function {\em constraintType} which tests the form of a constraint an allocates the
+function {\em constraintType} which tests the form of a constraint and allocates the
 appropriate value of the type {\em IntegerConstraintType}.
 
 These functions and the type are used in the encoding of integer values as specified in section
@@ -606,7 +757,7 @@ constraintType x
 unconstrained,semiconstrained,constrained :: IntegerConstraint -> Bool
 unconstrained x     = (lower x) == minBound
 semiconstrained x   = (upper x) == maxBound
-constrained x       = not (unconstrained x) && not (semiconstrained x)
+constrained x       = not (unconstrained x || semiconstrained x)
 
 \end{code}
 
@@ -618,6 +769,8 @@ constraints.
 
 An enumerated constraint is represented as a list of enumeration items.
 
+\todo{Need to explain this.}
+
 \begin{code}
 
 data EnumeratedConstraint = EnumeratedConstraint [Integer]
@@ -625,6 +778,7 @@ data EnumeratedConstraint = EnumeratedConstraint [Integer]
 
 \end{code}
 
+\subsubsection{Restricted String Type Constraints}
 
 The type {\em ResStringConstraint} represents the distinct components --
 the permitted alphabet constraint and the size constraint -- of a root or extension
@@ -643,10 +797,12 @@ data ExtensibleConstraint i = ExtensibleConstraint i i Bool
 
 \end{code}
 
+\todo{Need to explain why only mention extensible constraints here -- why not for integer type? Also more detail required regarding the parameters and why no 
+type for BITSTRING and OCTETSTRING}
 
 \subsection{ASN.1 SequenceType}
 \label{sequence}
-
+\todo{Position with type entries}
 A sequence type is a (possibly heterogeneous) collection of component types. The normal approach in Haskell
 when representing a collection of items is to use the built-in list type. However, each item of a
 list {\em must} be
