@@ -15,6 +15,7 @@
   {}
 
 \newcommand{\bottom}{\perp}
+\newcommand{\INTEGER}{INTEGER}
 
 \begin{document}
 
@@ -104,7 +105,7 @@ A part of an identifier ``Uncons'' is short form for ``Unconstrained''.
 
 \begin{code}
 
-{-# LANGUAGE MultiParamTypeClasses, GADTs, TypeOperators, EmptyDataDecls, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving, ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses, GADTs, TypeOperators, EmptyDataDecls, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving, ScopedTypeVariables, PatternGuards #-}
 
 {-# OPTIONS_GHC -fwarn-unused-binds #-}
 
@@ -561,17 +562,28 @@ evaluateConstraint' x y z = eitherExtensible' $ evaluateConstraint x y z
 \section{ENCODING THE INTEGER TYPE}
 \label{intEnc}
 
-\todo{Do we need a reference here?}
-
-The encoding depends on
-whether the constraint is extensible and whether the value lies within the extenstion root.
-
 \todo{This seems out of place}
-
 Note that if a constraint is serially applied to an extensible constraint
 then any extension additions of the extensible constraint are discarded (see X.680 Annex
 G.4.2.3). That is, the extensibility and extension additions of the effective constraint are
 determined only by the last constraint.
+
+We first define some helper functions to assist with checking whether a constraint is empty
+and, for \INTEGER constraints whether a value is in the range specified by the constraints.
+
+\begin{code}
+isEmptyConstraint, isNonEmptyConstraint :: (Eq t, Lattice t) => t -> Bool
+isEmptyConstraint    x  = x == bottom
+isNonEmptyConstraint x  = x /= bottom
+\end{code}
+
+\begin{code}
+inRange :: InfInteger -> ValidIntegerConstraint -> Bool
+inRange n vc | Valid cs <- vc = or . map (\c -> n >= (lower c) && n <= (upper c)) $ cs
+\end{code}
+
+We split the encoding of an \INTEGER into two cases depending on whether
+there are any constraints.
 
 \begin{code}
 eInteger :: [SubtypeConstraint InfInteger] -> InfInteger -> PERMonad ()
@@ -586,13 +598,13 @@ length.
 \begin{code}
 eUnconsInteger :: InfInteger -> PERMonad ()
 eUnconsInteger (Val x) = {- X691REF: 12.2.4 -}
-                         encodeOctetsWithLength $
-                         BP.runBitPut $
-                         I.to2sComplementM  x
+                         encodeOctetsWithLength .
+                         BP.runBitPut .
+                         I.to2sComplementM  $ x
 eUnconsInteger v       = throwError (BoundsError ("Cannot encode " ++ show v))
 \end{code}
 
-We split the encoding of constrained \INTEGER into two cases depending
+We split the encoding of a constrained \INTEGER into two cases depending
 on whether the effective constraint is extensible.
 
 \begin{code}
@@ -618,16 +630,7 @@ encodeNonExtConsInt actualCon effectiveCon n
    | isEmptyConstraint effRootCon =
         throwError (ConstraintError "Empty constraint")
    | isNonEmptyConstraint effRootCon && inRange n validRootCon =
-        case constraintType effRootCon of
-           UnConstrained ->
-              {- X691REF: 12.2.4 -}
-              eUnconsInteger n
-           SemiConstrained ->
-              {- X691REF: 12.2.3 -}
-              encodeSemiConsInt n rootLower
-           Constrained ->
-              {- X691REF: 12.2.2 -}
-              encodeConstrainedInt (n - rootLower, rootUpper - rootLower)
+        eRootConsInteger (constraintType effRootCon) n rootLower rootUpper
    | otherwise =
         throwError (BoundsError "Value out of range")
 
@@ -636,34 +639,7 @@ encodeNonExtConsInt actualCon effectiveCon n
       validRootCon = getRootConstraint actualCon
       rootLower    = lower effRootCon
       rootUpper    = upper effRootCon
-\end{code}
 
-
-The functions {\em isNonEmptyConstraint} and {\em isEmptyConstraint} test whether the
-combination of PER-visible constraints results in an actual constraint or no constraint.
-For example, the intersection of two mutually exclusive constraints results in no constraint.
-This will then mean that their can be no valid values and an error must be reported.
-
-The function {\em inRange} tests with a value satisfies a constraint. It is tested
-against the actual constraint and not against the effective constraint which is used for
-encoding.
-
-\begin{code}
-isNonEmptyConstraint,isEmptyConstraint :: (Eq t, Lattice t) => t -> Bool
-isNonEmptyConstraint x  = x /= bottom
-isEmptyConstraint       = (not . isNonEmptyConstraint)
-
-inRange :: InfInteger -> ValidIntegerConstraint -> Bool
-inRange n vc | Valid cs <- vc = or $ map (\c -> n >= (lower c) && n <= (upper c)) cs
-\end{code}
-
-\todo{This looks very similar to the NonExt case --- we should be able to factor out common code}
-
-If the constraints are empty or the value to be encoded is not valid value
-of the constrained type then we throw an error otherwise we follow the encoding
-rules in Clause 12.
-
-\begin{code}
 eExtConsInteger :: ExtensibleConstraint ValidIntegerConstraint ->
                    ExtensibleConstraint IntegerConstraint ->
                    InfInteger ->
@@ -673,13 +649,7 @@ eExtConsInteger actualCon effectiveCon n
        throwError (ConstraintError "Empty constraint")
    | isNonEmptyConstraint effRootCon && inRange n validRootCon = do
        zeroBit
-       case constraintType effRootCon of
-          UnConstrained -> {- X691REF: 12.1 and 12.2.4 -}
-             eUnconsInteger n
-          SemiConstrained -> {- X691REF: 12.1 and 12.2.3 -}
-             encodeSemiConsInt n rootLower
-          Constrained -> {- X691REF: 12.1 and 12.2.4 -}
-             encodeConstrainedInt ((n - rootLower), (rootUpper - rootLower))
+       eRootConsInteger (constraintType effRootCon) n rootLower rootUpper
    | isNonEmptyConstraint effExtCon && inRange n validExtCon = do
         {- X691REF: 12.1 -}
         oneBit
@@ -694,6 +664,16 @@ eExtConsInteger actualCon effectiveCon n
       validExtCon  = getExtConstraint actualCon
       rootLower    = lower effRootCon
       rootUpper    = upper effRootCon
+
+eRootConsInteger UnConstrained   n l u =
+  {- X691REF: 12.2.4 -}
+  eUnconsInteger n
+eRootConsInteger SemiConstrained n l u =
+  {- X691REF: 12.2.3 -}
+  encodeSemiConsInt n l
+eRootConsInteger Constrained     n l u =
+  {- X691REF: 12.2.2 -}
+  encodeConstrainedInt (n - l, u - l)
 \end{code}
 
 {\em encodeSemiConsInt} encodes a semi-constrained integer. The difference between the value and the
@@ -702,7 +682,6 @@ lower bound is encoded as a non-negative-binary-integer in the mininum number of
 octets using {\em encodeOctetsWithLength}.
 
 \begin{code}
-
 encodeSemiConsInt :: InfInteger -> InfInteger -> PERMonad ()
 encodeSemiConsInt x@(Val v) y@(Val lb)
     = encodeOctetsWithLength (encodeNonNegBinaryIntInOctets (x-y))
