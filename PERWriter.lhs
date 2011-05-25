@@ -664,30 +664,34 @@ eExtConsInteger actualCon effectiveCon n
       validExtCon  = getExtConstraint actualCon
       rootLower    = lower effRootCon
       rootUpper    = upper effRootCon
-
+        
+eRootConsInteger :: IntegerConstraintType ->
+                    InfInteger ->
+                    InfInteger ->
+                    InfInteger ->
+                    PERMonad ()
 eRootConsInteger UnConstrained   n l u =
   {- X691REF: 12.2.4 -}
   eUnconsInteger n
 eRootConsInteger SemiConstrained n l u =
   {- X691REF: 12.2.3 -}
-  encodeSemiConsInt n l
+  eSemiConsInteger n l
 eRootConsInteger Constrained     n l u =
   {- X691REF: 12.2.2 -}
   encodeConstrainedInt (n - l, u - l)
 \end{code}
 
-{\em encodeSemiConsInt} encodes a semi-constrained integer. The difference between the value and the
-lower bound is encoded as a non-negative-binary-integer in the mininum number of octets using
-{\em encodeNonNegBinaryIntInOctets}. This is prefixed by an encoding of the length of the
-octets using {\em encodeOctetsWithLength}.
+We encode a semi-constrained integer as a non-negative-binary-integer of the difference between the value and the
+lower bound in the mininum number of octets prefixed by the length of the
+octets.
 
 \begin{code}
-encodeSemiConsInt :: InfInteger -> InfInteger -> PERMonad ()
-encodeSemiConsInt x@(Val v) y@(Val lb)
-    = encodeOctetsWithLength (encodeNonNegBinaryIntInOctets (x-y))
-encodeSemiConsInt n (Val lb)
-    = throwError (BoundsError ("Cannot encode " ++ show n ++ "."))
-encodeSemiConsInt _ _
+eSemiConsInteger :: InfInteger -> InfInteger -> PERMonad ()
+eSemiConsInteger x@(Val _) lb@(Val _)
+    = encodeOctetsWithLength . encodeNonNegBinaryIntInOctets $ x - lb
+eSemiConsInteger x (Val _)
+    = throwError . BoundsError $ "Cannot encode " ++ show x ++ "."
+eSemiConsInteger _ _
     = throwError (ConstraintError "No lower bound.")
 
 encodeNonNegBinaryIntInOctets :: InfInteger -> BL.ByteString
@@ -733,11 +737,11 @@ the constraint.
 
 \begin{code}
 
-encodeConstrainedInt :: (MonadWriter BB.BitBuilder m) => (InfInteger, InfInteger) -> m ()
+encodeConstrainedInt :: (InfInteger, InfInteger) -> PERMonad ()
 encodeConstrainedInt (Val val, Val range)
     = toNonNegativeBinaryIntegerT val range
 
-toNonNegativeBinaryIntegerT :: (MonadWriter BB.BitBuilder m) => Integer -> Integer -> m ()
+toNonNegativeBinaryIntegerT :: Integer -> Integer -> PERMonad ()
 toNonNegativeBinaryIntegerT _ 0 = tell BB.empty
 toNonNegativeBinaryIntegerT 0 w
     = toNonNegativeBinaryIntegerT 0 (w `div` 2) >> zeroBit
@@ -961,7 +965,7 @@ encodeNSNNInt n lb
                 encodeConstrainedInt (fromInteger n, fromInteger 63)
         else do {- X691REF: 10.6.2 -}
                 oneBit
-                encodeSemiConsInt (fromInteger n) (fromInteger lb)
+                eSemiConsInteger (fromInteger n) (fromInteger lb)
 
 
 \end{code}
