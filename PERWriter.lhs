@@ -391,7 +391,7 @@ encodeWithLength ic fun ls
                          do tell BB.empty
                             mapM_ fun ls
                     else
-                        do encodeConstrainedInt (fromInteger (L.genericLength ls) - lb, ub-lb)
+                        do toNonNegBinaryInteger (fromInteger (L.genericLength ls) - lb) (ub - lb)
                            mapM_ fun ls
           else {- X691REF: 10.9.4.2 -}
                encodeUnconstrainedLength fun ls
@@ -469,12 +469,12 @@ lengthLessThan16K n
    | n <= 127
      {- X691REF: 10.9.3.6 -}
         = do zeroBit
-             encodeConstrainedInt (n, 127)
+             toNonNegBinaryInteger n 127
    | n < k16
      {- X691REF: 10.9.3.7 -}
         = do oneBit
              zeroBit
-             encodeConstrainedInt (n, (k16-1))
+             toNonNegBinaryInteger n (k16 - 1)
    | otherwise
         = throwError (BoundsError "Length is out of range.")
 
@@ -482,7 +482,7 @@ blockLen :: InfInteger -> InfInteger -> PERMonad ()
 blockLen x y
     = do oneBit
          oneBit
-         encodeConstrainedInt (x,y)
+         toNonNegBinaryInteger x y
 
 
 noBit :: PERMonad ()
@@ -664,7 +664,7 @@ eExtConsInteger actualCon effectiveCon n
       validExtCon  = getExtConstraint actualCon
       rootLower    = lower effRootCon
       rootUpper    = upper effRootCon
-        
+
 eRootConsInteger :: IntegerConstraintType ->
                     InfInteger ->
                     InfInteger ->
@@ -678,7 +678,7 @@ eRootConsInteger SemiConstrained n l u =
   eSemiConsInteger n l
 eRootConsInteger Constrained     n l u =
   {- X691REF: 12.2.2 -}
-  encodeConstrainedInt (n - l, u - l)
+  toNonNegBinaryInteger (n - l) (u - l)
 \end{code}
 
 We encode a semi-constrained integer as a non-negative-binary-integer of the difference between the value and the
@@ -728,25 +728,24 @@ encodeBitsWithLength = encodeUnconstrainedLength (tell . BB.fromBits 1)
 \end{code}
 
 
-{\em encodeConstrainedInt} encodes an integer in the minimum
+{\em toNonNegBinaryInteger} encodes an integer in the minimum
 number of bits required for the range specified by the constraint
 (assuming the range is at least 2). The value encoded is the offset from the lower bound of
 the constraint.
 
-{- FIXME Check this and rename functions -}
-
 \begin{code}
 
-encodeConstrainedInt :: (InfInteger, InfInteger) -> PERMonad ()
-encodeConstrainedInt (Val val, Val range)
-    = toNonNegativeBinaryIntegerT val range
+toNonNegBinaryInteger :: InfInteger -> InfInteger -> PERMonad ()
+toNonNegBinaryInteger (Val val) (Val range) = toNonNegBinaryIntegerAux val range
+   where
+      toNonNegBinaryIntegerAux :: Integer -> Integer -> PERMonad ()
+      toNonNegBinaryIntegerAux _ 0 = tell BB.empty
+      toNonNegBinaryIntegerAux 0 w
+          = toNonNegBinaryIntegerAux 0 (w `div` 2) >> zeroBit
+      toNonNegBinaryIntegerAux n w
+          = toNonNegBinaryIntegerAux (n `div` 2) (w `div` 2) >> (tell . BB.fromBits 1) n
 
-toNonNegativeBinaryIntegerT :: Integer -> Integer -> PERMonad ()
-toNonNegativeBinaryIntegerT _ 0 = tell BB.empty
-toNonNegativeBinaryIntegerT 0 w
-    = toNonNegativeBinaryIntegerT 0 (w `div` 2) >> zeroBit
-toNonNegativeBinaryIntegerT n w
-    = toNonNegativeBinaryIntegerT (n `div` 2) (w `div` 2) >> (tell . BB.fromBits 1) n
+toNonNegBinaryInteger x y = throwError . OtherError $ "Cannot encode: " ++ show x ++ " in " ++ show y
 
 \end{code}
 
@@ -909,7 +908,7 @@ withinConstraint i _
 
 {\em encodeEnumAux} is a recursive function which recurses through the enumeration value until
 it reaches the enumeration. If no extension marker is present then the enumeration is
-encoded using {\em encodeConstrainedInt}. If the marker is present and the enumeration is
+encoded using {\em toNonNegBinaryInteger}. If the marker is present and the enumeration is
 in the extension root then it is encoded as above but prefixed by 0.
 
 If the enumeration is not in the extension root then the encoding is passed to a second
@@ -925,10 +924,10 @@ encodeEnumAux extensible no (f:r) (AddEnumeration ei es) n
     | getName ei == n
         = if not extensible
             then    {- X691REF: 13.2 -}
-                    encodeConstrainedInt (fromInteger f, fromInteger (no-1))
+                    toNonNegBinaryInteger (fromInteger f) (fromInteger $ no - 1)
             else do {- X691REF: 13.2 -}
                     zeroBit
-                    encodeConstrainedInt (fromInteger f, fromInteger (no-1))
+                    toNonNegBinaryInteger (fromInteger f) (fromInteger $ no - 1)
     | otherwise
         = encodeEnumAux extensible no r es n
 encodeEnumAux b no inds (EnumerationExtensionMarker   ex) x
@@ -962,7 +961,7 @@ encodeNSNNInt n lb
     = if n <= 63
         then do {- X691REF: 10.6.1 -}
                 zeroBit
-                encodeConstrainedInt (fromInteger n, fromInteger 63)
+                toNonNegBinaryInteger (fromInteger n) (fromInteger 63)
         else do {- X691REF: 10.6.2 -}
                 oneBit
                 eSemiConsInteger (fromInteger n) (fromInteger lb)
@@ -1242,7 +1241,7 @@ encodeConBS pb l u xs
                        else if u <= 65536
                             then {- X691REF: 15.11 (ub set) -}
                                 do  putBitstream pb
-                                    encodeConstrainedInt ((fromInteger.L.genericLength) xs - l, u-l)
+                                    toNonNegBinaryInteger ((fromInteger . L.genericLength $  xs) - l) (u - l)
                                     putBitstream xs
                             else {- X691REF: 15.11 (ub unset) -}
                                 do
@@ -1320,7 +1319,7 @@ encodeUnconstrainedOctetstring (OctetString xs)
     = encodeUnconstrainedLength encodeOctet xs
 
 encodeOctet :: Octet -> PERMonad ()
-encodeOctet x = encodeConstrainedInt ((fromIntegral x),255)
+encodeOctet x = toNonNegBinaryInteger (fromIntegral x) 255
 
 \end{code}
 
@@ -1469,7 +1468,7 @@ encodeConstrainedOctetstring pb l u (Valid vrc) xs
 
 encodeEitherOctet (Left s) l u = throwError s
 encodeEitherOctet (Right ((),bs)) l u
-    = encodeConstrainedInt ((fromInteger . toInteger . BL.length . BB.toLazyByteString) bs - l,u-l)
+    = toNonNegBinaryInteger ((fromInteger . toInteger . BL.length . BB.toLazyByteString $ bs) - l) (u - l)
 
 encodeOctets :: OctetStream -> PERMonad ()
 encodeOctets (x:xs)
@@ -1671,7 +1670,7 @@ addExtensionAdditionPreamble ap
     = let la = genericLength ap
        in if la <= 63
         then do zeroBit
-                encodeConstrainedInt (la-1, 63)
+                toNonNegBinaryInteger (la - 1) 63
                 tell (toBitBuilder ap)
         else do oneBit
                 encodeOctetsWithLength (encodeNonNegBinaryIntInOctets la)
@@ -1878,7 +1877,7 @@ encodeConstrainedSequenceOf t pb l u (Valid vrc) xs
               else if u <= 65536
                    then {- X691REF: 19.6 with ub set -}
                         do tell $ toBitBuilder pb
-                           encodeConstrainedInt ((fromInteger.genericLength) xs - l, u-l)
+                           toNonNegBinaryInteger ((fromInteger . genericLength $ xs) - l) (u - l)
                            mapM_ (encode t []) xs
                    else {- X691REF: 19.6 with ub unset -}
                         do tell $ toBitBuilder pb
@@ -2242,7 +2241,7 @@ encodeConstrainedSetOf t pb l u (Valid vrc) xs
               else if u <= 65536
                    then {- X691REF: 19.6 with ub set -}
                         do tell $ toBitBuilder pb
-                           encodeConstrainedInt ((fromInteger.genericLength) xs - l, u-l)
+                           toNonNegBinaryInteger ((fromInteger . genericLength $  xs) - l) (u - l)
                            {- X691REF: 21.1 -}
                            ols <- orderedSetOf t xs
                            mapM_ tell ols
@@ -2353,7 +2352,7 @@ encodeChoiceAux (b, ((f:g:r),e)) (ChoiceOption (NamedType t a) as) (AddAValue x 
                     zeroBit
              else   {- X691REF: 22.6 -}
                     oneBit -- tell []
-        encodeConstrainedInt (fromInteger $ toInteger  f, fromInteger $ genericLength (g:r))
+        toNonNegBinaryInteger (fromInteger . toInteger $ f) (fromInteger . genericLength $ g:r)
         encode a [] x
 encodeChoiceAux _ (ChoiceExtensionAdditionGroup _ _ ) _
     = throwError (OtherError "Impossible case: EXTENSION ADDITION GROUP only appears in an extension.")
@@ -2367,7 +2366,7 @@ encodeChoiceAux' l (b,(f:r,e)) (ChoiceOption a as) (AddNoValue x xs) =
 encodeChoiceAux' l (b, (f:r,e)) (ChoiceOption (NamedType t a) as) (AddAValue x xs)
     = do
         tell $ BB.singleton b
-        encodeConstrainedInt (fromInteger $ toInteger  f, fromInteger l)
+        toNonNegBinaryInteger (fromInteger . toInteger $ f) (fromInteger l)
         encode a [] x
 encodeChoiceAux' _ _ (ChoiceExtensionAdditionGroup _ _ ) _
     = throwError (OtherError "Impossible case: EXTENSION ADDITION GROUP only appears in an extension.")
@@ -2538,7 +2537,7 @@ encodeKMPermAlph p c
             else {- X691REF: 27.5.4 (b) -}
                  let v = (genericLength . findV c) sp
                      l = fromInteger $ lp-1
-                 in encodeConstrainedInt (v,l)
+                 in toNonNegBinaryInteger v l
 
 minExp :: (Num a, Integral b, Ord a) => a -> b -> a -> b
 minExp n e p
@@ -2550,12 +2549,12 @@ minExp n e p
 Each character is encoded by {\em encodeCharInBits}
 which encodes the Unicode value of the character in the required number of bits. This is
 achieved by converting a character to its Unicode value and then encoding the number as a
-constrained integer using {\em encodeConstrainedInt}.
+constrained integer using {\em toNonNegBinaryInteger}.
 
 \begin{code}
 
 encodeCharInBits :: Integer -> Char -> PERMonad ()
-encodeCharInBits i c = encodeConstrainedInt (fromInteger $ (fromIntegral.ord) c, fromInteger i)
+encodeCharInBits i c = toNonNegBinaryInteger (fromInteger . fromIntegral . ord $ c) (fromInteger i)
 
 \end{code}
 
@@ -2744,7 +2743,7 @@ encodeSizeConsKMS l u v
     | otherwise
          = let Val r = range
                Val v = l
-           in do encodeConstrainedInt ((fromInteger $ genericLength x - v), fromInteger $ r-1)
+           in do toNonNegBinaryInteger (fromInteger $ genericLength x - v) (fromInteger $ r - 1)
                  mapM_ (encodeKMPermAlph (getString t)) x
           where t = getTop v
                 range = u - l + 1
@@ -2759,7 +2758,7 @@ encodeSizeAndPAConsKMS l u rcs v
     | otherwise
          = let Val r = range
                Val v = l
-           in do encodeConstrainedInt ((fromInteger $ genericLength x - v), fromInteger $ r-1)
+           in do toNonNegBinaryInteger (fromInteger $ genericLength x - v) (fromInteger $ r - 1)
                  mapM_ (encodeKMPermAlph (getString rcs)) x
           where
                 range = u - l + 1
@@ -2835,7 +2834,7 @@ Clause 38.8 in X680 encoding based on canonical ordering of restricted character
 canEnc b sp [] = return () -- tell []
 canEnc b sp (f:r)
         = let v = (genericLength . findV f) sp
-           in do encodeConstrainedInt (v,b)
+           in do toNonNegBinaryInteger v b
                  canEnc b sp r
 
 findV m []  = []
