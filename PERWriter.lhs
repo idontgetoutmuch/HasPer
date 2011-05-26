@@ -548,14 +548,14 @@ encodeBool t x = tell $ BB.singleton x
 eitherExtensible (Right v) = isExtensible v
 eitherExtensible _ = False
 
-eitherExtensible' :: Either String a -> PERMonad a
+eitherExtensible' :: MonadError ASNError m => Either String a -> m a
 eitherExtensible' (Right v) = return v
 eitherExtensible' (Left s)  = throwError $ ConstraintError s
 
-evaluateConstraint' :: (Lattice a, Constraint a, Eq a)  =>
+evaluateConstraint' :: (Lattice a, Constraint a, Eq a, MonadError ASNError m)  =>
                        (Element InfInteger -> Bool -> Either String (ExtensibleConstraint a)) ->
                        Either String (ExtensibleConstraint a) ->
-                       [SubtypeConstraint InfInteger] -> PERMonad (ExtensibleConstraint a)
+                       [SubtypeConstraint InfInteger] -> m (ExtensibleConstraint a)
 evaluateConstraint' x y z = eitherExtensible' $ evaluateConstraint x y z
 \end{code}
 
@@ -630,7 +630,7 @@ inRange :: InfInteger -> ValidIntegerConstraint -> Bool
 inRange n vc | Valid cs <- vc = or . map (\c -> n >= (lower c) && n <= (upper c)) $ cs
 \end{code}
 
-We split the encoding of an \INTEGER into two cases depending on whether
+We split the encoding of an \INTEGER\ into two cases depending on whether
 there are any constraints.
 
 \begin{code}
@@ -742,19 +742,20 @@ eSemiConsInteger _ _
     = throwError . ConstraintError $ "No lower bound."
 \end{code}
 
+We split the decoding of an \INTEGER\ into two cases depending on whether
+there are any constraints.
+
 \begin{code}
-
 dInteger :: [ElementSetSpecs InfInteger] -> UnPERMonad InfInteger
-dInteger [] = dConstrainedInteger (return top) undefined (return top)
-dInteger cs = dConstrainedInteger effRoot isExtensible effExt
-  where
-     effectiveCon = evaluateConstraint pvIntegerElements top cs
-     isExtensible = eitherExtensible effectiveCon
-     effRoot      = either (const (throwError (ConstraintError "Invalid root")))
-                           (return . getRootConstraint) effectiveCon
-     effExt       = either (const (throwError (ConstraintError "Invalid extension")))
-                           (return . getExtConstraint) effectiveCon
+dInteger [] = dConstrainedInteger top undefined top
+dInteger cs = do
+   effectiveCon <- evaluateConstraint' pvIntegerElements top cs
+   let effRoot = getRootConstraint effectiveCon
+       effExt  = getExtConstraint effectiveCon
+   dConstrainedInteger effRoot (isExtensible effectiveCon) effExt
+\end{code}
 
+\begin{code}
 dUnconstrainedInteger :: UnPERMonad Integer
 dUnconstrainedInteger =
    do o <- octets
@@ -763,11 +764,9 @@ dUnconstrainedInteger =
       chunkBy8 = let o = (.).(.) in lift `o` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
       octets   = decodeLargeLengthDeterminant3 chunkBy8 undefined
 
-dConstrainedInteger :: UnPERMonad IntegerConstraint -> Bool -> UnPERMonad IntegerConstraint -> UnPERMonad InfInteger
-dConstrainedInteger mrc isExtensible mec =
-   do rc <- mrc
-      ec <- mec
-      let isExtensionConstraint    = ec /= top
+dConstrainedInteger :: IntegerConstraint -> Bool -> IntegerConstraint -> UnPERMonad InfInteger
+dConstrainedInteger rc isExtensible ec =
+   do let isExtensionConstraint  = ec /= top
           tc                     = rc `ljoin` ec
           rootConstraint         = rc /= top
           rootLower              = let Val x = lower rc in x
