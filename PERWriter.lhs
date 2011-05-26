@@ -171,6 +171,7 @@ import qualified Language.ASN1.PER.IntegerAux as IA
 import Data.Int
 import Data.Maybe
 import Data.Word
+import Control.Applicative
 
 \end{code}
 
@@ -497,8 +498,8 @@ oneBit  = tell $ BB.singleton True
 \begin{code}
 
 -- FIXME: We should write this as an unfold rather than use primitive recursion
-decodeLargeLengthDeterminant3 :: (Integer -> t -> UnPERMonad B.ByteString) -> t -> UnPERMonad B.ByteString
-decodeLargeLengthDeterminant3 f t =
+decodeLargeLengthDeterminant :: (Integer -> t -> UnPERMonad B.ByteString) -> t -> UnPERMonad B.ByteString
+decodeLargeLengthDeterminant f t =
    do p <- lift BG.getBit
       if (not p)
          then
@@ -518,7 +519,7 @@ decodeLargeLengthDeterminant3 f t =
                         if fragSize <= 0 || fragSize > 4
                            then throwError (DecodeError (fragError ++ show fragSize))
                            else do frag <- f (fragSize * 16 * (2^10)) t
-                                   rest <- decodeLargeLengthDeterminant3 f t
+                                   rest <- decodeLargeLengthDeterminant f t
                                    return (B.append frag rest)
                         where
                            fragError = "Unable to decode with fragment size of "
@@ -601,6 +602,14 @@ encodeBitsWithLength :: BitStream -> PERMonad ()
 encodeBitsWithLength = encodeUnconstrainedLength (tell . BB.fromBits 1)
 \end{code}
 
+\begin{code}
+minBits :: Integer -> Integer
+minBits n = f n 0
+   where
+      f 0 a = a
+      f n a = f (n `div` 2) (a+1)
+\end{code}
+
 \todo[owner={Dan}]{Why do we have SubtypeConstraint? Isn't the right terminology ElementSetSpecs?}
 
 \begin{code}
@@ -626,8 +635,11 @@ isNonEmptyConstraint x  = x /= bottom
 \end{code}
 
 \begin{code}
+inRangeSingle :: InfInteger -> IntegerConstraint -> Bool
+inRangeSingle n c =  n >= (lower c) && n <= (upper c)
+
 inRange :: InfInteger -> ValidIntegerConstraint -> Bool
-inRange n vc | Valid cs <- vc = or . map (\c -> n >= (lower c) && n <= (upper c)) $ cs
+inRange n vc | Valid cs <- vc = or . map (inRangeSingle n) $ cs
 \end{code}
 
 We split the encoding of an \INTEGER\ into two cases depending on whether
@@ -639,7 +651,7 @@ eInteger [] v = eUnconsInteger v
 eInteger cs v = eConsInteger cs v
 \end{code}
 
-We encode an unconstrained \INTEGER value as a 2's-complement-binary-integer
+We encode an unconstrained \INTEGER\ value as a 2's-complement-binary-integer
 in a minimum number of octets prefixed by an explicit
 length.
 
@@ -755,30 +767,39 @@ dInteger cs = do
    dConstrainedInteger effRoot (isExtensible effectiveCon) effExt
 \end{code}
 
-\begin{code}
-dUnconstrainedInteger :: UnPERMonad Integer
-dUnconstrainedInteger =
-   do o <- octets
-      return (from2sComplement' o)
-   where
-      chunkBy8 = let o = (.).(.) in lift `o` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
-      octets   = decodeLargeLengthDeterminant3 chunkBy8 undefined
+To decode an unconstrained \INTEGER\ , we use parameterise
+{\em decodeLargeLengthDeterminant} by a function which ignores
+the second parameter chunking up the bits being read into
+groups of 8.
 
-dConstrainedInteger :: IntegerConstraint -> Bool -> IntegerConstraint -> UnPERMonad InfInteger
+\begin{code}
+dUnconInteger :: UnPERMonad Integer
+dUnconInteger =
+   from2sComplement' <$> decodeLargeLengthDeterminant chunkBy8 undefined
+   where
+      chunkBy8 :: Integer -> a -> UnPERMonad B.ByteString
+      chunkBy8 n _ =
+        lift $ (flip (const (BG.getLeftByteString . fromIntegral . (*8)))) n undefined
+\end{code}
+
+\begin{code}
+dConstrainedInteger :: IntegerConstraint ->
+                       Bool ->
+                       IntegerConstraint ->
+                       UnPERMonad InfInteger
 dConstrainedInteger rc isExtensible ec =
-   do let isExtensionConstraint  = ec /= top
+   do let rootConstraint         = rc /= top
+          isExtensionConstraint  = ec /= top
+          emptyConstraint        = (not rootConstraint) && (not isExtensionConstraint)
           tc                     = rc `ljoin` ec
-          rootConstraint         = rc /= top
           rootLower              = let Val x = lower rc in x
           rootRange              = let (Val x) = (upper rc) - (lower rc) + (Val 1) in x
           numOfRootBits          = minBits rootRange
-          emptyConstraint        = (not rootConstraint) && (not isExtensionConstraint)
-          inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
 
           foobar
              | emptyConstraint
                   = do {- X691REF: 12.2.4 -}
-                       x <- dUnconstrainedInteger
+                       x <- dUnconInteger
                        return (Val x)
              | rootConstraint &&
                isExtensionConstraint
@@ -806,8 +827,8 @@ dConstrainedInteger rc isExtensible ec =
                   = throwError (OtherError "Unexpected error decoding INTEGER")
 
           decodeExtensionConstrained =
-             do v <- dUnconstrainedInteger
-                if v `inRange` tc
+             do v <- dUnconInteger
+                if (Val v) `inRangeSingle` tc
                    then
                       return (Val v)
                    else
@@ -822,23 +843,13 @@ dConstrainedInteger rc isExtensible ec =
                    do {- X691REF: 12.2.2 and 12.2.3 -}
                       j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
                       let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
-                      if v `inRange` rc
+                      if (Val v) `inRangeSingle` rc
                          then
                             return (Val v)
                          else
                             throwError (BoundsError "Value not in root constraint")
 
       foobar
-
-   where
-
-minBits :: Integer -> Integer
-minBits n = f n 0
-   where
-      f 0 a = a
-      f n a = f (n `div` 2) (a+1)
-
-
 \end{code}
 
 
