@@ -565,7 +565,6 @@ number of bits required for the range specified by the constraint
 the constraint.
 
 \begin{code}
-
 toNonNegBinaryInteger :: InfInteger -> InfInteger -> PERMonad ()
 toNonNegBinaryInteger (Val val) (Val range) = toNonNegBinaryIntegerAux val range
    where
@@ -577,7 +576,35 @@ toNonNegBinaryInteger (Val val) (Val range) = toNonNegBinaryIntegerAux val range
           = toNonNegBinaryIntegerAux (n `div` 2) (w `div` 2) >> (tell . BB.fromBits 1) n
 
 toNonNegBinaryInteger x y = throwError . OtherError $ "Cannot encode: " ++ show x ++ " in " ++ show y
+\end{code}
 
+\begin{code}
+encodeNonNegBinaryIntInOctets :: InfInteger -> PERMonad ()
+encodeNonNegBinaryIntInOctets (Val x) = h 8 x where
+   h p 0 = tell $ L.foldr BB.append BB.empty (L.replicate p (BB.singleton False))
+   h 0 n = h 7       (n `div` 2) >> (tell . BB.fromBits 1) n
+   h p n = h (p - 1) (n `div` 2) >> (tell . BB.fromBits 1) n
+encodeNonNegBinaryIntInOctets y = throwError . OtherError $ "Cannot encode: " ++ show y
+\end{code}
+
+{\em encodeOctetsWithLength} encodes a collection of octets with
+unconstrained length. {\em encodeBitsWithLength} does the same except
+for a collection of bits.
+
+\begin{code}
+encodeOctetsWithLength :: BL.ByteString -> PERMonad ()
+encodeOctetsWithLength bs
+    = encodeUnconstrainedLength (tell . BB.fromBits 8) $ BL.unpack bs
+
+
+encodeBitsWithLength :: BitStream -> PERMonad ()
+encodeBitsWithLength = encodeUnconstrainedLength (tell . BB.fromBits 1)
+\end{code}
+
+\todo[owner={Dan}]{Why do we have SubtypeConstraint? Isn't the right terminology ElementSetSpecs?}
+
+\begin{code}
+type ElementSetSpecs a = SubtypeConstraint a
 \end{code}
 
 \section{ENCODING THE INTEGER TYPE}
@@ -713,35 +740,9 @@ eSemiConsInteger x (Val _)
     = throwError . BoundsError $ "Cannot encode " ++ show x ++ "."
 eSemiConsInteger _ _
     = throwError . ConstraintError $ "No lower bound."
-
-encodeNonNegBinaryIntInOctets :: InfInteger -> PERMonad ()
-encodeNonNegBinaryIntInOctets (Val x) = h 8 x where
-   h p 0 = tell $ L.foldr BB.append BB.empty (L.replicate p (BB.singleton False))
-   h 0 n = h 7       (n `div` 2) >> (tell . BB.fromBits 1) n
-   h p n = h (p - 1) (n `div` 2) >> (tell . BB.fromBits 1) n
-encodeNonNegBinaryIntInOctets y = throwError . OtherError $ "Cannot encode: " ++ show y
 \end{code}
 
-{\em encodeOctetsWithLength} encodes a collection of octets with
-unconstrained length. {\em encodeBitsWithLength} does the same except
-for a collection of bits.
-
 \begin{code}
-
-encodeOctetsWithLength :: BL.ByteString -> PERMonad ()
-encodeOctetsWithLength bs
-    = encodeUnconstrainedLength (tell . BB.fromBits 8) $ BL.unpack bs
-
-
-encodeBitsWithLength :: BitStream -> PERMonad ()
-encodeBitsWithLength = encodeUnconstrainedLength (tell . BB.fromBits 1)
-
-\end{code}
-
-
-\begin{code}
-
-type ElementSetSpecs a = SubtypeConstraint a
 
 dInteger :: [ElementSetSpecs InfInteger] -> UnPERMonad InfInteger
 dInteger [] = dConstrainedInteger (return top) undefined (return top)
