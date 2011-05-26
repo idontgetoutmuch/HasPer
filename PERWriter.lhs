@@ -559,6 +559,27 @@ evaluateConstraint' :: (Lattice a, Constraint a, Eq a)  =>
 evaluateConstraint' x y z = eitherExtensible' $ evaluateConstraint x y z
 \end{code}
 
+{\em toNonNegBinaryInteger} encodes an integer in the minimum
+number of bits required for the range specified by the constraint
+(assuming the range is at least 2). The value encoded is the offset from the lower bound of
+the constraint.
+
+\begin{code}
+
+toNonNegBinaryInteger :: InfInteger -> InfInteger -> PERMonad ()
+toNonNegBinaryInteger (Val val) (Val range) = toNonNegBinaryIntegerAux val range
+   where
+      toNonNegBinaryIntegerAux :: Integer -> Integer -> PERMonad ()
+      toNonNegBinaryIntegerAux _ 0 = tell BB.empty
+      toNonNegBinaryIntegerAux 0 w
+          = toNonNegBinaryIntegerAux 0 (w `div` 2) >> zeroBit
+      toNonNegBinaryIntegerAux n w
+          = toNonNegBinaryIntegerAux (n `div` 2) (w `div` 2) >> (tell . BB.fromBits 1) n
+
+toNonNegBinaryInteger x y = throwError . OtherError $ "Cannot encode: " ++ show x ++ " in " ++ show y
+
+\end{code}
+
 \section{ENCODING THE INTEGER TYPE}
 \label{intEnc}
 
@@ -687,28 +708,18 @@ octets.
 
 \begin{code}
 eSemiConsInteger :: InfInteger -> InfInteger -> PERMonad ()
-eSemiConsInteger x@(Val _) lb@(Val _)
-    = encodeOctetsWithLength . encodeNonNegBinaryIntInOctets $ x - lb
+eSemiConsInteger x@(Val _) lb@(Val _) =  encodeNonNegBinaryIntInOctets $ x - lb
 eSemiConsInteger x (Val _)
     = throwError . BoundsError $ "Cannot encode " ++ show x ++ "."
 eSemiConsInteger _ _
-    = throwError (ConstraintError "No lower bound.")
+    = throwError . ConstraintError $ "No lower bound."
 
-encodeNonNegBinaryIntInOctets :: InfInteger -> BL.ByteString
-encodeNonNegBinaryIntInOctets (Val x)
-        = BL.reverse $ BL.map IA.reverseBits $ BP.runBitPut $ h' 8 x
-
-{- FIXME: h' rewritten from Language\ASN1\PER\IntegerAux -}
-
-h' :: Integer -> Integer -> BP.BitPut
-h' p 0 =
-   do BP.putNBits (fromIntegral p) (0::Word8)
-h' 0 n =
-   do BP.putNBits 1 (n `mod` 2)
-      h' 7 (n `div` 2)
-h' p n =
-   do BP.putNBits 1 (n `mod` 2)
-      h' (p-1) (n `div` 2)
+encodeNonNegBinaryIntInOctets :: InfInteger -> PERMonad ()
+encodeNonNegBinaryIntInOctets (Val x) = h 8 x where
+   h p 0 = tell $ L.foldr BB.append BB.empty (L.replicate p (BB.singleton False))
+   h 0 n = h 7       (n `div` 2) >> (tell . BB.fromBits 1) n
+   h p n = h (p - 1) (n `div` 2) >> (tell . BB.fromBits 1) n
+encodeNonNegBinaryIntInOctets y = throwError . OtherError $ "Cannot encode: " ++ show y
 \end{code}
 
 {\em encodeOctetsWithLength} encodes a collection of octets with
@@ -727,27 +738,6 @@ encodeBitsWithLength = encodeUnconstrainedLength (tell . BB.fromBits 1)
 
 \end{code}
 
-
-{\em toNonNegBinaryInteger} encodes an integer in the minimum
-number of bits required for the range specified by the constraint
-(assuming the range is at least 2). The value encoded is the offset from the lower bound of
-the constraint.
-
-\begin{code}
-
-toNonNegBinaryInteger :: InfInteger -> InfInteger -> PERMonad ()
-toNonNegBinaryInteger (Val val) (Val range) = toNonNegBinaryIntegerAux val range
-   where
-      toNonNegBinaryIntegerAux :: Integer -> Integer -> PERMonad ()
-      toNonNegBinaryIntegerAux _ 0 = tell BB.empty
-      toNonNegBinaryIntegerAux 0 w
-          = toNonNegBinaryIntegerAux 0 (w `div` 2) >> zeroBit
-      toNonNegBinaryIntegerAux n w
-          = toNonNegBinaryIntegerAux (n `div` 2) (w `div` 2) >> (tell . BB.fromBits 1) n
-
-toNonNegBinaryInteger x y = throwError . OtherError $ "Cannot encode: " ++ show x ++ " in " ++ show y
-
-\end{code}
 
 \begin{code}
 
@@ -1673,7 +1663,7 @@ addExtensionAdditionPreamble ap
                 toNonNegBinaryInteger (la - 1) 63
                 tell (toBitBuilder ap)
         else do oneBit
-                encodeOctetsWithLength (encodeNonNegBinaryIntInOctets la)
+                encodeNonNegBinaryIntInOctets la
                 tell (toBitBuilder ap)
 \end{code}
 
