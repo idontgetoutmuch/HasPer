@@ -53,35 +53,38 @@ Note that type of the value matches the type of the parameter of {\em ASNType}. 
 
 We present below our representation of the ASN.1 record structure of X.691, Annex A, section A.2.1.
 \todo{Pretty-printing example and representation of constraints}
-\todo{Remove names of non-referenced types -- add soc and TypeRef values}
 
-\begin{verbatim}
+\begin{code}
 personnelRecord
     = BuiltinType (TAGGED (Application, 0, Implicit) (BuiltinType (SET
-                    (AddComponent (MandatoryComponent (NamedType "name" name))
-                        (AddComponent (MandatoryComponent (NamedType "title" vst))
-                            (AddComponent (MandatoryComponent (NamedType "number" empNumber))
-                                (AddComponent (MandatoryComponent (NamedType "dateOfHire" dateC))
-                                    (AddComponent (MandatoryComponent (NamedType "nameOfSpouse" tnt))
-                                        (AddComponent (DefaultComponent (NamedType "children" soc) [])
+                    (AddComponent (MandatoryComponent (NamedType "name" (ReferencedType (Ref "Name") name)))
+                        (AddComponent (MandatoryComponent (NamedType "title" (BuiltinType (TAGGED (Context, 0, Explicit) (BuiltinType VISIBLESTRING)))))
+                            (AddComponent (MandatoryComponent (NamedType "number" (ReferencedType (Ref "EmpNumber") empNumber)))
+                                (AddComponent (MandatoryComponent (NamedType "dateOfHire" (BuiltinType (TAGGED (Context, 1, Explicit) (ReferencedType (Ref "Date") date)))))
+                                    (AddComponent (MandatoryComponent (NamedType "nameOfSpouse" (BuiltinType (TAGGED (Context, 2, Explicit) (ReferencedType (Ref "Name") name)))))
+                                        (AddComponent (DefaultComponent (NamedType "children" 
+                                           (BuiltinType (TAGGED (Context, 3, Implicit) (BuiltinType (SEQUENCEOF (ReferencedType (Ref "ChildInformation") childInformation))))) ) [])
                                             EmptySequence)))))))))
 
-vst = BuiltinType (TAGGED (Context, 0, Explicit) (BuiltinType VISIBLESTRING))
-
-tnt = BuiltinType (TAGGED (Context, 2, Explicit) name)
+childInformation
+    = BuiltinType
+                (SET
+                    (AddComponent (MandatoryComponent (NamedType "name" (ReferencedType (Ref "Name") name)))
+                        (AddComponent (MandatoryComponent (NamedType "dateOfBirth" (BuiltinType (TAGGED (Context, 0, Explicit) (ReferencedType (Ref "Date") date)))))
+                                            EmptySequence)))
 
 name
     = BuiltinType (TAGGED (Application, 1, Implicit) (BuiltinType (SEQUENCE
-                    (AddComponent (MandatoryComponent (NamedType "givenName" nameString))
-                        (AddComponent (MandatoryComponent (NamedType "name" initial))
+                    (AddComponent (MandatoryComponent (NamedType "givenName" (ReferencedType (Ref "NameString") nameString)))
+                        (AddComponent (MandatoryComponent (NamedType "initial" 
+				      (ConstrainedType (ReferencedType (Ref "NameString") nameString)
+	    			        (RootOnly (UnionSet (NoUnion (NoIntersection
+	              				  (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
+                      				  (ElementConstraint (V (R (1,1))))))))))))))))))
                             (AddComponent (MandatoryComponent (NamedType "familyName" nameString))
                                 EmptySequence))))))
 
 empNumber = BuiltinType (TAGGED (Application, 2, Implicit) (BuiltinType INTEGER))
-
-dateC = BuiltinType (TAGGED (Context, 1, Explicit) date)
-
-dateC2 = BuiltinType (TAGGED (Context, 0, Explicit) date)
 
 date = ConstrainedType
         (BuiltinType (TAGGED (Application, 3, Implicit) (BuiltinType VISIBLESTRING)))
@@ -102,17 +105,11 @@ nameString = ConstrainedType
                                                (ElementConstraint (S (SV (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])))))))))))))
 				      (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion
 				               (NoIntersection (ElementConstraint (V (R (1,64)))))))))))))))
-
-initial = ConstrainedType nameString
-	    (RootOnly (UnionSet (NoUnion (NoIntersection
-	              (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
-                      (ElementConstraint (V (R (1,1)))))))))))))))
-
-\end{verbatim}
+\end{code}
   
 Here is our representation of the record value presented in X.691, Annex A, section A.2.2.
 
-\begin{verbatim}
+\begin{code}
 pr = emp :*: t :*: num :*: hiredate :*: sp :*: Just cs :*: Empty
 
 emp = empGN :*: empI :*: empFN :*: Empty
@@ -151,7 +148,7 @@ c2GN = VisibleString "Susan"
 c2I  = VisibleString "B"
 c2FN = VisibleString "Jones"
 c2BD = VisibleString "19590717"
-\end{verbatim}
+\end{code}
 
 \subsection{ASN.1 Type}
 \label{asntype}
