@@ -105,11 +105,11 @@ A part of an identifier ``Uncons'' is short form for ``Unconstrained''.
 
 \begin{code}
 
-{-# LANGUAGE MultiParamTypeClasses, GADTs, TypeOperators, EmptyDataDecls, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving, ScopedTypeVariables, PatternGuards #-}
+{-# LANGUAGE MultiParamTypeClasses, GADTs, TypeOperators, EmptyDataDecls, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving, ScopedTypeVariables, PatternGuards, DoRec #-}
 
-{-# OPTIONS_GHC -fwarn-unused-binds #-}
+{-# OPTIONS_GHC -fwarn-unused-binds -fwarn-unused-imports #-}
 
-{- -fwarn-unused-imports -fwarn-incomplete-patterns #-}
+{-  -fwarn-incomplete-patterns -fwarn-unused-matches #-}
 
 \end{code}
 
@@ -148,14 +148,10 @@ import LatticeMod
 import ConstraintGeneration
 import Language.ASN1.PER.Integer
    ( fromNonNegativeBinaryInteger'
-   , toNonNegativeBinaryInteger
    , from2sComplement'
-   , to2sComplement
    )
 import Data.List as L hiding (groupBy)
 import Data.Char
-import Data.Sequence as S
-import Data.Foldable hiding (or, all, concat, elem, maximum, mapM_)
 import Control.Monad.Error
 import Control.Monad.Identity
 import Control.Monad.Writer
@@ -167,11 +163,10 @@ import qualified Data.Binary.Strict.BitGet as BG
 import qualified Data.Binary.BitPut as BP
 import qualified Data.Binary.BitBuilder as BB
 import qualified Language.ASN1.PER.Integer as I
-import qualified Language.ASN1.PER.IntegerAux as IA
 import Data.Int
-import Data.Maybe
-import Data.Word
 import Control.Applicative
+
+import Debug.Trace
 
 \end{code}
 
@@ -301,6 +296,8 @@ toPER (TAGGED tag t) x cl  = encode t cl x
 
 fromPER :: ASNBuiltin a -> [ElementSetSpecs a] -> UnPERMonad a
 fromPER t@INTEGER cl = dInteger cl
+-- FIXME: Why are we ignoring the constraints?
+fromPER t@(SEQUENCE s) cl = dSequence s
 
 \end{code}
 
@@ -730,15 +727,12 @@ eRootConsInteger :: IntegerConstraintType ->
                     InfInteger ->
                     InfInteger ->
                     PERMonad ()
-eRootConsInteger UnConstrained   n l u =
-  {- X691REF: 12.2.4 -}
-  eUnconsInteger n
-eRootConsInteger SemiConstrained n l u =
-  {- X691REF: 12.2.3 -}
-  eSemiConsInteger n l
-eRootConsInteger Constrained     n l u =
-  {- X691REF: 12.2.2 -}
-  toNonNegBinaryInteger (n - l) (u - l)
+eRootConsInteger UnConstrained   n _l _u = {- X691REF: 12.2.4 -}
+                                           eUnconsInteger n
+eRootConsInteger SemiConstrained n  l _u = {- X691REF: 12.2.3 -}
+                                           eSemiConsInteger n l
+eRootConsInteger Constrained     n  l  u = {- X691REF: 12.2.2 -}
+                                           toNonNegBinaryInteger (n - l) (u - l)
 \end{code}
 
 We encode a semi-constrained integer as a non-negative-binary-integer of the difference between the value and the
@@ -759,15 +753,15 @@ there are any constraints.
 
 \begin{code}
 dInteger :: [ElementSetSpecs InfInteger] -> UnPERMonad InfInteger
-dInteger [] = dConstrainedInteger top undefined top
+dInteger [] = dConsInteger top undefined top
 dInteger cs = do
    effectiveCon <- evaluateConstraint' pvIntegerElements top cs
    let effRoot = getRootConstraint effectiveCon
        effExt  = getExtConstraint effectiveCon
-   dConstrainedInteger effRoot (isExtensible effectiveCon) effExt
+   dConsInteger effRoot (isExtensible effectiveCon) effExt
 \end{code}
 
-To decode an unconstrained \INTEGER\ , we use parameterise
+To decode an unconstrained \INTEGER\ , we parameterise
 {\em decodeLargeLengthDeterminant} by a function which ignores
 the second parameter chunking up the bits being read into
 groups of 8.
@@ -783,34 +777,34 @@ dUnconInteger =
 \end{code}
 
 \begin{code}
-dConstrainedInteger :: IntegerConstraint ->
-                       Bool ->
-                       IntegerConstraint ->
-                       UnPERMonad InfInteger
-dConstrainedInteger rc isExtensible ec =
-   do let rootConstraint         = rc /= top
+dConsInteger :: IntegerConstraint ->
+                Bool ->
+                IntegerConstraint ->
+                UnPERMonad InfInteger
+dConsInteger rc isExtensible ec =
+   do let isRootConstraint       = rc /= top
           isExtensionConstraint  = ec /= top
-          emptyConstraint        = (not rootConstraint) && (not isExtensionConstraint)
+          isEmptyConstraint      = (not isRootConstraint) && (not isExtensionConstraint)
           tc                     = rc `ljoin` ec
           rootLower              = let Val x = lower rc in x
           rootRange              = let (Val x) = (upper rc) - (lower rc) + (Val 1) in x
           numOfRootBits          = minBits rootRange
 
-          foobar
-             | emptyConstraint
+          dConsIntegerAux
+             | isEmptyConstraint
                   = do {- X691REF: 12.2.4 -}
                        x <- dUnconInteger
                        return (Val x)
-             | rootConstraint &&
+             | isRootConstraint &&
                isExtensionConstraint
                   = do {- X691REF: 12.1 -}
                        isExtension <- lift $ BG.getBit
                        if isExtension
                           then
-                             decodeExtensionConstrained
+                             dExtConsInteger
                           else
-                             decodeRootConstrained
-             | rootConstraint &&
+                             dRootConsInteger
+             | isRootConstraint &&
                isExtensible
                   = do {- X691REF: 12.1 -}
                        isExtension <- lift $ BG.getBit
@@ -818,15 +812,15 @@ dConstrainedInteger rc isExtensible ec =
                           then
                              throwError (ExtensionError "Extension for constraint not supported")
                           else
-                             decodeRootConstrained
-             | rootConstraint
-                  = decodeRootConstrained
+                             dRootConsInteger
+             | isRootConstraint
+                  = dRootConsInteger
              | isExtensionConstraint
                   = throwError (ConstraintError "Extension constraint without a root constraint")
              | otherwise
                   = throwError (OtherError "Unexpected error decoding INTEGER")
 
-          decodeExtensionConstrained =
+          dExtConsInteger =
              do v <- dUnconInteger
                 if (Val v) `inRangeSingle` tc
                    then
@@ -834,7 +828,7 @@ dConstrainedInteger rc isExtensible ec =
                    else
                       throwError (BoundsError "Value not in extension constraint: could be invalid value or unsupported extension")
 
-          decodeRootConstrained =
+          dRootConsInteger =
              if rootRange <= 1
                 then
                    {- X691REF: 12.2.1 -}
@@ -849,7 +843,7 @@ dConstrainedInteger rc isExtensible ec =
                          else
                             throwError (BoundsError "Value not in root constraint")
 
-      foobar
+      dConsIntegerAux
 \end{code}
 
 
@@ -1548,27 +1542,37 @@ type ExtAndUsed = (Bool, Bool)
 
 encodeSequence :: Sequence a -> a -> PERMonad ()
 encodeSequence s v
-           = do odb <- pass $ encodeSequenceAux (False, False) [] s v
+           = do _odbs <- pass $ encodeSequenceAux (False, False) [] s v
                 return ()
 
 -- FIXME: Eugh pattern match failure here
 selectOutput (Right (a,b)) = b
+selectOutput (Left s)      = error $ show s
 
-encodeSequenceAux :: ExtAndUsed -> OptDefBits -> Sequence a -> a
-                -> PERMonad (OptDefBits, BB.BitBuilder -> BB.BitBuilder)
-encodeSequenceAux eu od EmptySequence Empty
-    = return (od, completeSequenceBits eu od)
-encodeSequenceAux (extensible, b) od (ExtensionMarker as) xs
+encodeSequenceAux :: ExtAndUsed ->
+                     OptDefBits ->
+                     Sequence a ->
+                     a ->
+                     PERMonad (OptDefBits, BB.BitBuilder -> BB.BitBuilder)
+encodeSequenceAux extAndUsed optDef EmptySequence Empty
+    = return (optDef, completeSequenceBits extAndUsed optDef)
+encodeSequenceAux (extensible, b) optDef (ExtensionMarker as) xs
     | not extensible
-        = let m = encodeSequenceAuxExt (True, False) od [] as xs
+        = let m = encodeSequenceAuxExt (True, False) optDef [] as xs
           in
+
            do (b, eb, od, pm) <- censor (const BB.empty) m
               (od2,f) <- pm
+
+--            do rec (b, eb, _, pm) <- trace "Censor" $ censor (BB.append foo) m
+--                   ((), foo)       <- listen $ addExtensionAdditionPreamble eb
+--               od2 <- fst <$> pm
+
               {- X691REF: 18.8 -}
               censor (BB.append (selectOutput . extractValue $ addExtensionAdditionPreamble eb)) m
               encodeSequenceAux b od2 EmptySequence Empty
     | otherwise
-        = encodeSequenceAux (extensible,b) od as xs
+        = encodeSequenceAux (extensible,b) optDef as xs
 encodeSequenceAux eu od (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
     = do od2 <- encodeSequenceAuxCO [] s x
          encodeSequenceAux eu (od ++ od2) as xs
@@ -1667,13 +1671,16 @@ encodeSequenceAuxExt b odb eb _ _
 
 
 \begin{code}
+addExtensionAdditionPreamble :: OptDefBits -> PERMonad ()
 addExtensionAdditionPreamble ap
     = let la = genericLength ap
-       in if la <= 63
-        then do zeroBit
+       in trace (show la) $ if la <= 63
+        then do trace (show "ZERO") $ return ()
+                zeroBit
                 toNonNegBinaryInteger (la - 1) 63
                 tell (toBitBuilder ap)
-        else do oneBit
+        else do trace (show "ONE") $ return ()
+                oneBit
                 encodeNonNegBinaryIntInOctets la
                 tell (toBitBuilder ap)
 \end{code}
@@ -1712,6 +1719,33 @@ encodeSequenceAuxCO odb (AddComponent (DefaultComponent (NamedType t a) d) as) (
         encodeSequenceAuxCO (odb ++ [1]) as xs
 encodeSequenceAuxCO odb (ExtensionAdditionGroup _ _ as) (x:*:xs)
     = encodeSequenceAuxCO odb as xs
+
+\end{code}
+
+\begin{code}
+
+dSequence :: Sequence a -> UnPERMonad a
+dSequence s =
+   do ps <- lift $ bitMask (l s)
+      dSequenceAux ps s
+
+l :: Integral n => Sequence a -> n
+l EmptySequence = 0
+l (AddComponent (MandatoryComponent _) ts) = l ts
+l (AddComponent (OptionalComponent  _) ts) = 1 + (l ts)
+
+bitMask n = sequence $ L.take n $ repeat $ BG.getBit
+
+type BitMap = [Bool]
+
+-- FIXME: We don't yet seem to handle e.g. OptionalComponent
+dSequenceAux :: BitMap -> Sequence a -> UnPERMonad a
+-- FIXME: Ignoring the bit map doesn't look right - it's probably an error if it's not empty
+dSequenceAux _ EmptySequence = return Empty
+dSequenceAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) =
+   do x <- decode t []
+      xs <- dSequenceAux bitmap ts
+      return (x :*: xs)
 
 \end{code}
 
