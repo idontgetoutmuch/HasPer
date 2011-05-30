@@ -114,3 +114,19 @@ tInteger4 = ConstrainedType (BuiltinType INTEGER) (RootOnly (UnionSet (NoUnion (
 vInteger4s = map Val [1, 257, 65538]
 
 tInteger5 = ConstrainedType (BuiltinType INTEGER) (RootOnly (UnionSet (NoUnion (NoIntersection (ElementConstraint (V (R (NegInf,PosInf))))))))
+
+
+tEm1 = (BuiltinType (SEQUENCE (ExtensionMarker (AddComponent mc1 EmptySequence))))
+   where
+      mc1 = MandatoryComponent (NamedType "component1" (BuiltinType INTEGER))
+
+vEm1 = (Val 5) :*: Empty
+
+
+tEm2 = (BuiltinType (SEQUENCE (AddComponent mc1 (ExtensionMarker EmptySequence))))
+   where
+      mc1 = MandatoryComponent (NamedType "component1" (BuiltinType INTEGER))
+
+tEm2' = (BuiltinType (SEQUENCE (AddComponent mc1 EmptySequence)))
+   where
+      mc1 = MandatoryComponent (NamedType "component1" (BuiltinType INTEGER))

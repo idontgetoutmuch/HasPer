@@ -140,7 +140,6 @@ as a prefix when any entity of these modules is used.
 \end{itemize}
 
 \begin{code}
-
 module PERWriter where
 
 import ASNTYPE
@@ -165,9 +164,6 @@ import qualified Data.Binary.BitBuilder as BB
 import qualified Language.ASN1.PER.Integer as I
 import Data.Int
 import Control.Applicative
-
-import Debug.Trace
-
 \end{code}
 
 
@@ -1558,19 +1554,11 @@ encodeSequenceAux extAndUsed optDef EmptySequence Empty
     = return (optDef, completeSequenceBits extAndUsed optDef)
 encodeSequenceAux (extensible, b) optDef (ExtensionMarker as) xs
     | not extensible
-        = let m = encodeSequenceAuxExt (True, False) optDef [] as xs
-          in
-
-           do (b, eb, od, pm) <- censor (const BB.empty) m
-              (od2,f) <- pm
-
---            do rec (b, eb, _, pm) <- trace "Censor" $ censor (BB.append foo) m
---                   ((), foo)       <- listen $ addExtensionAdditionPreamble eb
---               od2 <- fst <$> pm
-
-              {- X691REF: 18.8 -}
-              censor (BB.append (selectOutput . extractValue $ addExtensionAdditionPreamble eb)) m
-              encodeSequenceAux b od2 EmptySequence Empty
+        = {- X691REF: 18.8 -}
+          do rec (b, eb, _, pm) <- censor (BB.append pre) $ encodeSequenceAuxExt (True, False) optDef [] as xs
+                 ((), pre)      <- censor (const BB.empty) $ listen $ addExtensionAdditionPreamble eb
+             od2 <- fst <$> pm
+             encodeSequenceAux b od2 EmptySequence Empty
     | otherwise
         = encodeSequenceAux (extensible,b) optDef as xs
 encodeSequenceAux eu od (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
@@ -1674,13 +1662,11 @@ encodeSequenceAuxExt b odb eb _ _
 addExtensionAdditionPreamble :: OptDefBits -> PERMonad ()
 addExtensionAdditionPreamble ap
     = let la = genericLength ap
-       in trace (show la) $ if la <= 63
-        then do trace (show "ZERO") $ return ()
-                zeroBit
+       in if la <= 63
+        then do zeroBit
                 toNonNegBinaryInteger (la - 1) 63
                 tell (toBitBuilder ap)
-        else do trace (show "ONE") $ return ()
-                oneBit
+        else do oneBit
                 encodeNonNegBinaryIntInOctets la
                 tell (toBitBuilder ap)
 \end{code}

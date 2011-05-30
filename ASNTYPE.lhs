@@ -122,7 +122,7 @@ empI = VisibleString "P"
 
 t = VisibleString "Director"
 
-num = 51
+num = (Val 51)
 
 hiredate = VisibleString "19710917"
 
