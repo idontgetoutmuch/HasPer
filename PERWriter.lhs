@@ -1536,14 +1536,6 @@ type OptDefBits = BitStream
 type ExtBits = BitStream
 type ExtAndUsed = (Bool, Bool)
 
-tEm1 = (BuiltinType (SEQUENCE (ExtensionMarker (AddComponent mc1 EmptySequence))))
-        where
-          mc1 = ExtensionComponent (NamedType "component1" (BuiltinType INTEGER))
-
-vEm1 = (Just (Val 5)) :*: Empty
-
-
-
 encodeSequence :: Sequence a -> a -> PERMonad ()
 encodeSequence s v
            = do _odbs <- pass $ encodeSequenceAux (False, False) [] s v
@@ -1668,12 +1660,9 @@ encodeSequenceAuxExt b odb eb _ _
 If the extension bit list is empty then there is no extension addition preamble.
 
 \begin{code}
-v v v v v v v
 addExtensionAdditionPreamble :: OptDefBits -> PERMonad ()
-*************
 addExtensionAdditionPreamble []
     = do noBit
-^ ^ ^ ^ ^ ^ ^
 addExtensionAdditionPreamble ap
     = let la = genericLength ap
        in if la <= 63
