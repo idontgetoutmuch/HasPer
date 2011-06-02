@@ -247,6 +247,8 @@ the following ASN.1 types are not included in this specification:\\ {\tt Embedde
 {\tt ObjectIdentifierType}, {\tt RealType} and {\tt RelativeOIDType}.
 \end{itemize}
 
+\todo{How do we deal with automatic tagging?}
+
 \begin{code}
 
 data ASNBuiltin a where

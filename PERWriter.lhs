@@ -109,7 +109,7 @@ A part of an identifier ``Uncons'' is short form for ``Unconstrained''.
 
 {-# OPTIONS_GHC -fwarn-unused-binds -fwarn-unused-imports #-}
 
-{-  -fwarn-incomplete-patterns -fwarn-unused-matches #-}
+{-  -fwarn-incomplete-patterns -fwarn-unused-matches  #-}
 
 \end{code}
 
@@ -165,7 +165,6 @@ import qualified Language.ASN1.PER.Integer as I
 import Data.Int
 import Control.Applicative
 \end{code}
-
 
 
 The top-level PER encoding function is called {\em encode}. The function takes three inputs:
@@ -765,7 +764,7 @@ groups of 8.
 \begin{code}
 dUnconInteger :: UnPERMonad Integer
 dUnconInteger =
-   from2sComplement' <$> decodeLargeLengthDeterminant chunkBy8 undefined
+   liftM from2sComplement' $ decodeLargeLengthDeterminant chunkBy8 undefined
    where
       chunkBy8 :: Integer -> a -> UnPERMonad B.ByteString
       chunkBy8 n _ =
