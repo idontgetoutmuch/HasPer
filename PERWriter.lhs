@@ -105,7 +105,7 @@ A part of an identifier ``Uncons'' is short form for ``Unconstrained''.
 
 \begin{code}
 
-{-# LANGUAGE MultiParamTypeClasses, GADTs, TypeOperators, EmptyDataDecls, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving, ScopedTypeVariables, PatternGuards, DoRec #-}
+{-# LANGUAGE MultiParamTypeClasses, GADTs, TypeOperators, EmptyDataDecls, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving, ScopedTypeVariables, PatternGuards, DoRec, TypeSynonymInstances #-}
 
 {-# OPTIONS_GHC -fwarn-unused-binds -fwarn-unused-imports #-}
 
@@ -220,7 +220,11 @@ error.
 \begin{code}
 
 
-type PERMonad a = WriterT BB.BitBuilder (ErrorT ASNError Identity) a
+type PERMonad = WriterT BB.BitBuilder (ErrorT ASNError Identity)
+
+instance Applicative PERMonad where
+  pure  = return
+  (<*>) = ap
 
 type UnPERMonad a = ErrorT ASNError BG.BitGet a
 
@@ -1533,11 +1537,14 @@ optional/default bits to be used in the generation of the encoding preamble.
 \begin{code}
 type OptDefBits = BitStream
 type ExtBits = BitStream
-type ExtAndUsed = (Bool, Bool)
+
+data Ext  = Ext  | NotExt  deriving Eq
+data Used = Used | NotUsed deriving Eq
+type ExtAndUsed = (Ext, Used)
 
 encodeSequence :: Sequence a -> a -> PERMonad ()
 encodeSequence s v
-           = do _odbs <- pass $ encodeSequenceAux (False, False) [] s v
+           = do _odbs <- pass $ encodeSequenceAux (NotExt, NotUsed) [] s v
                 return ()
 
 -- FIXME: Eugh pattern match failure here
@@ -1552,11 +1559,13 @@ encodeSequenceAux :: ExtAndUsed ->
 encodeSequenceAux extAndUsed optDef EmptySequence Empty
     = return (optDef, completeSequenceBits extAndUsed optDef)
 encodeSequenceAux (extensible, b) optDef (ExtensionMarker as) xs
-    | not extensible
+    | extensible == NotExt
         = {- X691REF: 18.8 -}
-          do rec (b, eb, _, pm) <- censor (BB.append pre) $ encodeSequenceAuxExt (True, False) optDef [] as xs
-                 ((), pre)      <- censor (const BB.empty) $ listen $ addExtensionAdditionPreamble eb
-             od2 <- fst <$> pm
+          do rec (b, eb, _, pm)       <- censor (BB.append extRoot . BB.append extAddPreamble) $
+                                         encodeSequenceAuxExt (Ext, NotUsed) optDef [] as xs
+                 ((), extAddPreamble) <- censor (const BB.empty) $ listen $ addExtensionAdditionPreamble eb
+                 -- FIXME: Is this really the extension root?
+                 ((od2, _), extRoot)  <- pass ((,) <$> (listen pm) <*> (pure $ const BB.empty))
              encodeSequenceAux b od2 EmptySequence Empty
     | otherwise
         = encodeSequenceAux (extensible,b) optDef as xs
@@ -1574,7 +1583,7 @@ encodeSequenceAux eu od (AddComponent (MandatoryComponent (NamedType t a)) as) (
 encodeSequenceAux eu od (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
     = encodeSequenceAux eu od as xs
 encodeSequenceAux (b1,b2) od (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
-    = encodeSequenceAux (b1, True) od as xs
+    = encodeSequenceAux (b1, Used) od as xs
 encodeSequenceAux eu od (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs)
     =   {- X691REF: 18.2 with optional component not present -}
         encodeSequenceAux eu (od ++ [0]) as xs
@@ -1591,7 +1600,7 @@ encodeSequenceAux eu od (AddComponent (DefaultComponent (NamedType t a) d) as) (
          encode a [] x
          encodeSequenceAux eu (od ++ [1]) as xs
 encodeSequenceAux (b1,b2) od (ExtensionAdditionGroup _ _ as) (x:*:xs)
-    = encodeSequenceAux (b1,True) od as xs
+    = encodeSequenceAux (b1,Used) od as xs
 \end{code}
 
 completeSequenceBits changed so that the collection of optional/default
@@ -1600,9 +1609,9 @@ bits are implemented using Data.Seq.
 \begin{code}
 completeSequenceBits :: ExtAndUsed -> BitStream -> BB.BitBuilder -> BB.BitBuilder
 completeSequenceBits (extensible, extensionAdditionPresent) odb bs
-    | not extensible
+    | extensible == Ext
         = BB.append (fragment odb) bs
-    | extensionAdditionPresent
+    | extensionAdditionPresent == Used
         {- X691REF: 18.1 with extension additions present -}
         {- X691REF: 18.2  -}
         = BB.append (BB.singleton True) $ BB.append (fragment odb) bs
@@ -1636,7 +1645,7 @@ encodeSequenceAuxExt (b1,b2) odb eb (AddComponent (ExtensionComponent (NamedType
     = do {- X691REF: 18.7 with extension addition present -}
          {- X691REF: 18.9 with ComponentType extension -}
          encodeOpen a x
-         encodeSequenceAuxExt (b1,True) odb (eb ++ [1]) as xs
+         encodeSequenceAuxExt (b1,Used) odb (eb ++ [1]) as xs
 encodeSequenceAuxExt b odb eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
     =   {- X691REF: 18.7 with extension addition absent -}
         encodeSequenceAuxExt b odb (eb ++ [0]) as xs
@@ -1644,7 +1653,7 @@ encodeSequenceAuxExt (b1,b2) odb eb (ExtensionAdditionGroup _ a as) (Just x:*:xs
     = do {- X691REF: 18.7 with extension addition present -}
          {- X691REF: 18.9 with ExtensionAdditionGroup extension -}
          encodeOpen (BuiltinType (SEQUENCE (makeSequence a))) x
-         encodeSequenceAuxExt (b1, True) odb (eb ++ [1]) as xs
+         encodeSequenceAuxExt (b1, Used) odb (eb ++ [1]) as xs
 encodeSequenceAuxExt b odb eb (ExtensionMarker as) xs
     = return (b, eb, odb, encodeSequenceAux b odb as xs)
 encodeSequenceAuxExt b odb eb EmptySequence Empty
@@ -1945,7 +1954,7 @@ type {\em Maybe Int} to allow for non-optional/default components for which the 
 
 encodeSet :: Sequence a -> a -> PERMonad ()
 encodeSet s v
-           = do odb <- pass $ encodeSetAux (False, False) [] s v
+           = do odb <- pass $ encodeSetAux (NotExt, NotUsed) [] s v
                 return ()
 
 encodeSetAux :: ExtAndUsed -> [(TagInfo, (Maybe Int, PERMonad ()))] -> Sequence a -> a
@@ -1962,8 +1971,8 @@ encodeSetAux eu ms EmptySequence Empty
                  mapM_ id mds
                  return (odb, completeSequenceBits eu odb)
 encodeSetAux (extensible, b) ms (ExtensionMarker as) xs
-    | not extensible
-        = let m = encodeSetAuxExt (True, False) ms [] as xs
+    | extensible == Ext
+        = let m = encodeSetAuxExt (Ext, NotUsed) ms [] as xs
           in
            do (b, eb,pm) <- censor (const BB.empty) m
               (od2,f) <- pm
@@ -1984,7 +1993,7 @@ encodeSetAux eu ms (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:x
 encodeSetAux eu ms (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
     = encodeSetAux eu ms as xs
 encodeSetAux (b1,b2) ms (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
-    = encodeSetAux (b1, True) ms as xs
+    = encodeSetAux (b1, Used) ms as xs
 encodeSetAux eu ms (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs)
     =   {- X691REF: 18.2 with optional component not present -}
         encodeSetAux eu (ms ++ [(getTI a, (Just 0, noBit))])  as xs
@@ -1999,7 +2008,7 @@ encodeSetAux eu ms (AddComponent (DefaultComponent (NamedType t a) d) as) (Just 
     =   {- X691REF: 18.2 with default component present -}
         encodeSetAux eu (ms ++ [(getTI a, (Just 1, encode a [] x))]) as xs
 encodeSetAux (b1,b2) ms (ExtensionAdditionGroup _ _ as) (x:*:xs)
-    = encodeSetAux (b1,True) ms as xs
+    = encodeSetAux (b1,Used) ms as xs
 
 
 
@@ -2013,7 +2022,7 @@ encodeSetAuxExt (b1,b2) ms eb (AddComponent (ExtensionComponent (NamedType t a))
     = do {- X691REF: 18.7 with extension addition present -}
          {- X691REF: 18.9 with ComponentType extension -}
          encodeOpen a x
-         encodeSetAuxExt (b1,True) ms (eb ++ [1]) as xs
+         encodeSetAuxExt (b1,Used) ms (eb ++ [1]) as xs
 encodeSetAuxExt b ms eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
     =   {- X691REF: 18.7 with extension addition absent -}
         encodeSetAuxExt b ms (eb ++ [0]) as xs
@@ -2021,7 +2030,7 @@ encodeSetAuxExt (b1,b2) ms eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
     = do {- X691REF: 18.7 with extension addition present -}
          {- X691REF: 18.9 with ExtensionAdditionGroup extension -}
          encodeOpen (BuiltinType (SEQUENCE (makeSequence a))) x
-         encodeSetAuxExt (b1, True) ms (eb ++ [1]) as xs
+         encodeSetAuxExt (b1, Used) ms (eb ++ [1]) as xs
 encodeSetAuxExt b ms eb (ExtensionMarker as) xs
     = return (b, eb, encodeSetAux b ms as xs)
 encodeSetAuxExt b ms eb EmptySequence Empty
