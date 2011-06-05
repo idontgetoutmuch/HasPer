@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeOperators #-}
+
 module NewTestData where
 
 import ASNTYPE
@@ -130,3 +132,55 @@ tEm2 = (BuiltinType (SEQUENCE (AddComponent mc1 (ExtensionMarker EmptySequence))
 tEm2' = (BuiltinType (SEQUENCE (AddComponent mc1 EmptySequence)))
    where
       mc1 = MandatoryComponent (NamedType "component1" (BuiltinType INTEGER))
+
+-- T ::= SEQUENCE { a    A,
+--                  b    B,
+--                  ...,
+--                  [[d  D,
+--                    e  E]],
+--                  ...,
+--                  c    C }
+
+-- Is this legal?
+tEm3 = (BuiltinType (SEQUENCE (AddComponent mc3 (ExtensionMarker (AddComponent mc4 EmptySequence)))))
+   where
+      mc1 = MandatoryComponent (NamedType "component1" (BuiltinType INTEGER))
+      mc2 = MandatoryComponent (NamedType "component2" (BuiltinType INTEGER))
+      mc3 = MandatoryComponent (NamedType "component3" s1)
+      mc4 = MandatoryComponent (NamedType "component4" s1)
+      s1  = BuiltinType (SEQUENCE (AddComponent mc1 (AddComponent mc2 EmptySequence)))
+
+
+
+infixr .*.
+
+class Sequences f where
+   (.*.) :: ComponentType a -> f l -> f (a :*: l)
+   empty :: f Nil
+
+instance Sequences Sequence where
+   (.*.) = AddComponent
+   empty = EmptySequence
+
+instance Sequences Sequence' where
+   (.*.) = AddComponent'
+   empty = EmptySequence'
+
+-- T ::= SEQUENCE { a    A,
+--                  b    B,
+--                  ...,
+--                  [[d  D,
+--                    e  E]],
+--                  ...,
+--                  c    C }
+axSeq' =
+   (MandatoryComponent (NamedType "a" (BuiltinType INTEGER))) .*.
+   (MandatoryComponent (NamedType "b" (BuiltinType INTEGER))) .*.
+   (ExtensionMarker (ExtensionAdditionGroup NoVersionNumber eag root2))
+      where
+         eag   = (MandatoryComponent (NamedType "d" (BuiltinType INTEGER))) .*.
+                 (MandatoryComponent (NamedType "e" (BuiltinType INTEGER))) .*.
+                 empty
+         root2 = ExtensionMarker $ (MandatoryComponent (NamedType "c" (BuiltinType INTEGER))) .*. empty
+
+bar = BuiltinType $ SEQUENCE axSeq'

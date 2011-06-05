@@ -10,7 +10,7 @@ import Language.ASN1 (
    -- TagPlicity (..),
    TagType (..)
    )
-import Text.PrettyPrint
+import Text.PrettyPrint as PP
 
 import NewTestData -- FIXME: For temporary testing - testing should
                    -- really be done outside of the module being tested
@@ -29,7 +29,7 @@ prettyType (ConstrainedType  t e) =
 
 prettySeq :: Sequence a -> Doc
 prettySeq EmptySequence =
-   empty
+   PP.empty
 prettySeq (AddComponent x EmptySequence) =
    prettyComponentType x
 prettySeq (AddComponent x xs) =
@@ -43,7 +43,7 @@ prettySeq (ExtensionAdditionGroup v x y) =
 
 prettySeq2 :: Sequence' a -> Doc
 prettySeq2 EmptySequence' =
-   empty
+   PP.empty
 prettySeq2 (AddComponent' x EmptySequence') =
    prettyComponentType x
 prettySeq2 (AddComponent' x xs) =
@@ -106,7 +106,7 @@ prettyReferencedType r t = text (ref r) <+> text "::=" <+> prettyType t
 
 prettyChoice :: Choice a -> Doc
 prettyChoice EmptyChoice =
-   empty
+   PP.empty
 prettyChoice (ChoiceOption nt EmptyChoice) =
    prettyNamedType nt
 prettyChoice (ChoiceOption nt xs) =
@@ -120,7 +120,7 @@ prettyChoice (ChoiceExtensionAdditionGroup v x) =
 
 prettyChoice' :: Choice' a -> Doc
 prettyChoice' EmptyChoice' =
-   empty
+   PP.empty
 prettyChoice' (ChoiceOption' nt EmptyChoice') =
    prettyNamedType nt
 prettyChoice' (ChoiceOption' nt xs) =
