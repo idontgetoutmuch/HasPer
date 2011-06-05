@@ -286,8 +286,8 @@ toPER BOOLEAN x cl         = encodeBool cl x
 toPER (ENUMERATED e) x cl  = encodeEnum e cl x -- no PER-Visible constraints
 toPER (BITSTRING nbs) x cl = encodeBitstring nbs cl x
 toPER (OCTETSTRING) x cl   = encodeOctetstring cl x
-toPER (SEQUENCE s) x cl    = encodeSequence s x -- no PER-Visible constraints
-toPER (SEQUENCEOF s) x cl  = encodeSequenceOf cl s x
+toPER (SEQUENCE s) x cl    = eSequence s x -- no PER-Visible constraints
+toPER (SEQUENCEOF s) x cl  = eSequenceOf cl s x
 toPER (SET s) x cl         = encodeSet s x -- no PER-Visible constraints
 toPER (CHOICE c) x cl      = encodeChoice c x -- no PER-visible constraints
 toPER (SETOF s) x cl       = encodeSetOf cl s x -- no PER-visible constraints
@@ -1482,18 +1482,18 @@ encodeNonExtRootConOctetstring rc ec (Valid erc) xs
 
 \section{ENCODING THE SEQUENCE TYPE}
 
-{\em encodeSequence} has only two inputs - the type and value - since a sequence has no PER-visible
-constraints. It calls an auxiliary function {\em encodeSequenceAux} which requires two
+{\em eSequence} has only two inputs - the type and value - since a sequence has no PER-visible
+constraints. It calls an auxiliary function {\em eSequenceAux} which requires two
 further inputs which indicate the extensibility of the type and existence of extension
 additions (represented as a pair of boolean values), and hosts the bits which indicate the presence or
-otherwise of optional or default values. {\em encodeSequenceAux} is a recursive function that recurses over
+otherwise of optional or default values. {\em eSequenceAux} is a recursive function that recurses over
 the structure of a sequence and returns a value of type {\em PERMonad (OptDefBits, BitStream -> BitStream)}.
 This is a monadic value that outputs (the encoding) bits and returns a
 pair of values -- the optional or default value indicator bits and a function which adds the appropriate
 prefix to the output that indicates whether the encoded value is extensible and has any extension additions,
 and the optional/default indicator bits.
 
-{\em encodeSequenceAux} has several cases to deal with that match the various components of a sequence
+{\em eSequenceAux} has several cases to deal with that match the various components of a sequence
 -- mandatory, optional, default, extension marker and so on -- and
 returns a pair whose second component is the function
 {\em completeSequenceBits} which adds a prefix to the output bits including the extension bit if
@@ -1501,7 +1501,7 @@ required and the bits which describe the presence or otherwise of optional or de
 Each root component is encoded as required using {\em encode}.
 
 Note that the extension indicator is initally set to {\em (False, False)}. The first element is converted
-to {\em True} when an extension marker is reached and {\em encodeSequenceAuxExt} is called.
+to {\em True} when an extension marker is reached and {\em eSequenceAuxExt} is called.
 It returns a value of type
 {\em PERMonad ((ExtAndUsed, ExtBits, OptDefBits, PERMonad (OptDefBits, BitStream -> BitStream)))}.
 That is, it is a monadic value that writes (the encoding) bitstream and returns 4 values in a 4-tuple.
@@ -1514,13 +1514,13 @@ a bitstream representing the existence or otherwise of extension additions;
 \item
 a bitstream representing the existence or otherwise of optional or default components; and
 \item
-a monadic value which is the result of applying {\em encodeSequenceAux} to the remainder of the sequence once
+a monadic value which is the result of applying {\em eSequenceAux} to the remainder of the sequence once
 the extension additions have been terminated. This is indicated by another extension marker or simply by the
 end of the sequence.
 \end{itemize}
 
 Since we need to output root value encodings before extension addition encodings, we need
-to run the returned {\em encodeSequenceAux} monad in advance of outputing the extension addition
+to run the returned {\em eSequenceAux} monad in advance of outputing the extension addition
 encoding bits. This is achieved by using the {\em MonadWriter} function {\em censor} which applies
 a function to the output of a monad in advance of outputting. Here we apply the Haskell built-in
 function {\tt const} which simply returns its first argument -- in this case the empty list {\em []}.
@@ -1531,7 +1531,7 @@ apply a function to add the required preamble to the extension addition encoding
 function {\em addExtensionAdditionPreamble}.
 
 Note also that the encoding of a {\em COMPONENTS OF} item is managed by
-{\em encodeSequenceAuxCO}. This monadic function outputs the encoding bits and returns the
+{\em eSequenceAuxCO}. This monadic function outputs the encoding bits and returns the
 optional/default bits to be used in the generation of the encoding preamble.
 
 \begin{code}
@@ -1541,15 +1541,20 @@ type ExtBits = BitStream
 
 -- FIXME: This should really be empty in a separate module and then we can import it as
 -- FIXME: e.g. BS.empty
+emptyBitStream :: BitStream
 emptyBitStream = []
+
+-- FIXME: Ditto
+emptySubTypeConstraints :: SerialSubtypeConstraints a
+emptySubTypeConstraints = []
 
 data Ext  = Ext  | NotExt  deriving Eq
 data Used = Used | NotUsed deriving Eq
 type ExtAndUsed = (Ext, Used)
 
-encodeSequence :: Sequence a -> a -> PERMonad ()
-encodeSequence s v
-           = do _odbs <- pass $ encodeSequenceAux (NotExt, NotUsed) emptyBitStream s v
+eSequence :: Sequence a -> a -> PERMonad ()
+eSequence s v
+           = do _odbs <- pass $ eSequenceAux NotExt NotUsed emptyBitStream s v
                 return ()
 
 -- FIXME: Eugh pattern match failure here
@@ -1560,66 +1565,69 @@ selectOutput (Left s)      = error $ show s
 \todo[owner={Dan}]{It seems strange to have {\em NotExt} and {\em ExtensionMarker} to encode 18.8.}
 
 \begin{code}
-encodeSequenceAux :: ExtAndUsed ->
-                     OptDefBits ->
-                     Sequence a ->
-                     a ->
-                     PERMonad (OptDefBits, BB.BitBuilder -> BB.BitBuilder)
-encodeSequenceAux extAndUsed optDef EmptySequence Empty
-    = return (optDef, completeSequenceBits extAndUsed optDef)
+eSequenceAux :: Ext ->
+                Used ->
+                OptDefBits ->
+                Sequence a ->
+                a ->
+                PERMonad (OptDefBits, BB.BitBuilder -> BB.BitBuilder)
+eSequenceAux ext used optDef EmptySequence Empty
+    = return (optDef, completeSequenceBits (ext, used) optDef)
 
-encodeSequenceAux (NotExt, used) optDefBits (ExtensionMarker as) xs
-   = {- X691REF: 18.8 -}
-     do rec (b, eb, _, pm)       <- censor (BB.append extRoot . BB.append extAddPreamble) $
-                                    encodeSequenceAuxExt (Ext, NotUsed) optDefBits emptyBitStream as xs
+eSequenceAux NotExt _ optDefBits (ExtensionMarker as) xs
+   = do rec (b, eb, _, pm)       <- censor (BB.append extRoot . BB.append extAddPreamble) $
+                                    eSequenceAuxExt (Ext, NotUsed) optDefBits emptyBitStream as xs
+            {- X691REF: 18.8 -}
             ((), extAddPreamble) <- censor (const BB.empty) $ listen $ addExtensionAdditionPreamble eb
+            {- X691REF: 18.2 -}
             ((od2, _), extRoot)  <- pass ((,) <$> (listen pm) <*> (pure $ const BB.empty))
-        encodeSequenceAux b od2 EmptySequence Empty
+        eSequenceAux (fst b) (snd b) od2 EmptySequence Empty
 
-encodeSequenceAux (Ext, used) optDefBits (ExtensionMarker as) xs
-   = encodeSequenceAux (Ext, used) optDefBits as xs
+eSequenceAux Ext used optDefBits (ExtensionMarker as) xs
+   = eSequenceAux Ext used optDefBits as xs
 
-encodeSequenceAux eu od (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
-    = do od2 <- encodeSequenceAuxCO [] s x
-         encodeSequenceAux eu (od ++ od2) as xs
+eSequenceAux e u od (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
+    = do od2 <- eSequenceAuxCO [] s x
+         -- FIXME: A list looks like the wrong type for putting things at the end
+         eSequenceAux e u (od ++ od2) as xs
 
-encodeSequenceAux eu od (AddComponent (ComponentsOf (ReferencedType n t)) as) (x:*:xs)
-    = encodeSequenceAux eu od (AddComponent (ComponentsOf t) as) (x:*:xs)
+eSequenceAux e u od (AddComponent (ComponentsOf (ReferencedType n t)) as) (x:*:xs)
+    = eSequenceAux e u od (AddComponent (ComponentsOf t) as) (x:*:xs)
 
-encodeSequenceAux eu od (AddComponent (ComponentsOf (ConstrainedType t c)) as) (x:*:xs)
-    = encodeSequenceAux eu od (AddComponent (ComponentsOf t) as) (x:*:xs)
+eSequenceAux e u od (AddComponent (ComponentsOf (ConstrainedType t c)) as) (x:*:xs)
+    = eSequenceAux e u od (AddComponent (ComponentsOf t) as) (x:*:xs)
 
-encodeSequenceAux eu od (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
-    = do encode a [] x
-         encodeSequenceAux eu od as xs
+eSequenceAux e u od (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
+    = do encode a emptySubTypeConstraints x
+         eSequenceAux e u od as xs
 
-encodeSequenceAux eu od (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
-    = encodeSequenceAux eu od as xs
+eSequenceAux e u od (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
+    = eSequenceAux e u od as xs
 
-encodeSequenceAux (b1,b2) od (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
-    = encodeSequenceAux (b1, Used) od as xs
+eSequenceAux b1 b2 od (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
+    = eSequenceAux b1 Used od as xs
 
-encodeSequenceAux eu od (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs)
+eSequenceAux e u od (AddComponent (OptionalComponent (NamedType _ a)) as) (Nothing:*:xs)
     =   {- X691REF: 18.2 with optional component not present -}
-        encodeSequenceAux eu (od ++ [0]) as xs
+        eSequenceAux e u (od ++ [0]) as xs
 
-encodeSequenceAux eu od (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
+eSequenceAux e u od (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
     = do {- X691REF: 18.2 with optional component present -}
-         encode a [] x
-         encodeSequenceAux eu (od ++ [1]) as xs
+         encode a emptySubTypeConstraints x
+         eSequenceAux e u (od ++ [1]) as xs
 
-encodeSequenceAux eu od (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs)
+eSequenceAux e u od (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs)
     =   {- X691REF: 18.2 with default value -}
         {- X691REF: 18.5 with default value (CANONICAL-PER) -}
-        encodeSequenceAux eu (od ++ [0]) as xs
+        eSequenceAux e u (od ++ [0]) as xs
 
-encodeSequenceAux eu od (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
+eSequenceAux e u od (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
     = do {- X691REF: 18.2 with non-default value -}
-         encode a [] x
-         encodeSequenceAux eu (od ++ [1]) as xs
+         encode a emptySubTypeConstraints x
+         eSequenceAux e u (od ++ [1]) as xs
 
-encodeSequenceAux (b1,b2) od (ExtensionAdditionGroup _ _ as) (x:*:xs)
-    = encodeSequenceAux (b1,Used) od as xs
+eSequenceAux extension _ optDef (ExtensionAdditionGroup _ _ as) (x:*:xs)
+    = eSequenceAux extension Used optDef as xs
 \end{code}
 
 completeSequenceBits changed so that the collection of optional/default
@@ -1654,33 +1662,38 @@ toBitBuilder [] = BB.empty
 \end{code}
 
 \begin{code}
-encodeSequenceAuxExt :: ExtAndUsed -> OptDefBits -> ExtBits -> Sequence a -> a
-                        -> PERMonad ((ExtAndUsed, ExtBits, OptDefBits,
-                                        PERMonad (OptDefBits, BB.BitBuilder -> BB.BitBuilder)))
-encodeSequenceAuxExt b odb eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
+eSequenceAuxExt :: ExtAndUsed ->
+                   OptDefBits ->
+                   ExtBits ->
+                   Sequence a ->
+                   a ->
+                   PERMonad ((ExtAndUsed, ExtBits, OptDefBits, PERMonad (OptDefBits, BB.BitBuilder -> BB.BitBuilder)))
+eSequenceAuxExt b odb eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Nothing:*:xs)
     =   {- X691REF: 18.7 with extension addition absent -}
-        encodeSequenceAuxExt b odb (eb ++ [0]) as xs
-encodeSequenceAuxExt (b1,b2) odb eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
+        eSequenceAuxExt b odb (eb ++ [0]) as xs
+eSequenceAuxExt (b1,b2) odb eb (AddComponent (ExtensionComponent (NamedType t a)) as) (Just x:*:xs)
     = do {- X691REF: 18.7 with extension addition present -}
          {- X691REF: 18.9 with ComponentType extension -}
          encodeOpen a x
-         encodeSequenceAuxExt (b1,Used) odb (eb ++ [1]) as xs
-encodeSequenceAuxExt b odb eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
+         eSequenceAuxExt (b1,Used) odb (eb ++ [1]) as xs
+eSequenceAuxExt b odb eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
     =   {- X691REF: 18.7 with extension addition absent -}
-        encodeSequenceAuxExt b odb (eb ++ [0]) as xs
-encodeSequenceAuxExt (b1,b2) odb eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
+        eSequenceAuxExt b odb (eb ++ [0]) as xs
+eSequenceAuxExt (b1,b2) odb eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
     = do {- X691REF: 18.7 with extension addition present -}
          {- X691REF: 18.9 with ExtensionAdditionGroup extension -}
          encodeOpen (BuiltinType (SEQUENCE (makeSequence a))) x
-         encodeSequenceAuxExt (b1, Used) odb (eb ++ [1]) as xs
-encodeSequenceAuxExt b odb eb (ExtensionMarker as) xs
-    = return (b, eb, odb, encodeSequenceAux b odb as xs)
-encodeSequenceAuxExt b odb eb EmptySequence Empty
+         eSequenceAuxExt (b1, Used) odb (eb ++ [1]) as xs
+eSequenceAuxExt b odb eb (ExtensionMarker as) xs
+    = return (b, eb, odb, eSequenceAux (fst b) (snd b) odb as xs)
+eSequenceAuxExt b odb eb EmptySequence Empty
     | L.null eb
-        = return (b, eb, odb, encodeSequenceAux b odb EmptySequence Empty)
+          -- FIXME: This is the same as
+        = return (b, eb, odb, eSequenceAux (fst b) (snd b) odb EmptySequence Empty)
     | otherwise
-        = return (b, eb, odb, encodeSequenceAux b odb EmptySequence Empty)
-encodeSequenceAuxExt b odb eb _ _
+          -- FIXME: this!!!
+        = return (b, eb, odb, eSequenceAux (fst b) (snd b) odb EmptySequence Empty)
+eSequenceAuxExt b odb eb _ _
     = throwError (OtherError "Inappropriate component!")
 \end{code}
 
@@ -1706,35 +1719,35 @@ the type.
 
 \begin{code}
 
-encodeSequenceAuxCO :: OptDefBits -> Sequence a -> a -> PERMonad OptDefBits
-encodeSequenceAuxCO odb EmptySequence _
+eSequenceAuxCO :: OptDefBits -> Sequence a -> a -> PERMonad OptDefBits
+eSequenceAuxCO odb EmptySequence _
     = return odb
-encodeSequenceAuxCO odb (ExtensionMarker as) xs
-    = encodeSequenceAuxCO odb as xs
-encodeSequenceAuxCO odb (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
-    = do odb2 <- encodeSequenceAuxCO [] s x
-         encodeSequenceAuxCO (odb ++ odb2) as xs
-encodeSequenceAuxCO odb (AddComponent (ComponentsOf _) as) (x:*:xs)
+eSequenceAuxCO odb (ExtensionMarker as) xs
+    = eSequenceAuxCO odb as xs
+eSequenceAuxCO odb (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
+    = do odb2 <- eSequenceAuxCO [] s x
+         eSequenceAuxCO (odb ++ odb2) as xs
+eSequenceAuxCO odb (AddComponent (ComponentsOf _) as) (x:*:xs)
     = throwError (OtherError "COMPONENTS OF can only be applied to a SEQUENCE")
-encodeSequenceAuxCO odb (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
+eSequenceAuxCO odb (AddComponent (MandatoryComponent (NamedType t a)) as) (x:*:xs)
     = do encode a [] x
-         encodeSequenceAuxCO odb as xs
-encodeSequenceAuxCO odb (AddComponent (ExtensionComponent (NamedType t a)) as) (_:*:xs) =
-   encodeSequenceAuxCO odb as xs
-encodeSequenceAuxCO odb (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
-   encodeSequenceAuxCO (odb ++ [0]) as xs
-encodeSequenceAuxCO odb (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
+         eSequenceAuxCO odb as xs
+eSequenceAuxCO odb (AddComponent (ExtensionComponent (NamedType t a)) as) (_:*:xs) =
+   eSequenceAuxCO odb as xs
+eSequenceAuxCO odb (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs) =
+   eSequenceAuxCO (odb ++ [0]) as xs
+eSequenceAuxCO odb (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
     = do
         encode a [] x
-        encodeSequenceAuxCO (odb ++ [1]) as xs
-encodeSequenceAuxCO odb (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs)
-    = encodeSequenceAuxCO (odb ++ [0]) as xs
-encodeSequenceAuxCO odb (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
+        eSequenceAuxCO (odb ++ [1]) as xs
+eSequenceAuxCO odb (AddComponent (DefaultComponent (NamedType t a) d) as) (Nothing:*:xs)
+    = eSequenceAuxCO (odb ++ [0]) as xs
+eSequenceAuxCO odb (AddComponent (DefaultComponent (NamedType t a) d) as) (Just x:*:xs)
     = do
         encode a [] x
-        encodeSequenceAuxCO (odb ++ [1]) as xs
-encodeSequenceAuxCO odb (ExtensionAdditionGroup _ _ as) (x:*:xs)
-    = encodeSequenceAuxCO odb as xs
+        eSequenceAuxCO (odb ++ [1]) as xs
+eSequenceAuxCO odb (ExtensionAdditionGroup _ _ as) (x:*:xs)
+    = eSequenceAuxCO odb as xs
 
 \end{code}
 
@@ -1767,11 +1780,11 @@ dSequenceAux bitmap (AddComponent (MandatoryComponent (NamedType _ t)) ts) =
 
 \section{ENCODING THE SEQUENCE-OF TYPE}
 
-{\em encodeSequenceOf} takes three inputs, the usual two inputs -- the list of serially applied constraints
+{\em eSequenceOf} takes three inputs, the usual two inputs -- the list of serially applied constraints
 and the value to be encoded -- and the type of the components. This is required as input to the {\em encode} function
 which encodes each component of the SEQUENCEOF. If the constraint list is empty the function
 {\em encodeUnconstrainedSequenceOf} is
-called. Otherwise, {\em encodeSequenceOfWithConstraint} is called. Note that there are two ways
+called. Otherwise, {\em eSequenceOfWithConstraint} is called. Note that there are two ways
 in which a SEQUENCEOF type may have no PER-visible constraints. The first is when there are no
 constraints associated with the type. The second is when all of the serially applied
 constraints are non-PER visible. This is determined when generating the effective constraint
@@ -1783,12 +1796,12 @@ SIZE constraint is applied to the number of elements in the list.
 
 \begin{code}
 
-encodeSequenceOf :: [SubtypeConstraint [a]] -> ASNType a -> [a] -> PERMonad ()
-encodeSequenceOf [] t x
+eSequenceOf :: [SubtypeConstraint [a]] -> ASNType a -> [a] -> PERMonad ()
+eSequenceOf [] t x
     =   {- X691REF: 19.6 with ub unset -}
         encodeUnconstrainedSequenceOf t x
-encodeSequenceOf cl t x
-    =   encodeSequenceOfWithConstraint t cl x
+eSequenceOf cl t x
+    =   eSequenceOfWithConstraint t cl x
 
 \end{code}
 
@@ -1804,15 +1817,15 @@ encodeUnconstrainedSequenceOf t xs = encodeUnconstrainedLength (encode t []) xs
 \end{code}
 
 
-{\em encodeSequenceOfWithConstraint} calls {\em encodeNonExtConsSequenceOf} if the constraint is not
+{\em eSequenceOfWithConstraint} calls {\em encodeNonExtConsSequenceOf} if the constraint is not
 extensible. If it is extensible then {\em encodeExtConsSequenceOf} is called. They both take the
 effective constraint and actual constraint associated with the type as input.
 
 \begin{code}
 
-encodeSequenceOfWithConstraint :: ASNType a -> [SubtypeConstraint [a]] -> [a]
+eSequenceOfWithConstraint :: ASNType a -> [SubtypeConstraint [a]] -> [a]
                                   -> PERMonad ()
-encodeSequenceOfWithConstraint t cs v
+eSequenceOfWithConstraint t cs v
     = if (not extensible)
         then
              encodeNonExtConsSequenceOf t actualCon effectiveCon v
@@ -1958,7 +1971,7 @@ set value, but instead, must store the monadic encode value, typically of the fo
 encode a [] x}, in a list, which are then ordered by tag value, and then run in this order. That is, the
 encoding bits are only output after the ordering of the components. This behaviour
 is managed by the auxiliary function {\em encodeSetAux} which is similar to {\em
-encodeSequenceAux} except that the second input is a list of pairs of
+eSequenceAux} except that the second input is a list of pairs of
 \begin{itemize}
 \item
 tag information and
@@ -1997,7 +2010,7 @@ encodeSetAux (extensible, b) ms (ExtensionMarker as) xs
               (od2,f) <- pm
               {- X691REF: 18.8 -}
               censor (BB.append (selectOutput . extractValue $ addExtensionAdditionPreamble eb)) m
-              encodeSequenceAux b od2 EmptySequence Empty
+              eSequenceAux (fst b) (snd b) od2 EmptySequence Empty
     | otherwise
         = encodeSetAux (extensible,b) ms as xs
 encodeSetAux eu ms (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
