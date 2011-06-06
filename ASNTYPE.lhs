@@ -57,32 +57,31 @@ We present below our representation of the ASN.1 record structure of X.691, Anne
 \begin{code}
 personnelRecord
     = BuiltinType (TAGGED (Application, 0, Implicit) (BuiltinType (SET
-                    (AddComponent (MandatoryComponent (NamedType "name" (ReferencedType (Ref "Name") name)))
-                        (AddComponent (MandatoryComponent (NamedType "title" (BuiltinType (TAGGED (Context, 0, Explicit) (BuiltinType VISIBLESTRING)))))
-                            (AddComponent (MandatoryComponent (NamedType "number" (ReferencedType (Ref "EmpNumber") empNumber)))
-                                (AddComponent (MandatoryComponent (NamedType "dateOfHire" (BuiltinType (TAGGED (Context, 1, Explicit) (ReferencedType (Ref "Date") date)))))
-                                    (AddComponent (MandatoryComponent (NamedType "nameOfSpouse" (BuiltinType (TAGGED (Context, 2, Explicit) (ReferencedType (Ref "Name") name)))))
-                                        (AddComponent (DefaultComponent (NamedType "children" 
-                                           (BuiltinType (TAGGED (Context, 3, Implicit) (BuiltinType (SEQUENCEOF (ReferencedType (Ref "ChildInformation") childInformation))))) ) [])
-                                            EmptySequence)))))))))
+                    ((MandatoryComponent (NamedType "name" (ReferencedType (Ref "Name") name))) .*.
+                      (MandatoryComponent (NamedType "title" (BuiltinType (TAGGED (Context, 0, Explicit) (BuiltinType VISIBLESTRING))))) .*.
+                        (MandatoryComponent (NamedType "number" (ReferencedType (Ref "EmpNumber") empNumber))) .*.
+                          (MandatoryComponent (NamedType "dateOfHire" (BuiltinType (TAGGED (Context, 1, Explicit) (ReferencedType (Ref "Date") date))))) .*.
+                            (MandatoryComponent (NamedType "nameOfSpouse" (BuiltinType (TAGGED (Context, 2, Explicit) (ReferencedType (Ref "Name") name))))) .*.
+                              (DefaultComponent (NamedType "children" 
+                                (BuiltinType (TAGGED (Context, 3, Implicit) (BuiltinType (SEQUENCEOF (ReferencedType (Ref "ChildInformation") childInformation)))))) []) .*.
+                                            empty))))
 
 childInformation
     = BuiltinType
                 (SET
-                    (AddComponent (MandatoryComponent (NamedType "name" (ReferencedType (Ref "Name") name)))
-                        (AddComponent (MandatoryComponent (NamedType "dateOfBirth" (BuiltinType (TAGGED (Context, 0, Explicit) (ReferencedType (Ref "Date") date)))))
-                                            EmptySequence)))
+                    ((MandatoryComponent (NamedType "name" (ReferencedType (Ref "Name") name))) .*.
+                        (MandatoryComponent (NamedType "dateOfBirth" (BuiltinType (TAGGED (Context, 0, Explicit) (ReferencedType (Ref "Date") date))))) .*.
+                                            empty))
 
 name
     = BuiltinType (TAGGED (Application, 1, Implicit) (BuiltinType (SEQUENCE
-                    (AddComponent (MandatoryComponent (NamedType "givenName" (ReferencedType (Ref "NameString") nameString)))
-                        (AddComponent (MandatoryComponent (NamedType "initial" 
+                    ((MandatoryComponent (NamedType "givenName" (ReferencedType (Ref "NameString") nameString))) .*.
+                        (MandatoryComponent (NamedType "initial" 
 				      (ConstrainedType (ReferencedType (Ref "NameString") nameString)
 	    			        (RootOnly (UnionSet (NoUnion (NoIntersection
 	              				  (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
-                      				  (ElementConstraint (V (R (1,1))))))))))))))))))
-                            (AddComponent (MandatoryComponent (NamedType "familyName" nameString))
-                                EmptySequence))))))
+                      				  (ElementConstraint (V (R (1,1)))))))))))))))))) .*.
+                            (MandatoryComponent (NamedType "familyName" nameString)) .*. empty))))
 
 empNumber = BuiltinType (TAGGED (Application, 2, Implicit) (BuiltinType INTEGER))
 
@@ -826,6 +825,29 @@ existing sequence type.
 \end{itemize}
 
 \begin{code}
+infixr .*.
+
+class Sequences f where
+    (.*.) :: ComponentType a -> f l -> f (a :*: l)
+    empty :: f Nil
+ 
+instance Sequences Sequence where
+    (.*.) = AddComponent
+    empty = EmptySequence
+ 
+instance Sequences Sequence' where
+    (.*.) = AddComponent'
+    empty = EmptySequence'
+
+infixr ...
+
+class Sequences f => ExtensibleSequences f where
+    (...) :: f l -> f l
+    
+instance ExtensibleSequences Sequence where 
+    (...) = ExtensionMarker
+
+
 data Sequence a where
    EmptySequence            :: Sequence Nil
    ExtensionMarker          :: Sequence l -> Sequence l

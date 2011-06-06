@@ -222,10 +222,6 @@ error.
 
 type PERMonad = WriterT BB.BitBuilder (ErrorT ASNError Identity)
 
-instance Applicative PERMonad where
-  pure  = return
-  (<*>) = ap
-
 type UnPERMonad a = ErrorT ASNError BG.BitGet a
 
 data ASNError =
