@@ -1632,7 +1632,7 @@ bits are implemented using Data.Seq.
 \begin{code}
 completeSequenceBits :: ExtAndUsed -> BitStream -> BB.BitBuilder -> BB.BitBuilder
 completeSequenceBits (extensible, extensionAdditionPresent) odb bs
-    | extensible == Ext
+    | extensible == NotExt
         = BB.append (fragment odb) bs
     | extensionAdditionPresent == Used
         {- X691REF: 18.1 with extension additions present -}
@@ -1651,7 +1651,6 @@ completeSequenceBits (extensible, extensionAdditionPresent) odb bs
                 = let Right ((),b) = extractValue $ encodeUnconstrainedLength (tell . BB.fromBits 1) ls
                                     in
                                         b
-
 
 toBitBuilder (f:r) = BB.append (BB.fromBits 1 f) (toBitBuilder r)
 toBitBuilder [] = BB.empty
