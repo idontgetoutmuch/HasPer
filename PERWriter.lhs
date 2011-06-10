@@ -1671,6 +1671,14 @@ eSequenceAuxExt (b1,b2) odb eb (AddComponent (ExtensionComponent (NamedType t a)
          {- X691REF: 18.9 with ComponentType extension -}
          encodeOpen a x
          eSequenceAuxExt (b1,Used) odb (eb ++ [1]) as xs
+eSequenceAuxExt b odb eb (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs)
+    =   {- X691REF: 18.7 with extension addition absent -}
+        eSequenceAuxExt b odb (eb ++ [0]) as xs
+eSequenceAuxExt (b1,b2) odb eb (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
+    = do {- X691REF: 18.7 with extension addition present -}
+         {- X691REF: 18.9 with ComponentType extension -}
+         encodeOpen a x
+         eSequenceAuxExt (b1,Used) odb (eb ++ [1]) as xs
 eSequenceAuxExt b odb eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
     =   {- X691REF: 18.7 with extension addition absent -}
         eSequenceAuxExt b odb (eb ++ [0]) as xs
@@ -1682,17 +1690,12 @@ eSequenceAuxExt (b1,b2) odb eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
 eSequenceAuxExt b odb eb (ExtensionMarker as) xs
     = return (b, eb, odb, eSequenceAux (fst b) (snd b) odb as xs)
 eSequenceAuxExt b odb eb EmptySequence Empty
-    | L.null eb
-          -- FIXME: This is the same as
-        = return (b, eb, odb, eSequenceAux (fst b) (snd b) odb EmptySequence Empty)
-    | otherwise
-          -- FIXME: this!!!
-        = return (b, eb, odb, eSequenceAux (fst b) (snd b) odb EmptySequence Empty)
+    = return (b, eb, odb, eSequenceAux (fst b) (snd b) odb EmptySequence Empty)
 eSequenceAuxExt b odb eb _ _
     = throwError (OtherError "Inappropriate component!")
 \end{code}
 
-If the extension bit list is empty then there is no extension addition preamble.
+If the extension bit list is empty then there is no extension addition preamble (X691 section 18.6).
 
 \begin{code}
 addExtensionAdditionPreamble :: OptDefBits -> PERMonad ()
@@ -1702,7 +1705,7 @@ addExtensionAdditionPreamble ap
     = let la = genericLength ap
        in if la <= 63
         then do zeroBit
-                toNonNegBinaryInteger (la - 1) 63
+                toNonNegBinaryInteger (la - 1) 63 
                 tell (toBitBuilder ap)
         else do oneBit
                 encodeNonNegBinaryIntInOctets la
@@ -1980,7 +1983,7 @@ type {\em Maybe Int} to allow for non-optional/default components for which the 
 \begin{code}
 
 encodeSet :: Sequence a -> a -> PERMonad ()
-encodeSet s v
+encodeSet s v 
            = do odb <- pass $ encodeSetAux (NotExt, NotUsed) [] s v
                 return ()
 
@@ -1998,14 +2001,14 @@ encodeSetAux eu ms EmptySequence Empty
                  mapM_ id mds
                  return (odb, completeSequenceBits eu odb)
 encodeSetAux (extensible, b) ms (ExtensionMarker as) xs
-    | extensible == Ext
+    | extensible == NotExt
         = let m = encodeSetAuxExt (Ext, NotUsed) ms [] as xs
           in
            do (b, eb,pm) <- censor (const BB.empty) m
               (od2,f) <- pm
               {- X691REF: 18.8 -}
               censor (BB.append (selectOutput . extractValue $ addExtensionAdditionPreamble eb)) m
-              eSequenceAux (fst b) (snd b) od2 EmptySequence Empty
+              eSequenceAux Ext (snd b) od2 EmptySequence Empty
     | otherwise
         = encodeSetAux (extensible,b) ms as xs
 encodeSetAux eu ms (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
@@ -2050,6 +2053,14 @@ encodeSetAuxExt (b1,b2) ms eb (AddComponent (ExtensionComponent (NamedType t a))
          {- X691REF: 18.9 with ComponentType extension -}
          encodeOpen a x
          encodeSetAuxExt (b1,Used) ms (eb ++ [1]) as xs
+encodeSetAuxExt b ms eb (AddComponent (OptionalComponent (NamedType t a)) as) (Nothing:*:xs)
+    =   {- X691REF: 18.7 with extension addition absent -}
+        encodeSetAuxExt b ms (eb ++ [0]) as xs
+encodeSetAuxExt (b1,b2) ms eb (AddComponent (OptionalComponent (NamedType t a)) as) (Just x:*:xs)
+    = do {- X691REF: 18.7 with extension addition present -}
+         {- X691REF: 18.9 with ComponentType extension -}
+         encodeOpen a x
+         encodeSetAuxExt (b1,Used) ms (eb ++ [1]) as xs
 encodeSetAuxExt b ms eb (ExtensionAdditionGroup _ a as) (Nothing:*:xs)
     =   {- X691REF: 18.7 with extension addition absent -}
         encodeSetAuxExt b ms (eb ++ [0]) as xs
@@ -2061,10 +2072,7 @@ encodeSetAuxExt (b1,b2) ms eb (ExtensionAdditionGroup _ a as) (Just x:*:xs)
 encodeSetAuxExt b ms eb (ExtensionMarker as) xs
     = return (b, eb, encodeSetAux b ms as xs)
 encodeSetAuxExt b ms eb EmptySequence Empty
-    | L.null eb
-        = return (b, eb, encodeSetAux b ms EmptySequence Empty)
-    | otherwise
-        = return (b, eb, encodeSetAux b ms EmptySequence Empty)
+    = return (b, eb, encodeSetAux b ms EmptySequence Empty)
 encodeSetAuxExt b odb eb _ _
     = throwError (OtherError "Inappropriate component!")
 

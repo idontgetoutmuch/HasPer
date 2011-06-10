@@ -66,12 +66,44 @@ personnelRecord
                                 (BuiltinType (TAGGED (Context, 3, Implicit) (BuiltinType (SEQUENCEOF (ReferencedType (Ref "ChildInformation") childInformation)))))) []) .*.
                                             empty))))
 
+
+personnelRecord31
+    = BuiltinType (TAGGED (Application, 0, Implicit) (BuiltinType (SET
+                    ((MandatoryComponent (NamedType "name" (ReferencedType (Ref "Name") name31))) .*.
+                      (MandatoryComponent (NamedType "title" (BuiltinType (TAGGED (Context, 0, Explicit) (BuiltinType VISIBLESTRING))))) .*.
+                        (MandatoryComponent (NamedType "number" (ReferencedType (Ref "EmpNumber") empNumber31))) .*.
+                          (MandatoryComponent (NamedType "dateOfHire" (BuiltinType (TAGGED (Context, 1, Explicit) (ReferencedType (Ref "Date") date31))))) .*.
+                            (MandatoryComponent (NamedType "nameOfSpouse" (BuiltinType (TAGGED (Context, 2, Explicit) (ReferencedType (Ref "Name") name31))))) .*.
+                              (OptionalComponent (NamedType "children" 
+                                (BuiltinType (TAGGED (Context, 3, Implicit) 
+					     (ConstrainedType (BuiltinType (SEQUENCEOF (ReferencedType (Ref "ChildInformation") childInformation31)))
+					     	(EmptyExtension (UnionSet (NoUnion (NoIntersection
+	              				  (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
+                      				  (ElementConstraint (V (R (2,2)))))))))))))))))))) .*.
+                                                empty))))
+ 
+
 childInformation
     = BuiltinType
                 (SET
                     ((MandatoryComponent (NamedType "name" (ReferencedType (Ref "Name") name))) .*.
                         (MandatoryComponent (NamedType "dateOfBirth" (BuiltinType (TAGGED (Context, 0, Explicit) (ReferencedType (Ref "Date") date))))) .*.
                                             empty))
+
+childInformation31
+    = BuiltinType
+                (SET
+                    ((MandatoryComponent (NamedType "name" (ReferencedType (Ref "Name") name31))) .*.
+                        (MandatoryComponent (NamedType "dateOfBirth" (BuiltinType (TAGGED (Context, 0, Explicit) (ReferencedType (Ref "Date") date31))))) .*.
+			   (ExtensionMarker 
+			     ((OptionalComponent (NamedType "sex" 
+			        (BuiltinType (TAGGED (Context, 1, Implicit) 
+			           (BuiltinType (ENUMERATED (AddEnumeration (NamedNumber "male" 1) 
+					        (AddEnumeration (NamedNumber "female" 2)
+						(AddEnumeration (NamedNumber "unknown" 3)
+						 EmptyEnumeration))))))))) .*.
+                                                  empty))))
+
 
 name
     = BuiltinType (TAGGED (Application, 1, Implicit) (BuiltinType (SEQUENCE
@@ -83,7 +115,23 @@ name
                       				  (ElementConstraint (V (R (1,1)))))))))))))))))) .*.
                             (MandatoryComponent (NamedType "familyName" nameString)) .*. empty))))
 
+name31
+    = BuiltinType (TAGGED (Application, 1, Implicit) (BuiltinType (SEQUENCE
+                    ((MandatoryComponent (NamedType "givenName" (ReferencedType (Ref "NameString") nameString31))) .*.
+                        (MandatoryComponent (NamedType "initial" 
+				      (ConstrainedType (ReferencedType (Ref "NameString") nameString31)
+	    			        (RootOnly (UnionSet (NoUnion (NoIntersection
+	              				  (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
+                      				  (ElementConstraint (V (R (1,1)))))))))))))))))) .*.
+                            (MandatoryComponent (NamedType "familyName" nameString31)) .*. (ExtensionMarker  empty)))))
+
+
 empNumber = BuiltinType (TAGGED (Application, 2, Implicit) (BuiltinType INTEGER))
+
+empNumber31 = ConstrainedType (BuiltinType (TAGGED (Application, 2, Implicit) (BuiltinType INTEGER)))
+	      	(EmptyExtension (UnionSet (NoUnion (NoIntersection
+	              				  (ElementConstraint (V (R (0,9999))))))))	      
+	      		      	      
 
 date = ConstrainedType
         (BuiltinType (TAGGED (Application, 3, Implicit) (BuiltinType VISIBLESTRING)))
@@ -96,6 +144,21 @@ date = ConstrainedType
 				   (NoIntersection 
 				      (ElementConstraint (V (R (8,8)))))))))))))))
 
+date31 = ConstrainedType
+        (BuiltinType (TAGGED (Application, 3, Implicit) (BuiltinType VISIBLESTRING)))
+        (RootOnly (UnionSet (NoUnion 
+           (IntersectionMark (NoIntersection
+                                (ElementConstraint (P (FR (RootOnly (UnionSet (NoUnion 
+                                   (NoIntersection 
+                                      (ElementConstraint (S (SV (VisibleString "0123456789"))))))))))))
+				(ElementConstraint (SZ (SC (NonEmptyExtension (UnionSet (NoUnion 
+				   (NoIntersection 
+				      (ElementConstraint (V (R (8,8)))))))
+                                       (UnionSet (NoUnion 
+				        (NoIntersection 
+				       (ElementConstraint (V (R (9,20)))))))
+                                       ))))))))
+
 nameString = ConstrainedType 
                (BuiltinType VISIBLESTRING)
 	       (RootOnly (UnionSet (NoUnion 
@@ -103,6 +166,15 @@ nameString = ConstrainedType
                                       (ElementConstraint (P (FR (RootOnly (UnionSet (NoUnion (NoIntersection 
                                                (ElementConstraint (S (SV (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])))))))))))))
 				      (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion
+				               (NoIntersection (ElementConstraint (V (R (1,64)))))))))))))))
+
+nameString31 = ConstrainedType 
+               (BuiltinType VISIBLESTRING)
+	       (RootOnly (UnionSet (NoUnion 
+                 (IntersectionMark (NoIntersection
+                                      (ElementConstraint (P (FR (RootOnly (UnionSet (NoUnion (NoIntersection 
+                                               (ElementConstraint (S (SV (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])))))))))))))
+				      (ElementConstraint (SZ (SC (EmptyExtension (UnionSet (NoUnion
 				               (NoIntersection (ElementConstraint (V (R (1,64)))))))))))))))
 \end{code}
   
@@ -135,18 +207,20 @@ spFN = VisibleString "Smith"
 
 cs = [c1,c2]
 
-c1 = ((c1GN :*: (c1I :*: (c1FN :*: Empty))) :*: (c1BD :*: Empty))
-c2 = ((c2GN :*: (c2I :*: (c2FN :*: Empty))) :*: (c2BD :*: Empty))
+c1 = ((c1GN :*: (c1I :*: (c1FN :*: Empty))) :*: (c1BD :*: (c1Sex :*: Empty)))
+c2 = ((c2GN :*: (c2I :*: (c2FN :*: Empty))) :*: (c2BD :*: (c2Sex :*: Empty)))
 
 c1GN = VisibleString "Ralph"
 c1I  = VisibleString "T"
 c1FN = VisibleString "Smith"
 c1BD = VisibleString "19571111"
+c1Sex = Nothing
 
 c2GN = VisibleString "Susan"
 c2I  = VisibleString "B"
 c2FN = VisibleString "Jones"
 c2BD = VisibleString "19590717"
+c2Sex = Just (AddEnumeration (NamedNumber "female" 2) EmptyEnumeration)
 \end{code}
 
 \subsection{ASN.1 Type}
@@ -1189,7 +1263,7 @@ has three constructors:
 
 data EnumerationItem = Identifier Name
                        | NamedNumber Name Integer
-											 deriving (Show, Eq) 
+								 deriving (Show, Eq) 
 
 data Enumerate = EmptyEnumeration
                  | AddEnumeration EnumerationItem Enumerate
