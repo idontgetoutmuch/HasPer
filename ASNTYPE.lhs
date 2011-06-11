@@ -119,13 +119,13 @@ name
 
 name31
     = BuiltinType (TAGGED (Application, 1, Implicit) (BuiltinType (SEQUENCE
-                    ((MandatoryComponent (NamedType "givenName" (ReferencedType (Ref "NameString") nameString31'))) .*.
+                    ((MandatoryComponent (NamedType "givenName" (ReferencedType (Ref "NameString") nameString31''))) .*.
                         (MandatoryComponent (NamedType "initial" 
-				      (ConstrainedType (ReferencedType (Ref "NameString") nameString31')
+				      (ConstrainedType (ReferencedType (Ref "NameString") nameString31'')
 	    			        (RootOnly (UnionSet (NoUnion (NoIntersection
 	              				  (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
                       				  (ElementConstraint (V (R (1,1)))))))))))))))))) .*.
-                            (MandatoryComponent (NamedType "familyName" nameString31')) .*. (ExtensionMarker  empty)))))
+                            (MandatoryComponent (NamedType "familyName" nameString31'')) .*. (ExtensionMarker  empty)))))
 
 
 empNumber = BuiltinType (TAGGED (Application, 2, Implicit) (BuiltinType INTEGER))
@@ -194,6 +194,17 @@ nameString31' =
 
          y = singletonUnion' (1, 64)
 
+nameString31'' =
+   ConstrainedType (BuiltinType VISIBLESTRING)
+                   (RootOnly (UnionSet (NoUnion
+                     ((NoIntersection (ElementConstraint (P (FR (RootOnly (UnionSet x')))))) /\
+                      (NoIntersection (ElementConstraint (SZ (SC (EmptyExtension (UnionSet y))))))))))
+      where
+         x' = VisibleString "a" .+. VisibleString "z" \/
+              VisibleString "A" .+. VisibleString "Z" \/
+              (singletonUnion . VisibleString $ "-.")
+         y = 1 .+. 64
+
 
 
 singletonIntersection :: (SingleValue a) => a -> Intersections a
@@ -210,13 +221,18 @@ singletonUnion = NoUnion . singletonIntersection
 singletonUnion' :: (ValueRange a) => (a, a) -> Unions a
 singletonUnion' = NoUnion . singletonIntersection'
 
-infixl 5 \/
+infixl 6 \/
 (\/) :: Unions a -> Unions a -> Unions a
 x \/ (NoUnion y) = UnionMark x y
 
-infixl 6 /\
+infixl 5 /\
 (/\) :: Intersections a -> Intersections a -> Intersections a
 x /\ (NoIntersection y) = IntersectionMark x y
+
+-- FIXME: I don't think this a good choice of symbol as we already have
+-- FIXME: .*. as the SEQUENCE combinator
+infixl 7 .+.
+x .+. y = singletonUnion' (x, y)
 
 \end{code}
 

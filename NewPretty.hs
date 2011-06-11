@@ -103,7 +103,8 @@ prettyBuiltinType UNIVERSALSTRING       = text "UNIVERSALSTRING"
 prettyBuiltinType BMPSTRING             = text "BMPSTRING"
 prettyBuiltinType NULL                  = text "NULL"
 prettyBuiltinType (ENUMERATED enums)    = text "ENUMERATED" <+> braces (text "FIXME: the enumeratees")
-prettyBuiltinType (TAGGED tagInfo t)    = text "TAGGED" <+> prettyType t
+-- FIXME: For now ignore the tag information
+prettyBuiltinType (TAGGED _tagInfo t)    = prettyType t
 
 
 
@@ -189,7 +190,9 @@ prettyValueRange (ConstrainedType _ _) _         = text "FIXME: prettyValueRange
 prettyValueRange (BuiltinType BOOLEAN) _         = text "FIXME: prettyValueRange BuiltinType BOOLEAN"
 prettyValueRange (BuiltinType (ENUMERATED _)) _  = text "FIXME: prettyValueRange BuiltinType ENUMERATED"
 prettyValueRange (BuiltinType OCTETSTRING) _     = text "FIXME: prettyValueRange BuiltinType OCTETSTRING"
-prettyValueRange (BuiltinType VISIBLESTRING) _   = text "FIXME: prettyValueRange BuiltinType VISIBLESTRING"
+prettyValueRange (BuiltinType VISIBLESTRING) (R (x, y)) = doubleQuotes (text $ visibleString x) <>
+                                                          text ".." <>
+                                                          doubleQuotes (text $ visibleString y)
 prettyValueRange (BuiltinType UNIVERSALSTRING) _ = text "FIXME: prettyValueRange BuiltinType UNIVERSALSTRING"
 prettyValueRange (BuiltinType BMPSTRING) _       = text "FIXME: prettyValueRange BuiltinType BMPSTRING"
 prettyValueRange (BuiltinType NULL) _            = text "FIXME: prettyValueRange BuiltinType NULL"
