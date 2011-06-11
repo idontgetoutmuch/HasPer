@@ -82,7 +82,7 @@ personnelRecord31
 					     	(EmptyExtension (UnionSet (NoUnion (NoIntersection
 	              				  (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
                       				  (ElementConstraint (V (R (2,2)))))))))))))))))))) .*.
-                                                empty))))
+                                               (ExtensionMarker  empty)))))
  
 
 childInformation

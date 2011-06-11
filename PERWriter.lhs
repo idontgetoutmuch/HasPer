@@ -914,7 +914,7 @@ encodeEnumAux extensible no (f:r) (AddEnumeration ei es) n
     | getName ei == n
         = if not extensible
             then    {- X691REF: 13.2 -}
-                    toNonNegBinaryInteger (fromInteger f) (fromInteger $ no - 1)
+                  toNonNegBinaryInteger (fromInteger f) (fromInteger $ no - 1)
             else do {- X691REF: 13.2 -}
                     zeroBit
                     toNonNegBinaryInteger (fromInteger f) (fromInteger $ no - 1)
@@ -1569,7 +1569,6 @@ eSequenceAux :: Ext ->
                 PERMonad (OptDefBits, BB.BitBuilder -> BB.BitBuilder)
 eSequenceAux ext used optDef EmptySequence Empty
     = return (optDef, completeSequenceBits (ext, used) optDef)
-
 eSequenceAux NotExt _ optDefBits (ExtensionMarker as) xs
    = do rec (b, eb, _, pm)       <- censor (BB.append extRoot . BB.append extAddPreamble) $
                                     eSequenceAuxExt (Ext, NotUsed) optDefBits emptyBitStream as xs
@@ -1980,6 +1979,9 @@ instead of simply a list of optional/default bits. Here each optional/default bi
 type {\em Maybe Int} to allow for non-optional/default components for which the entry will be
 {\em Nothing}.
 
+Note that we call {\tt eSquenceAux} at the end of the {\tt ExtensionMarker} case, since {\tt encodeSetAux} is applied to the empty case 
+when the monad returned by {\tt encodeSetAuxExt (Ext, NotUsed) ms [] as xs} is run.
+
 \begin{code}
 
 encodeSet :: Sequence a -> a -> PERMonad ()
@@ -2008,7 +2010,7 @@ encodeSetAux (extensible, b) ms (ExtensionMarker as) xs
               (od2,f) <- pm
               {- X691REF: 18.8 -}
               censor (BB.append (selectOutput . extractValue $ addExtensionAdditionPreamble eb)) m
-              eSequenceAux Ext (snd b) od2 EmptySequence Empty
+              eSequenceAux (fst b) (snd b) od2 EmptySequence Empty 
     | otherwise
         = encodeSetAux (extensible,b) ms as xs
 encodeSetAux eu ms (AddComponent (ComponentsOf (BuiltinType (SEQUENCE s))) as) (x:*:xs)
