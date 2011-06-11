@@ -115,7 +115,7 @@ name
 	    			        (RootOnly (UnionSet (NoUnion (NoIntersection
 	              				  (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
                       				  (ElementConstraint (V (R (1,1)))))))))))))))))) .*.
-                            (MandatoryComponent (NamedType "familyName" nameString)) .*. empty))))
+                            (MandatoryComponent (NamedType "familyName" (ReferencedType (Ref "NameString") nameString))) .*. empty))))
 
 name31
     = BuiltinType (TAGGED (Application, 1, Implicit) (BuiltinType (SEQUENCE
@@ -125,7 +125,7 @@ name31
 	    			        (RootOnly (UnionSet (NoUnion (NoIntersection
 	              				  (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
                       				  (ElementConstraint (V (R (1,1)))))))))))))))))) .*.
-                            (MandatoryComponent (NamedType "familyName" nameString31'')) .*. (ExtensionMarker  empty)))))
+                            (MandatoryComponent (NamedType "familyName" (ReferencedType (Ref "NameString") nameString31''))) .*. (ExtensionMarker  empty)))))
 
 
 empNumber = BuiltinType (TAGGED (Application, 2, Implicit) (BuiltinType INTEGER))
