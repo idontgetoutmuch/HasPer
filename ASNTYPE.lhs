@@ -16,6 +16,8 @@ ASN.1, a type-based notation.
                 -XScopedTypeVariables
 #-}
 
+{-# LANGUAGE NoMonomorphismRestriction #-}
+
 \end{code}
 
 %endif
@@ -117,13 +119,13 @@ name
 
 name31
     = BuiltinType (TAGGED (Application, 1, Implicit) (BuiltinType (SEQUENCE
-                    ((MandatoryComponent (NamedType "givenName" (ReferencedType (Ref "NameString") nameString31))) .*.
+                    ((MandatoryComponent (NamedType "givenName" (ReferencedType (Ref "NameString") nameString31'))) .*.
                         (MandatoryComponent (NamedType "initial" 
-				      (ConstrainedType (ReferencedType (Ref "NameString") nameString31)
+				      (ConstrainedType (ReferencedType (Ref "NameString") nameString31')
 	    			        (RootOnly (UnionSet (NoUnion (NoIntersection
 	              				  (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
                       				  (ElementConstraint (V (R (1,1)))))))))))))))))) .*.
-                            (MandatoryComponent (NamedType "familyName" nameString31)) .*. (ExtensionMarker  empty)))))
+                            (MandatoryComponent (NamedType "familyName" nameString31')) .*. (ExtensionMarker  empty)))))
 
 
 empNumber = BuiltinType (TAGGED (Application, 2, Implicit) (BuiltinType INTEGER))
@@ -172,12 +174,52 @@ nameString31 = ConstrainedType
                (BuiltinType VISIBLESTRING)
 	       (RootOnly (UnionSet (NoUnion 
                  (IntersectionMark (NoIntersection
-                                      (ElementConstraint (P (FR (RootOnly (UnionSet (NoUnion (NoIntersection 
+                                      (ElementConstraint (P (FR (RootOnly (UnionSet (NoUnion (NoIntersection
+                                                                                         -- FIXME: This is semantically the same
+                                                                                         -- FIXME: but will not render the same
+                                                                                         -- FIXME: as the example 
                                                (ElementConstraint (S (SV (VisibleString (['a'..'z'] ++ ['A'..'Z'] ++ ['-','.'])))))))))))))
 				      (ElementConstraint (SZ (SC (EmptyExtension (UnionSet (NoUnion
 				               (NoIntersection (ElementConstraint (V (R (1,64)))))))))))))))
+
+nameString31' =
+   ConstrainedType (BuiltinType VISIBLESTRING)
+                   (RootOnly (UnionSet (NoUnion
+                     ((NoIntersection (ElementConstraint (P (FR (RootOnly (UnionSet x)))))) /\
+                      (NoIntersection (ElementConstraint (SZ (SC (EmptyExtension (UnionSet y))))))))))
+      where
+         x = (singletonUnion . VisibleString $ ['a'..'z']) \/
+             (singletonUnion . VisibleString $ ['A'..'Z']) \/
+             (singletonUnion . VisibleString $ "-.")
+
+         y = singletonUnion' (1, 64)
+
+
+
+singletonIntersection :: (SingleValue a) => a -> Intersections a
+singletonIntersection = NoIntersection . ElementConstraint . S . SV
+
+-- FIXME: Hopefully temporary as we should be able to unify these somehow
+singletonIntersection' :: (ValueRange a) => (a, a) -> Intersections a
+singletonIntersection' = NoIntersection . ElementConstraint . V . R
+
+singletonUnion :: (SingleValue a) => a -> Unions a
+singletonUnion = NoUnion . singletonIntersection
+
+-- FIXME: Hopefully temporary as we should be able to unify these somehow
+singletonUnion' :: (ValueRange a) => (a, a) -> Unions a
+singletonUnion' = NoUnion . singletonIntersection'
+
+infixl 5 \/
+(\/) :: Unions a -> Unions a -> Unions a
+x \/ (NoUnion y) = UnionMark x y
+
+infixl 6 /\
+(/\) :: Intersections a -> Intersections a -> Intersections a
+x /\ (NoIntersection y) = IntersectionMark x y
+
 \end{code}
-  
+
 Here is our representation of the record value presented in X.691, Annex A, section A.2.2.
 
 \begin{code}

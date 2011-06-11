@@ -150,22 +150,6 @@ tEm3 = (BuiltinType (SEQUENCE (AddComponent mc3 (ExtensionMarker (AddComponent m
       mc4 = MandatoryComponent (NamedType "component4" s1)
       s1  = BuiltinType (SEQUENCE (AddComponent mc1 (AddComponent mc2 EmptySequence)))
 
-
-
-infixr .*.
-
-class Sequences f where
-   (.*.) :: ComponentType a -> f l -> f (a :*: l)
-   empty :: f Nil
-
-instance Sequences Sequence where
-   (.*.) = AddComponent
-   empty = EmptySequence
-
-instance Sequences Sequence' where
-   (.*.) = AddComponent'
-   empty = EmptySequence'
-
 -- T ::= SEQUENCE { a    A,
 --                  b    B,
 --                  ...,
@@ -181,6 +165,6 @@ axSeq' =
          eag   = (MandatoryComponent (NamedType "d" (BuiltinType INTEGER))) .*.
                  (MandatoryComponent (NamedType "e" (BuiltinType INTEGER))) .*.
                  empty
-         root2 = ExtensionMarker $ (MandatoryComponent (NamedType "c" (BuiltinType INTEGER))) .*. empty
+         root2 = (...) $ (MandatoryComponent (NamedType "c" (BuiltinType INTEGER))) .*. empty
 
 bar = BuiltinType $ SEQUENCE axSeq'

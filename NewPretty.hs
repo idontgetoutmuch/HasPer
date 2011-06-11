@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XGADTs #-}
+{-# OPTIONS_GHC -XGADTs -fwarn-incomplete-patterns #-}
 
 -- -fwarn-incomplete-patterns
 
@@ -72,8 +72,9 @@ prettySeq2' (AddComponent' x xs) =
 prettySeq'' x = vcat $ punctuate comma $ prettySeq' x
 
 prettyComponentType :: ComponentType a -> Doc
-prettyComponentType (MandatoryComponent m) = prettyNamedType m
-prettyComponentType (OptionalComponent m ) = prettyNamedType m <+> text "OPTIONAL"
+prettyComponentType (MandatoryComponent m)   = prettyNamedType m
+prettyComponentType (OptionalComponent  m)   = prettyNamedType m <+> text "OPTIONAL"
+prettyComponentType (DefaultComponent m@(NamedType _ n) v) = prettyNamedType m <+> text "DEFAULT" <+> prettyTypeVal n v
 
 prettyBuiltinType :: ASNBuiltin a -> Doc
 prettyBuiltinType (BITSTRING []) =
@@ -94,12 +95,16 @@ prettyBuiltinType (SET s) =
    text "SET" <> space <> braces (prettySeq s)
 prettyBuiltinType (SEQUENCEOF t) =
    text "SEQUENCE OF" <+> prettyType t
-prettyBuiltinType OCTETSTRING     = text "OCTETSTRING"
-prettyBuiltinType VISIBLESTRING   = text "VISIBLESTRING"
-prettyBuiltinType NUMERICSTRING   = text "NUMERICSTRING"
-prettyBuiltinType UNIVERSALSTRING = text "UNIVERSALSTRING"
-prettyBuiltinType BMPSTRING       = text "BMPSTRING"
-prettyBuiltinType NULL            = text "NULL"
+prettyBuiltinType OCTETSTRING           = text "OCTETSTRING"
+prettyBuiltinType (BITSTRING namedBits) = text "BITSTRING" <+> braces (text "FIXME: the named bits")
+prettyBuiltinType VISIBLESTRING         = text "VISIBLESTRING"
+prettyBuiltinType NUMERICSTRING         = text "NUMERICSTRING"
+prettyBuiltinType UNIVERSALSTRING       = text "UNIVERSALSTRING"
+prettyBuiltinType BMPSTRING             = text "BMPSTRING"
+prettyBuiltinType NULL                  = text "NULL"
+prettyBuiltinType (ENUMERATED enums)    = text "ENUMERATED" <+> braces (text "FIXME: the enumeratees")
+prettyBuiltinType (TAGGED tagInfo t)    = text "TAGGED" <+> prettyType t
+
 
 
 prettyReferencedType r t = text (ref r) <+> text "::=" <+> prettyType t
@@ -178,11 +183,49 @@ prettyValueRange (BuiltinType PRINTABLESTRING) (R (x,y)) = text (printableString
 prettyValueRange (BuiltinType NUMERICSTRING) (R (x,y)) = text (numericString x) <> text ".." <> text (numericString y)
 prettyValueRange (BuiltinType (BITSTRING _)) (R (x,y)) = text (show x) <> text ".." <> text (show y)
 
+-- FIXME: Everything below is temporary
+prettyValueRange (ReferencedType _ _) _          = text "FIXME: prettyValueRange ReferencedType"
+prettyValueRange (ConstrainedType _ _) _         = text "FIXME: prettyValueRange ConstrainedType"
+prettyValueRange (BuiltinType BOOLEAN) _         = text "FIXME: prettyValueRange BuiltinType BOOLEAN"
+prettyValueRange (BuiltinType (ENUMERATED _)) _  = text "FIXME: prettyValueRange BuiltinType ENUMERATED"
+prettyValueRange (BuiltinType OCTETSTRING) _     = text "FIXME: prettyValueRange BuiltinType OCTETSTRING"
+prettyValueRange (BuiltinType VISIBLESTRING) _   = text "FIXME: prettyValueRange BuiltinType VISIBLESTRING"
+prettyValueRange (BuiltinType UNIVERSALSTRING) _ = text "FIXME: prettyValueRange BuiltinType UNIVERSALSTRING"
+prettyValueRange (BuiltinType BMPSTRING) _       = text "FIXME: prettyValueRange BuiltinType BMPSTRING"
+prettyValueRange (BuiltinType NULL) _            = text "FIXME: prettyValueRange BuiltinType NULL"
+prettyValueRange (BuiltinType (SEQUENCE _)) _    = text "FIXME: prettyValueRange BuiltinType SEQUENCE"
+prettyValueRange (BuiltinType (SEQUENCEOF _)) _  = text "FIXME: prettyValueRange BuiltinType SEQUENCEOF"
+prettyValueRange (BuiltinType (SET _)) _         = text "FIXME: prettyValueRange BuiltinType SET"
+prettyValueRange (BuiltinType (SETOF _)) _       = text "FIXME: prettyValueRange BuiltinType SETOF"
+prettyValueRange (BuiltinType (CHOICE _)) _      = text "FIXME: prettyValueRange BuiltinType CHOICE"
+prettyValueRange (BuiltinType (TAGGED _ _)) _    = text "FIXME: prettyValueRange BuiltinType TAGGED"
+
+
+
 prettySingleValue :: ASNType a -> SingleValueConstraint a -> Doc
 prettySingleValue (BuiltinType INTEGER) (SV e) = text (show e)
 prettySingleValue (BuiltinType (BITSTRING _)) (SV e) = prettyBitString e
 prettySingleValue (BuiltinType IA5STRING) (SV e) = text (show e)
 prettySingleValue (BuiltinType PRINTABLESTRING) (SV e) = doubleQuotes (text (printableString e))
+
+-- FIXME: Everything below is temporary
+prettySingleValue (ReferencedType _ _) _          = text "FIXME: prettySingleValue ReferencedType"
+prettySingleValue (ConstrainedType _ _) _         = text "FIXME: prettySingleValue ConstrainedType"
+prettySingleValue (BuiltinType BOOLEAN) _         = text "FIXME: prettySingleValue BOOLEAN"
+prettySingleValue (BuiltinType (ENUMERATED _)) _  = text "FIXME: prettySingleValue ENUMERATED"
+prettySingleValue (BuiltinType OCTETSTRING) _     = text "FIXME: prettySingleValue OCTETSTRING"
+prettySingleValue (BuiltinType VISIBLESTRING) (SV x) = text $ show $ visibleString x
+prettySingleValue (BuiltinType NUMERICSTRING) _   = text "FIXME: prettySingleValue NUMERICSTRING"
+prettySingleValue (BuiltinType UNIVERSALSTRING) _ = text "FIXME: prettySingleValue UNIVERSALSTRING"
+prettySingleValue (BuiltinType BMPSTRING) _       = text "FIXME: prettySingleValue BMPSTRING"
+prettySingleValue (BuiltinType NULL) _            = text "FIXME: prettySingleValue NULL"
+prettySingleValue (BuiltinType (SEQUENCE _)) _    = text "FIXME: prettySingleValue SEQUENCE"
+prettySingleValue (BuiltinType (SEQUENCEOF _)) _  = text "FIXME: prettySingleValue SEQUENCEOF"
+prettySingleValue (BuiltinType (SET _)) _         = text "FIXME: prettySingleValue SET"
+prettySingleValue (BuiltinType (SETOF _)) _       = text "FIXME: prettySingleValue SETOF"
+prettySingleValue (BuiltinType (CHOICE _)) _      = text "FIXME: prettySingleValue CHOICE"
+prettySingleValue (BuiltinType (TAGGED _ _)) _    = text "FIXME: prettySingleValue TAGGED"
+
 
 prettyBitString = (<> text "B") . (quotes . text . concat . map show .  bitString)
 
@@ -196,8 +239,7 @@ instance Pretty InfInteger where
 
 prettyTypeVal :: ASNType a -> a -> Doc
 prettyTypeVal (BuiltinType INTEGER) x = pretty x
-prettyTypeVal (BuiltinType (SEQUENCE s)) x = undefined
--- prettyTypeVal (ReferencedType
+prettyTypeVal (BuiltinType (SEQUENCE s)) x = error "SEQUENCE"
 
 prettyElementTypeVal :: ComponentType a -> a -> Doc
 prettyElementTypeVal (MandatoryComponent (NamedType n t)) x =
