@@ -308,7 +308,9 @@ completeEncode m
        let bs = extractValue m
        in case bs of
             {- X691REF: 10.1.3 with empty bit string -}
-            (Right (_,empty)) -> tell $ BB.fromBits 8 (0x00::Int)
+            (Right (f,s)) -> if BL.null $ BB.toLazyByteString s 
+	    	       	      	    	 then tell $ BB.fromBits 8 (0x00::Int)	 
+				         else m
             {- X691REF: 10.1.3 with non-empty bit string -}
             x -> m
 \end{code}
@@ -914,7 +916,7 @@ encodeEnumAux extensible no (f:r) (AddEnumeration ei es) n
     | getName ei == n
         = if not extensible
             then    {- X691REF: 13.2 -}
-                  toNonNegBinaryInteger (fromInteger f) (fromInteger $ no - 1)
+                    toNonNegBinaryInteger (fromInteger f) (fromInteger $ no - 1)
             else do {- X691REF: 13.2 -}
                     zeroBit
                     toNonNegBinaryInteger (fromInteger f) (fromInteger $ no - 1)
