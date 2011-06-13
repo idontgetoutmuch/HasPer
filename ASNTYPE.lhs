@@ -106,7 +106,6 @@ childInformation31
 						 EmptyEnumeration))))))))) .*.
                                                   empty))))
 
-
 name
     = BuiltinType (TAGGED (Application, 1, Implicit) (BuiltinType (SEQUENCE
                     ((MandatoryComponent (NamedType "givenName" (ReferencedType (Ref "NameString") nameString))) .*.

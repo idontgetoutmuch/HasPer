@@ -1704,11 +1704,13 @@ addExtensionAdditionPreamble []
     = do noBit
 addExtensionAdditionPreamble ap
     = let la = genericLength ap
-       in if la <= 63
-        then do zeroBit
-                toNonNegBinaryInteger (la - 1) 63 
+       in if la <= 64
+        then do {- X691REF: 10.9.3.4  when n <= 64-}
+                zeroBit
+                toNonNegBinaryInteger (la - 1) 63
                 tell (toBitBuilder ap)
-        else do oneBit
+        else do {- X691REF: 10.9.3.4  when n > 64-}
+                oneBit
                 encodeNonNegBinaryIntInOctets la
                 tell (toBitBuilder ap)
 \end{code}
