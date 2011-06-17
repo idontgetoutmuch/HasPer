@@ -83,7 +83,6 @@ personnelRecord31
 	              				  (ElementConstraint (SZ (SC (RootOnly (UnionSet (NoUnion (NoIntersection 
                       				  (ElementConstraint (V (R (2,2)))))))))))))))))))) .*.
                                                (ExtensionMarker  empty)))))
- 
 
 childInformation
     = BuiltinType
@@ -277,7 +276,7 @@ c2GN = VisibleString "Susan"
 c2I  = VisibleString "B"
 c2FN = VisibleString "Jones"
 c2BD = VisibleString "19590717"
-c2Sex = Just (AddEnumeration (NamedNumber "female" 2) EmptyEnumeration)
+c2Sex = Just "female"
 \end{code}
 
 \subsection{ASN.1 Type}
@@ -286,6 +285,8 @@ c2Sex = Just (AddEnumeration (NamedNumber "female" 2) EmptyEnumeration)
 The top-level ASN.1 type, which is simply called {\tt Type}, encompasses all ASN.1 types. Each type is
 classified as:
 \begin{itemize}
+
+
 \item
 a built-in type -- any of the standard ASN.1 types or a tagged type;
 \item
@@ -344,7 +345,7 @@ the type of the Haskell representation.
 
 Note that {\em Bool} is the Haskell boolean type and {\em InfInteger} is our representation of an
 integer type with named maximum and minimum values.
-We have used the name {\em intCons} for an integer value range constraint to avoid presenting full
+We use the name {\em intCons} for an integer value range constraint to avoid presenting full
 details of our constraint representation. Full details of how we represent constraints are
 provided in section \ref{constraint}.
 
@@ -385,7 +386,7 @@ data ASNBuiltin a where
    BITSTRING       :: NamedBits -> ASNBuiltin BitString
    BOOLEAN         :: ASNBuiltin Bool
    INTEGER         :: ASNBuiltin InfInteger
-   ENUMERATED      :: Enumerate -> ASNBuiltin Enumerate
+   ENUMERATED      :: Enumerate -> ASNBuiltin Name
    OCTETSTRING     :: ASNBuiltin OctetString
    PRINTABLESTRING :: ASNBuiltin PrintableString
    IA5STRING       :: ASNBuiltin IA5String
@@ -608,8 +609,6 @@ newtype TypeReference = Ref {ref :: String}
 However, since we require the compile-time type
 checker to raise any type errors, we need to associate any type reference with its type.
 
-\todo{Is this the only way to do this?}
-\todo{How often are we going to use type references?}
 For example\\
 \\
 {\em ReferencedType (Ref "T") (BuiltinType INTEGER)}\\
@@ -805,7 +804,6 @@ instance InnerType [a]
 
 \end{code}
 
-We have now completed the implementation of the constraints defined in X.680.
 In the following section we provide some types which are required in the generation and
 processing of constraints. 
 
@@ -1292,6 +1290,8 @@ instance (Eq a, Eq (ExactlyOne l SelectionMade)) => Eq (ExactlyOne (a:*:l) Selec
 \subsection{ASN.1 EnumeratedType}
 \label{enumerate}
 
+\todo{Need to check the validity of an enumerated type (as well as a value). That is, where we use named numbers, are they valid?}
+
 An enumeration type is a collection of identifiers which are each implicitly or explicitly associated
 with an integer. We use an algebraic type {\em EnumerationItem} to represent these two possible
 cases. It has two constructors:
@@ -1321,6 +1321,10 @@ has three constructors:
 data EnumerationItem = Identifier Name
                        | NamedNumber Name Integer
 								 deriving (Show, Eq) 
+
+getName :: EnumerationItem -> Name
+getName (Identifier n) = n
+getName (NamedNumber n _) = n
 
 data Enumerate = EmptyEnumeration
                  | AddEnumeration EnumerationItem Enumerate

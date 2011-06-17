@@ -869,12 +869,11 @@ enumerated type constraints.
 
 \begin{code}
 
-encodeEnum :: Enumerate -> SerialSubtypeConstraints Enumerate -> Enumerate -> PERMonad ()
-encodeEnum e cs x @ (AddEnumeration ei EmptyEnumeration)
+encodeEnum :: Enumerate -> SerialSubtypeConstraints Name -> Name -> PERMonad ()
+encodeEnum e cs n
     =  let (extensible,inds) = assignIndex e {- X691REF: 13.1 -}
            no = L.genericLength inds
-           (b,p) = validEnum e ei 0
-           n = getName ei
+           (b,p) = validEnum e n 0
        in
                 if b && (not . L.null) cs
            then
@@ -937,11 +936,6 @@ encodeEnumExtAux i l (AddEnumeration  ei es) n
     | otherwise
         = encodeEnumExtAux (i+1) l es n
 encodeEnumExtAux i l _ _ = throwError (OtherError "No enumerated extension value!")
-
-
-getName :: EnumerationItem -> Name
-getName (Identifier n) = n
-getName (NamedNumber n _) = n
 
 \end{code}
 

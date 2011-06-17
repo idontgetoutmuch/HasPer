@@ -633,9 +633,9 @@ is evaluated then an {\em ExtensibleConstraint EnumeratedConstraint} value is re
 
 \begin{code}
 
-enumeratedElements :: Enumerate -> Element Enumerate -> Bool -> Either String (ExtensibleConstraint EnumeratedConstraint)
-enumeratedElements en (S (SV (AddEnumeration ei EmptyEnumeration))) b
-    = let (b, p) = validEnum en ei 0				 
+enumeratedElements :: Enumerate -> Element Name -> Bool -> Either String (ExtensibleConstraint EnumeratedConstraint)
+enumeratedElements en (S (SV nm)) b
+    = let (b, p) = validEnum en nm 0				 
           indices = (snd . assignIndex) en
 			in if b
             then 
@@ -648,13 +648,13 @@ enumeratedElements en (C (Inc t)) b
     = containedEnumeratedType en t []
 
 		
-validEnum :: Enumerate -> EnumerationItem -> Int -> (Bool, Maybe Int)
-validEnum EmptyEnumeration ei n = (False, Nothing)
-validEnum (AddEnumeration e r) ei n
-					| e == ei = (True, Just n)
-					| otherwise = validEnum r ei (n+1) 
-validEnum (EnumerationExtensionMarker e) ei n
-					= validEnum e ei n
+validEnum :: Enumerate -> Name -> Int -> (Bool, Maybe Int)
+validEnum EmptyEnumeration nm n = (False, Nothing)
+validEnum (AddEnumeration e r) nm n
+					| getName e == nm = (True, Just n)
+					| otherwise = validEnum r nm (n+1) 
+validEnum (EnumerationExtensionMarker e) nm n
+					= validEnum e nm n
 						
 \end{code}
 
@@ -665,7 +665,7 @@ Note that only the extension root values of an extensible contained type are use
 
 \begin{code}
 
-containedEnumeratedType :: Enumerate -> ASNType Enumerate -> [SubtypeConstraint Enumerate]
+containedEnumeratedType :: Enumerate -> ASNType Name -> [SubtypeConstraint Name]
                -> Either String (ExtensibleConstraint EnumeratedConstraint)
 containedEnumeratedType en (BuiltinType (ENUMERATED e)) cl
     =  let  tp = ExtensibleConstraint top top False
