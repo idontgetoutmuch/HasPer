@@ -396,12 +396,21 @@ data ASNBuiltin a where
    BMPSTRING       :: ASNBuiltin BMPString
    NULL            :: ASNBuiltin Null
    SEQUENCE        :: Sequence a -> ASNBuiltin a
-   SEQUENCEOF      :: ASNType a -> ASNBuiltin [a]
+   SEQUENCEOF      :: SeqSetOf c => c a -> ASNBuiltin [a]
    SET             :: Sequence a -> ASNBuiltin a
-   SETOF           :: ASNType a -> ASNBuiltin [a]
-   CHOICE          :: Choice a
-                        -> ASNBuiltin (ExactlyOne a SelectionMade)
+   SETOF           :: SeqSetOf c => c a -> ASNBuiltin [a]
+   CHOICE          :: Choice a -> ASNBuiltin (ExactlyOne a SelectionMade)
    TAGGED          :: TagInfo -> ASNType a -> ASNBuiltin a
+
+class SeqSetOf c where
+   stripName :: c a -> ASNType a 
+
+instance SeqSetOf NamedType where
+   stripName (NamedType n a) = a
+
+instance SeqSetOf ASNType where
+   stripName a = a
+   
 
 \end{code}
 \todo{SEQUENCEOF and SETOF should have ASNTYPE or NamedType as input -- see X.680 25.1}
@@ -514,6 +523,8 @@ newtype NumericString = NumericString {numericString :: String}
 newtype VisibleString = VisibleString {visibleString :: String}
     deriving (Eq, Show)
 newtype UniversalString = UniversalString {universalString :: String}
+
+
     deriving (Eq, Show)
 newtype BMPString = BMPString {bmpString :: String}
     deriving (Eq, Show)

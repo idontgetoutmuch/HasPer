@@ -283,10 +283,10 @@ toPER (ENUMERATED e) x cl  = encodeEnum e cl x -- no PER-Visible constraints
 toPER (BITSTRING nbs) x cl = encodeBitstring nbs cl x
 toPER (OCTETSTRING) x cl   = encodeOctetstring cl x
 toPER (SEQUENCE s) x cl    = eSequence s x -- no PER-Visible constraints
-toPER (SEQUENCEOF s) x cl  = eSequenceOf cl s x
+toPER (SEQUENCEOF s) x cl  = eSequenceOf cl (stripName s) x
 toPER (SET s) x cl         = encodeSet s x -- no PER-Visible constraints
 toPER (CHOICE c) x cl      = encodeChoice c x -- no PER-visible constraints
-toPER (SETOF s) x cl       = encodeSetOf cl s x -- no PER-visible constraints
+toPER (SETOF s) x cl       = encodeSetOf cl (stripName s) x -- no PER-visible constraints
 toPER (TAGGED tag t) x cl  = encode t cl x
 
 fromPER :: ASNBuiltin a -> [ElementSetSpecs a] -> UnPERMonad a
@@ -2413,7 +2413,7 @@ encodeChoiceAux (b, ([f],e)) (ChoiceOption (NamedType t a) as) (AddAValue x xs)
              else   {- X691REF: 22.4 and 22.6 -}
                     return ()
         encode a [] x
-encodeChoiceAux (b, ((f:g:r),e)) (ChoiceOption (NamedType t a) as) (AddAValue x xs)
+encodeChoiceAux ids@(b, ((f:g:r),e)) (ChoiceOption (NamedType t a) as) (AddAValue x xs)
     = do
         if b then   {- X691REF: 22.5 and 22.7 -}
                     zeroBit
