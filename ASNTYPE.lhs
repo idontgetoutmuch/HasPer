@@ -1,3 +1,5 @@
+
+
 \section{Abstract Syntax Tree}
 \todo{Be consistent with tense -- we present, we create ...}
 
@@ -13,7 +15,7 @@ ASN.1, a type-based notation.
 
 {-# OPTIONS_GHC -XTypeOperators -XGADTs -XEmptyDataDecls
                 -XFlexibleInstances -XFlexibleContexts
-                -XScopedTypeVariables
+                -XScopedTypeVariables 
 #-}
 
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -57,6 +59,7 @@ We present below our representation of the ASN.1 record structure of X.691, Anne
 \todo{Pretty-printing example and representation of constraints}
 
 \begin{code}
+
 personnelRecord
     = BuiltinType (TAGGED (Application, 0, Implicit) (BuiltinType (SET
                     ((MandatoryComponent (NamedType "name" (ReferencedType (Ref "Name") name))) .*.
@@ -403,13 +406,13 @@ data ASNBuiltin a where
    TAGGED          :: TagInfo -> ASNType a -> ASNBuiltin a
 
 class SeqSetOf c where
-   stripName :: c a -> ASNType a 
+   splitName :: c a -> (Maybe Name, ASNType a) 
 
 instance SeqSetOf NamedType where
-   stripName (NamedType n a) = a
+   splitName (NamedType n a) = (Just n, a)
 
 instance SeqSetOf ASNType where
-   stripName a = a
+   splitName a = (Nothing, a)
    
 
 \end{code}
@@ -613,6 +616,7 @@ reference component of a type assignment.
 \begin{code}
 
 newtype TypeReference = Ref {ref :: String}
+  deriving (Eq, Ord)
 
 \end{code}
 

@@ -122,8 +122,11 @@ prettyBuiltinType (SEQUENCE s)          = do d <- prettySeq'' s
                                              return $ text "SEQUENCE" <> space <> braces d
 prettyBuiltinType (SET s)               = do d <- prettySeq s
                                              return $ text "SET" <> space <> braces d
-prettyBuiltinType (SEQUENCEOF t)        = do d <- prettyType t
+prettyBuiltinType (SEQUENCEOF t)        = do d <- prettySeqOfType t
                                              return $ text "SEQUENCE OF" <+> d
+prettyBuiltinType (SETOF t)             = do d <- prettySeqOfType t
+
+                                             return $ text "SET OF" <+> d
 prettyBuiltinType OCTETSTRING           = return $ text "OCTETSTRING"
 prettyBuiltinType (BITSTRING namedBits) = return $ text "BITSTRING" <+> braces (text "FIXME: the named bits")
 prettyBuiltinType VISIBLESTRING         = return $ text "VISIBLESTRING"
@@ -134,6 +137,15 @@ prettyBuiltinType NULL                  = return $ text "NULL"
 prettyBuiltinType (ENUMERATED enums)    = return $ text "ENUMERATED" <+> braces (text "FIXME: the enumeratees")
 -- FIXME: For now ignore the tag information
 prettyBuiltinType (TAGGED _tagInfo t)   = prettyType t
+
+
+prettySeqOfType :: SeqSetOf c => c a -> ASNPrettyM Doc
+prettySeqOfType t 
+		= let (f,s) = splitName t
+		  in
+			case f of
+			     Nothing -> do prettyType s
+			     Just n  -> do prettyNamedType (NamedType n s)
 
 
 prettyReferencedType :: TypeReference -> ASNType a -> ASNPrettyM Doc

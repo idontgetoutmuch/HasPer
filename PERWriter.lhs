@@ -283,10 +283,10 @@ toPER (ENUMERATED e) x cl  = encodeEnum e cl x -- no PER-Visible constraints
 toPER (BITSTRING nbs) x cl = encodeBitstring nbs cl x
 toPER (OCTETSTRING) x cl   = encodeOctetstring cl x
 toPER (SEQUENCE s) x cl    = eSequence s x -- no PER-Visible constraints
-toPER (SEQUENCEOF s) x cl  = eSequenceOf cl (stripName s) x
+toPER (SEQUENCEOF s) x cl  = eSequenceOf cl ((snd . splitName) s) x
 toPER (SET s) x cl         = encodeSet s x -- no PER-Visible constraints
 toPER (CHOICE c) x cl      = encodeChoice c x -- no PER-visible constraints
-toPER (SETOF s) x cl       = encodeSetOf cl (stripName s) x -- no PER-visible constraints
+toPER (SETOF s) x cl       = encodeSetOf cl ((snd . splitName)s) x -- no PER-visible constraints
 toPER (TAGGED tag t) x cl  = encode t cl x
 
 fromPER :: ASNBuiltin a -> [ElementSetSpecs a] -> UnPERMonad a
@@ -2455,7 +2455,7 @@ prefixed by a single {\em 1} bit.
 \begin{code}
 
 encodeChoiceExtAux :: (NoExtension, (ChoiceRootIndices, ChoiceExtIndices))
-                    -> Choice a -> ExactlyOne a n -> PERMonad ()
+                    -> Choice a -> (ExactlyOne a n) -> PERMonad ()
 encodeChoiceExtAux ids EmptyChoice _ = throwError (OtherError "No choice value!")
 encodeChoiceExtAux ids(ChoiceExtensionMarker as) xs =
    encodeChoiceAux ids as xs
@@ -2471,7 +2471,7 @@ encodeChoiceExtAux (b,(r, (f:e))) (ChoiceOption (NamedType t a) as) (AddAValue x
 
 
 encodeChoiceExtAux' :: (NoExtension, (ChoiceRootIndices, ChoiceExtIndices))
-                    -> Choice' a -> ExactlyOne a n -> PERMonad ()
+                    -> Choice' a -> (ExactlyOne a n) -> PERMonad ()
 encodeChoiceExtAux' ids EmptyChoice' _ = throwError (OtherError "No choice value!")
 encodeChoiceExtAux' ids ChoiceExtensionMarker' _ = throwError (OtherError "No choice value!")
 encodeChoiceExtAux' (b,(r, (f:e))) (ChoiceOption' a as) (AddNoValue x xs) =
