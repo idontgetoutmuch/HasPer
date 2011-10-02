@@ -25,7 +25,7 @@ import Text.PrettyPrint
 import Data.Char
 import Data.Time
 
-import ASNTYPE
+import ASNTYPE hiding (empty)
 import NewTestData -- FIXME: Temporary - tests should not be done in the module
 import NewPretty
 

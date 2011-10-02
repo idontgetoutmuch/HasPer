@@ -31,5 +31,5 @@ build-type:      Custom
 Exposed-Modules: Language.ASN1.PER.Integer
                  Language.ASN1.PER.GenerateC
 
-Executable:      PERTest
-Main-Is:         PERTest.hs
+Executable:      StGeorgeTest
+Main-Is:         StGeorgeTest.hs
