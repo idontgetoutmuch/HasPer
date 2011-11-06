@@ -32,7 +32,7 @@ type {\em Word8} which is defined in the imported library module {\em Data.Word}
 module ASNTYPE where
 
 import Data.Word
-import List
+import Data.List
 
 \end{code}
 

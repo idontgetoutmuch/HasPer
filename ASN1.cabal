@@ -1,35 +1,62 @@
 Name:            PER
 Version:         0.0.20
 License:         BSD3
-Author:          Dominic Steinitz
-Maintainer:      dominic.steinitz@blueyonder.co.uk
-Copyright:       Dominic Steinitz 2003 - 2009
-Stability:       Alpha
-Category:        Language
-Homepage:        http://www.haskell.org/asn1
-Synopsis:        ASN.1 PER support for Haskell
+Author:          Dominic Steinitz <dominic@steinitz.org>, Dan Russell <djrussell@kingston.ac.uk>
+Maintainer:      Dominic Steinitz <dominic@steinitz.org>
 Description:     A formal and executable specification of the Packed Encoding Rules (PER)
                  for ASN.1
+Synopsis:        ASN.1 PER support for Haskell
+Homepage:        http://trac.haskell.org/asn1/wiki
+Copyright:       Dominic Steinitz <dominic@steinitz.org> 2003 - 2011
+Category:        Language
+Stability:       Alpha
+Build-type:      Custom
+Cabal-version:   >= 1.9.2
+tested-with:    GHC == 7.0.3
+-- Tests/Properties.hs shouldn't have to go here, but the source files
+-- for the test-suite stanzas don't get picked up by `cabal sdist`.
+Extra-source-files: Tests/Properties.hs
 
-build-depends:   binary-strict >= 0.4.2,
-                 time,
-                 HUnit,
-                 tagsoup,
-                 haskell98,
-                 directory,
-                 process,
-                 filepath,
-                 bytestring,
-                 mtl,
-                 containers,
-                 pretty,
-                 base,
-                 Cabal
+source-repository head
+    type:     darcs
+    location: http://code.haskell.org/asn1
 
-build-type:      Custom
+Library
+  Build-depends:   base >= 4.0 && < 5,
+                   binary-strict >= 0.4.2,
+                   time,
+                   HUnit,
+                   tagsoup,
+                   haskell98,
+                   directory,
+                   process,
+                   filepath,
+                   bytestring,
+                   mtl,
+                   containers,
+                   pretty
 
-Exposed-Modules: Language.ASN1.PER.Integer
-                 Language.ASN1.PER.GenerateC
+  Exposed-Modules: Language.ASN1.PER.Integer,
+                   Language.ASN1.PER.GenerateC,
+                   Language.ASN1
+                   NewPretty,
+                   ASNTYPE,
+                   PERWriter,
+                   NewTestData,
+                   LatticeMod,
+                   Language.ASN1.PER.IntegerAux,
+                   ConstraintGeneration
+  Hidden-modules: 
 
-Executable:      StGeorgeTest
-Main-Is:         StGeorgeTest.hs
+Test-suite tests
+
+  Type: exitcode-stdio-1.0
+  Hs-source-dirs: Tests
+  Main-is: Properties.hs
+  Build-depends: base >= 4.0 && < 5,
+                 test-framework >= 0.3.3 && < 0.5,
+                 test-framework-quickcheck2 >= 0.2.9 && < 0.3,
+                 test-framework-hunit >= 0.2.6 && < 0.3,
+                 QuickCheck >= 2.4.0.1,
+                 HUnit >= 1.2.2.3,
+                 PER == 0.0.20

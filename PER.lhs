@@ -808,7 +808,6 @@ encodeEnumExtAux i l (AddEnumeration  ei es) n
 encodeEnumExtAux i l _ _ = throwError (OtherError "No enumerated extension value!")
 
 
-getName :: EnumerationItem -> Name
 getName (Identifier n) = n
 getName (NamedNumber n _) = n
 

@@ -29,7 +29,6 @@ perHooks =
             , simpleProgram cCompilerName
           ]
       , postConf = perPostConf
-      , runTests = myTests
    }
 
 perPostConf :: Args -> ConfigFlags -> PackageDescription  -> LocalBuildInfo -> IO ()
@@ -60,8 +59,3 @@ perPostConf a cfs pd lbi =
  --           reportProgram v cSP mC
             return ()
 
-myTests _ _ _ _ = do
-   (code, out, err) <- readProcessWithExitCode "runghc" ["-idist/build/autogen/", "PERTest.hs"] ""
-   putStrLn (show code)
-   putStrLn ("Stdout: " ++ out)
-   putStrLn ("Stderr: " ++ err)
