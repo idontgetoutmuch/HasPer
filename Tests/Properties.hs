@@ -17,10 +17,13 @@ refIntTest1 = roundTrip rt1 v1 @?= v1
 
 refSeqTest1 = roundTrip rt3 v3 @?= v3
 
+foo1 = roundTrip sibDataVariableType sibDataVariableValue @?= sibDataVariableValue
+
 tests :: [Test]
 tests =
     [ testCase "Referenced unconstrained INTEGER" refIntTest1
     , testCase "Referenced SEQUENCE" refSeqTest1
+    , testCase "Foo" foo1
     ]
 
 main = defaultMain tests

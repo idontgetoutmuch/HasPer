@@ -135,6 +135,7 @@ fromPER :: ASNBuiltin a -> [ElementSetSpecs a] -> UnPERMonad a
 fromPER t@INTEGER cl = dInteger cl
 -- FIXME: Why are we ignoring the constraints?
 fromPER t@(SEQUENCE s) cl = dSequence s
+fromPER t cl = error $ prettyType t
 
 encodeWithLength :: IntegerConstraint -> (t -> PERMonad ()) -> [t] -> PERMonad ()
 encodeWithLength ic fun ls
