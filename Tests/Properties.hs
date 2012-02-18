@@ -9,7 +9,7 @@ import Test.Framework.Providers.HUnit
 import NewTestData
 import PERWriter
 import ASNTYPE
-import NewPretty
+import Pretty
 
 roundTrip t v = runDecode t (runEncode t v)
 

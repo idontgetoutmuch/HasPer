@@ -22,12 +22,16 @@
 module PERWriter where
 
 import ASNTYPE
+import Pretty
 import LatticeMod
 import ConstraintGeneration
 import Language.ASN1.PER.Integer
    ( fromNonNegativeBinaryInteger'
    , from2sComplement'
    )
+
+import Text.PrettyPrint
+
 import Data.List as L hiding (groupBy)
 import Data.Char
 import Control.Monad.Error
@@ -135,7 +139,7 @@ fromPER :: ASNBuiltin a -> [ElementSetSpecs a] -> UnPERMonad a
 fromPER t@INTEGER cl = dInteger cl
 -- FIXME: Why are we ignoring the constraints?
 fromPER t@(SEQUENCE s) cl = dSequence s
-fromPER t cl = error $ prettyType t
+fromPER t cl = error $ render $ prettyTypeNonM (BuiltinType t)
 
 encodeWithLength :: IntegerConstraint -> (t -> PERMonad ()) -> [t] -> PERMonad ()
 encodeWithLength ic fun ls
@@ -753,6 +757,7 @@ encodeNonExtRootBitstring nbs rc ec (Valid erc) xs
       in do
           oneBit
           encodeBitsWithLength (namedBitsEdit l u xs)
+
 
 ------------------------------------------------------------------------
 -- Octet string types

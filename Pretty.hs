@@ -2,10 +2,9 @@
 
 -- -fwarn-incomplete-patterns
 
-module NewPretty where
+module Pretty where
 
 import ASNTYPE
-import PERWriter
 import Language.ASN1 (
    -- TagPlicity (..),
    TagType (..)
@@ -136,8 +135,8 @@ prettyBuiltinType BMPSTRING             = return $ text "BMPSTRING"
 prettyBuiltinType NULL                  = return $ text "NULL"
 prettyBuiltinType (ENUMERATED enums)    = return $ text "ENUMERATED" <+> braces (text "FIXME: the enumeratees")
 -- FIXME: For now ignore the tag information
-prettyBuiltinType (TAGGED _tagInfo t)   = prettyType t
-
+prettyBuiltinType (TAGGED _tagInfo t)   = do u <- prettyType t
+                                             error $ render u
 
 prettySeqOfType :: SeqSetOf c => c a -> ASNPrettyM Doc
 prettySeqOfType t 
