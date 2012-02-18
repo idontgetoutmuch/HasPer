@@ -758,6 +758,31 @@ encodeNonExtRootBitstring nbs rc ec (Valid erc) xs
           oneBit
           encodeBitsWithLength (namedBitsEdit l u xs)
 
+decodeLargeLengthDeterminant3' :: (Integer -> a -> UnPERMonad [b]) -> a -> UnPERMonad [b]
+decodeLargeLengthDeterminant3' f t =
+   do p <- lift BG.getBit
+      if (not p)
+         then
+            do j <- lift $ BG.getLeftByteString 7
+               let l = fromNonNegativeBinaryInteger' 7 j
+               f l t
+         else
+            do q <- lift BG.getBit
+               if (not q)
+                  then
+                     do k <- lift $ BG.getLeftByteString 14
+                        let m = fromNonNegativeBinaryInteger' 14 k
+                        f m t
+                  else
+                     do n <- lift $ BG.getLeftByteString 6
+                        let fragSize = fromNonNegativeBinaryInteger' 6 n
+                        if fragSize <= 0 || fragSize > 4
+                           then undefined --  (DecodeError (fragError ++ show fragSize))
+                           else do frag <- f (fragSize * 16 * (2^10)) t
+                                   rest <- decodeLargeLengthDeterminant3' f t
+                                   return (frag ++ rest)
+                        where
+                           fragError = "Unable to decode with fragment size of "
 
 ------------------------------------------------------------------------
 -- Octet string types
