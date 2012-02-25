@@ -784,6 +784,181 @@ decodeLargeLengthDeterminant3' f t =
                         where
                            fragError = "Unable to decode with fragment size of "
 
+-- decode4 (BuiltinType t) cl = undefined -- fromPer3 t cl
+-- decode4 (ConstrainedType t c) cl = decode4 t (c:cl)
+-- decode4 (ReferencedType r t) cl  = decode4 t cl
+-- fromPer3 t@INTEGER cl = decodeInt3 cl
+
+-- decodeBitString constraints =
+--    do xs <- decodeBitStringAux (errorize (evaluateConstraint  pvBitStringElements top constraints))
+--       return (BitString . concat . (map bitString) $ xs)
+
+-- decodeBitStringAux mx =
+--    do x <- mx
+--       let rc = getBSRC x
+--       decodeLengthDeterminant rc chunkBy1 undefined
+--       where
+--          chunkBy1 = let compose = (.).(.) in lift `compose` (flip (const (sequence . return . (liftM BitString) . getBits . fromIntegral)))
+
+-- getBits 0 =
+--    return []
+-- getBits n =
+--    do x <- BG.getBit
+--       xs <- getBits (n-1)
+--       return (fromEnum x:xs)
+
+-- decodeLengthDeterminant c f t
+--    | ub /= maxBound &&
+--      ub == lb &&
+--      v <= 64*(2^10) = f v t
+--    | ub == maxBound = decodeLargeLengthDeterminant3' f t -- FIXME: We don't seem to check if the number
+--                                                          -- of elements satisfies the lower constraint.
+--    | v <= 64*(2^10) = do k <- decode4 (ConstrainedType (BuiltinType INTEGER) (rangeConstraint (lb,ub))) []
+--                          let (Val l) = k
+--                          f l t
+--    | otherwise      = decodeLargeLengthDeterminant3' f t
+--    where
+--       ub = upper c
+--       lb = lower c
+--       (Val v) = ub
+
+--       rangeConstraint :: (InfInteger, InfInteger) -> ElementSetSpecs InfInteger
+--       rangeConstraint =  RootOnly . UnionSet .  NoUnion . NoIntersection . ElementConstraint . V . R
+
+-- errorize (Left e)  = throwError (ConstraintError e)
+-- errorize (Right x) = return x
+
+-- decodeInt3 [] =
+--    lDecConsInt3 (return top) undefined (return top)
+-- decodeInt3 cs =
+--    lDecConsInt3 effRoot extensible effExt
+--    where
+--       effectiveCon :: Either String (ExtensibleConstraint IntegerConstraint)
+--       effectiveCon = evaluateConstraint  pvIntegerElements top cs
+--       extensible = eitherExtensible effectiveCon
+--       effRoot = either (\x -> undefined) --  (ConstraintError "Invalid root"))
+--                     (return . getRootConstraint) effectiveCon
+--       effExt = either (\x -> undefined) --  (ConstraintError "Invalid extension"))
+--                     (return . getExtConstraint) effectiveCon
+
+lDecConsInt3 mrc isExtensible mec =
+   do rc <- mrc
+      ec <- mec
+      let extensionConstraint    = ec /= top
+          tc                     = rc `ljoin` ec
+          extensionRange         = fromIntegral $ let (Val x) = (upper tc) - (lower tc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
+          rootConstraint         = rc /= top
+          rootLower              = let Val x = lower rc in x
+          rootRange              = fromIntegral $ let (Val x) = (upper rc) - (lower rc) + (Val 1) in x -- FIXME: fromIntegral means there's an Int bug lurking here
+          -- These were just hacks anyway so rather than trying to fix extractValue to allow us to see how many bits were
+          -- required to encode e.g. the root range, we should have a function which does this directly.
+          -- Dan must have one for encoding somewhere.
+          numOfRootBits          = bitWidth $ rootRange - 1
+          numOfExtensionBits     = bitWidth $ extensionRange - 1
+          emptyConstraint        = (not rootConstraint) && (not extensionConstraint)
+          inRange v x            = (Val v) >= (lower x) &&  (Val v) <= (upper x)
+          unconstrained x        = (lower x) == minBound
+          semiconstrained x      = (upper x) == maxBound
+          constrained x          = not (unconstrained x) && not (semiconstrained x)
+          constraintType x
+             | unconstrained x   = UnConstrained
+             | semiconstrained x = SemiConstrained
+             | otherwise         = Constrained
+          decodeRootConstrained =
+             if rootRange <= 1
+                then
+                   return (Val rootLower)
+                else
+                   do j <- lift $ BG.getLeftByteString (fromIntegral numOfRootBits)
+                      let v = rootLower + (fromNonNegativeBinaryInteger' numOfRootBits j)
+                      if v `inRange` rc
+                         then
+                            return (Val v)
+                         else
+                            throwError (BoundsError "Value not in root constraint")
+          decodeExtensionConstrained =
+             do v <- decodeUInt3
+                if v `inRange` tc
+                   then
+                      return (Val v)
+                   else
+                      throwError (BoundsError "Value not in extension constraint: could be invalid value or unsupported extension")
+          foobar
+             | emptyConstraint
+                  = do x <- decodeUInt3
+                       return (Val x)
+             | rootConstraint &&
+               extensionConstraint
+                  = do isExtension <- lift $ BG.getBit
+                       if isExtension
+                          then
+                             decodeExtensionConstrained
+                          else
+                             decodeRootConstrained
+             | rootConstraint &&
+               isExtensible
+                  = do isExtension <- lift $ BG.getBit
+                       if isExtension
+                          then
+                             throwError (ExtensionError "Extension for constraint not supported")
+                          else
+                             decodeRootConstrained
+             | rootConstraint
+                  = decodeRootConstrained
+             | extensionConstraint
+                  = throwError (ConstraintError "Extension constraint without a root constraint")
+             | otherwise
+                  = throwError (OtherError "Unexpected error decoding INTEGER")
+      foobar
+
+bitWidth n = genericLength $ revNonNegativeBinaryInteger (n,n)
+  where
+    revNonNegativeBinaryInteger :: (Integer, Integer) -> BitStream
+    revNonNegativeBinaryInteger =
+      (map fromInteger) . unfoldr toNonNegativeBinaryIntegerAux
+        where
+          toNonNegativeBinaryIntegerAux (_,0) = Nothing
+          toNonNegativeBinaryIntegerAux (0,w) = Just (0, (0, w `div` 2))
+          toNonNegativeBinaryIntegerAux (n,w) = Just (fromIntegral (n `mod` 2), (n `div` 2, w `div` 2))
+
+decodeUInt3 =
+   do o <- octets
+      return (from2sComplement' o)
+   where
+      chunkBy8 = let compose = (.).(.) in lift `compose` (flip (const (BG.getLeftByteString . fromIntegral . (*8))))
+      octets   = decodeLargeLengthDeterminant3 chunkBy8 undefined
+
+encodeConstrainedInt :: (InfInteger, InfInteger) -> PERMonad ()
+encodeConstrainedInt (val, range)
+    = toNonNegBinaryInteger val range
+
+decodeLargeLengthDeterminant3 :: (Integer -> a -> UnPERMonad B.ByteString) -> a -> UnPERMonad B.ByteString
+decodeLargeLengthDeterminant3 f t =
+   do p <- lift BG.getBit
+      if (not p)
+         then
+            do j <- lift $ BG.getLeftByteString 7
+               let l = fromNonNegativeBinaryInteger' 7 j
+               f l t
+         else
+            do q <- lift BG.getBit
+               if (not q)
+                  then
+                     do k <- lift $ BG.getLeftByteString 14
+                        let m = fromNonNegativeBinaryInteger' 14 k
+                        f m t
+                  else
+                     do n <- lift $ BG.getLeftByteString 6
+                        let fragSize = fromNonNegativeBinaryInteger' 6 n
+                        if fragSize <= 0 || fragSize > 4
+                           then undefined --  (DecodeError (fragError ++ show fragSize))
+                           else do frag <- f (fragSize * 16 * (2^10)) t
+                                   rest <- decodeLargeLengthDeterminant3 f t
+                                   return (B.append frag rest)
+                        where
+                           fragError = "Unable to decode with fragment size of "
+
+
 ------------------------------------------------------------------------
 -- Octet string types
 
